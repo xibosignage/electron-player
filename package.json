@@ -1,0 +1,25 @@
+{
+  "name": "xibo-electron",
+  "version": "1.0.0",
+  "description": "Xibo Digital Signage Player",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "start": "electron-vite preview",
+    "dev": "electron-vite dev",
+    "prebuild": "electron-vite build",
+    "build:win": "npm run build && electron-builder --win --config",
+    "build:mac": "npm run build && electron-builder --mac --config",
+    "build:linux": "npm run build && electron-builder --linux --config"
+  },
+  "author": "Xibo Signage Ltd",
+  "devDependencies": {
+    "electron": "^24.1.2",
+    "electron-vite": "^2.0.0",
+    "eslint": "^7.19.0",
+    "eslint-config-google": "^0.14.0"
+  },
+  "dependencies": {
+    "@electron-toolkit/utils": "^3.0.0",
+    "express": "^4.18.3"
+  }
+}

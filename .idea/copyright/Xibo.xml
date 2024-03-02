@@ -1,0 +1,6 @@
+<component name="CopyrightManager">
+  <copyright>
+    <option name="notice" value="Copyright (c) &amp;#36;originalComment.match(&quot;Copyright \(c\) (\d+)&quot;, 1, &quot;-&quot;, &quot;&amp;#36;today.year&quot;)&amp;#36;today.year Xibo Signage Ltd&#10;&#10;Xibo - Digital Signage - https://xibosignage.com&#10;&#10;This file is part of Xibo.&#10;&#10;Xibo is free software: you can redistribute it and/or modify&#10;it under the terms of the GNU Affero General Public License as published by&#10;the Free Software Foundation, either version 3 of the License, or&#10;any later version.&#10;&#10;Xibo is distributed in the hope that it will be useful,&#10;but WITHOUT ANY WARRANTY; without even the implied warranty of&#10;MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the&#10;GNU Affero General Public License for more details.&#10;&#10;You should have received a copy of the GNU Affero General Public License&#10;along with Xibo.  If not, see &lt;http://www.gnu.org/licenses/&gt;." />
+    <option name="myName" value="Xibo" />
+  </copyright>
+</component>
