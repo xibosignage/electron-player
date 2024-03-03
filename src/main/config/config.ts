@@ -18,28 +18,58 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
+const fs = require('fs/promises');
+import {join} from 'path';
+import {machineId} from 'node-machine-id';
 
 export class Config {
-    // App information
-    readonly version: string = "v4 R400";
-    readonly versionCode: number = 400;
-    readonly savePath: string;
+  // Environment
+  readonly platform: string;
 
-    // Main configuration
-    hardwareKey: string;
-    cmsUrl: string;
-    cmsKey: string;
+  // App information
+  readonly version: string = "v4 R400";
+  readonly versionCode: number = 400;
 
-    constructor(savePath) {
-        this.savePath = savePath;
-    };
+  // Config file
+  readonly savePath: string;
 
-    async load() {
-      console.log(`Loading ${ this.savePath }`);
+  // Main configuration
+  hardwareKey: string | undefined;
+  cmsUrl: string | undefined;
+  cmsKey: string | undefined;
 
-    };
+  constructor(savePath, platform) {
+    this.savePath = join(savePath, 'config.json');
+    this.platform = platform;
+  };
 
-    async save() {
-        console.log(`Saving ${ this.savePath }`);
-    };
+  async load() {
+    console.log(`Loading ${ this.savePath }`);
+
+    try {
+      let data = await fs.readFile(this.savePath);
+      this.hardwareKey = data.hardwareKey;
+      this.cmsUrl = data.cmsUrl;
+      this.cmsKey = data.cmsKey;
+    } catch {
+      // Probably the file doesn't exist.
+      this.hardwareKey = await machineId();
+    }
+  };
+
+  async save() {
+    console.log(`Saving ${ this.savePath }`);
+    await fs.writeFile(
+      this.savePath,
+      JSON.stringify({
+        hardwareKey: this.hardwareKey,
+        cmsUrl: this.cmsUrl,
+        cmsKey: this.cmsKey,
+      }, null, 2),
+    );
+  };
+
+  isConfigured() {
+    return this.cmsUrl && this.cmsKey;
+  }
 }

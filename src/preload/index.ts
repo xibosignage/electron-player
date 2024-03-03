@@ -18,8 +18,16 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
+// @ts-ignore
 const {contextBridge, ipcRenderer} = require('electron/renderer');
 
-contextBridge.exposeInMainWorld('electronAPI', {
+contextBridge.exposeInMainWorld('electron', {
+  // Main to render
+  onShowConfigure: (callback) => ipcRenderer.on(
+    'show-configure',
+    (_event, value) => callback(value),
+  ),
+
+  // Render to main
   openChildWindow: (url) => ipcRenderer.send('open-child-window', url),
 });

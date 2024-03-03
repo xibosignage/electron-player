@@ -18,12 +18,10 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
-const express = require('express');
+import express from 'express';
 
 const app = express();
 const port = 9696;
-
-console.log('Here');
 
 app.get('/', (req, res) => {
   res.send('Hello World!');

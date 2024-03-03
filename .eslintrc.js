@@ -29,7 +29,6 @@ module.exports = {
   extends: [
     'eslint:recommended',
     '@electron-toolkit',
-    '@electron-toolkit/eslint-config-ts/eslint-recommended',
     'google',
   ],
   parserOptions: {
@@ -42,5 +41,6 @@ module.exports = {
     'quote-props': ['warn', 'as-needed'],
     'dot-location': ['warn', 'property'],
     'linebreak-style': [0, 'error', 'windows'],
+    'max-len': ['warn', {code: 130}],
   },
 };

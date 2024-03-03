@@ -49,23 +49,37 @@ const createWindow = () => {
   win.setMenuBarVisibility(false);
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    win.loadURL(process.env['ELECTRON_RENDERER_URL']);
+    win.loadURL(process.env['ELECTRON_RENDERER_URL']).then(() => {
+      init(win);
+    });
   } else {
-    win.loadFile(join(__dirname, '../renderer/index.html'));
+    win.loadFile(join(__dirname, '../renderer/index.html')).then(() => {
+      init(win);
+    });
   }
+};
 
-  configureIpc(win);
-
+const init = (win) => {
   // Create a new Config object
-  const config = new Config(app.getPath('userData'));
+  const config = new Config(app.getPath('userData'), process.platform);
   config.load().then(() => {
+    // eslint-disable-next-line max-len
+    console.log(`Version: ${config.version}, hardwareKey: ${config.hardwareKey}`);
 
+    // Are we configured?
+    if (!config.isConfigured()) {
+      console.log('Not configured, showing configuration page');
+
+      // Switch to the configuration page in the renderer.
+      win.webContents.send('show-configure', config);
+    }
+
+    configureIpc(win);
+
+    // We are configured so continue starting the rest of the application.
+    // Player API and static file serving
+    configureExpress();
   });
-
-  console.log(`Version: ${config.version}`);
-
-  // Player API and static file serving
-  configureExpress();
 };
 
 const configureIpc = (win) => {
