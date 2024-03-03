@@ -18,30 +18,4 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
-import {resolve} from 'path';
-import {defineConfig, externalizeDepsPlugin, bytecodePlugin}
-  from 'electron-vite';
-
-export default defineConfig({
-  main: {
-    plugins: [externalizeDepsPlugin(), bytecodePlugin()],
-    build: {
-      rollupOptions: {
-        input: {
-          index: resolve(__dirname, 'src/main/index.ts'),
-          express: resolve(__dirname, 'src/main/express.ts'),
-        },
-      },
-    },
-  },
-  preload: {
-    plugins: [externalizeDepsPlugin(), bytecodePlugin()],
-  },
-  renderer: {
-    resolve: {
-      alias: {
-        '@renderer': resolve('src/renderer/src'),
-      },
-    },
-  },
-});
+import './assets/main.css';

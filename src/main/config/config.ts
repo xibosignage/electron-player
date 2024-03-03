@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Xibo Signage Ltd
+ * Copyright (c) 2024 Xibo Signage Ltd
  *
  * Xibo - Digital Signage - https://xibosignage.com
  *
@@ -18,19 +18,28 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
-const {contextBridge, ipcRenderer} = require('electron/renderer');
 
-contextBridge.exposeInMainWorld('electronAPI', {
-  openChildWindow: (url) => ipcRenderer.send('open-child-window', url),
-});
+export class Config {
+    // App information
+    readonly version: string = "v4 R400";
+    readonly versionCode: number = 400;
+    readonly savePath: string;
 
-window.addEventListener('DOMContentLoaded', () => {
-  const replaceText = (selector, text) => {
-    const element = document.getElementById(selector);
-    if (element) element.innerText = text;
-  };
+    // Main configuration
+    hardwareKey: string;
+    cmsUrl: string;
+    cmsKey: string;
 
-  for (const dependency of ['chrome', 'node', 'electron']) {
-    replaceText(`${dependency}-version`, process.versions[dependency]);
-  }
-});
+    constructor(savePath) {
+        this.savePath = savePath;
+    };
+
+    async load() {
+      console.log(`Loading ${ this.savePath }`);
+
+    };
+
+    async save() {
+        console.log(`Saving ${ this.savePath }`);
+    };
+}

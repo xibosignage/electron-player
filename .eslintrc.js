@@ -18,14 +18,23 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
+/* eslint-env node */
+require('@rushstack/eslint-patch/modern-module-resolution');
+
 module.exports = {
   env: {
     browser: true,
-    es2021: true,
+    node: true,
   },
-  extends: ['google'],
+  extends: [
+    'eslint:recommended',
+    '@electron-toolkit',
+    '@electron-toolkit/eslint-config-ts/eslint-recommended',
+    'google',
+  ],
   parserOptions: {
-    ecmaVersion: 12,
+    es6: true,
+    ecmaVersion: 'latest',
     sourceType: 'module',
   },
   rules: {

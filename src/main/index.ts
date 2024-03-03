@@ -23,6 +23,7 @@ import {join} from 'path';
 import {optimizer, is} from '@electron-toolkit/utils';
 import icon from '../../resources/icon.png?asset';
 import {spawn} from 'child_process';
+import {Config} from './config/config';
 
 const createWindow = () => {
   const win = new BrowserWindow({
@@ -53,12 +54,48 @@ const createWindow = () => {
     win.loadFile(join(__dirname, '../renderer/index.html'));
   }
 
-  ipcMain.on('open-child-window', (event, url) => {
+  configureIpc(win);
+
+  // Create a new Config object
+  const config = new Config(app.getPath('userData'));
+  config.load().then(() => {
+
+  });
+
+  console.log(`Version: ${config.version}`);
+
+  // Player API and static file serving
+  configureExpress();
+};
+
+const configureIpc = (win) => {
+  ipcMain.on('open-child-window', (_event, url) => {
     const view = new BrowserView();
     win.addBrowserView(view);
     view.setBounds({x: 0, y: 0, width: 800, height: 600});
     view.webContents.loadURL(url);
   });
+};
+
+const configureExpress = () => {
+  // Start express
+  const appName = app.getPath('exe');
+  const expressPath = is.dev ?
+    './out/main/express.js' :
+    join('./resources/app.asar', './out/main/express.js');
+  const redirectOutput = function(stream) {
+    stream.on('data', (data) => {
+      data.toString().split('\n').forEach((line) => {
+        console.log(line);
+      });
+    });
+  };
+
+  console.log(expressPath);
+
+  const expressAppProcess =
+      spawn(appName, [expressPath], {env: {ELECTRON_RUN_AS_NODE: '1'}});
+  [expressAppProcess.stdout, expressAppProcess.stderr].forEach(redirectOutput);
 };
 
 app.whenReady().then(() => {
@@ -75,18 +112,6 @@ app.whenReady().then(() => {
       createWindow();
     }
   });
-
-  // Start express
-  const appName = app.getPath('exe');
-  const expressPath = is.dev ?
-    './out/main/express.js' :
-    join('./resources/app.asar', './out/main/express.js');
-
-  console.log(expressPath);
-
-  const expressAppProcess =
-    spawn(appName, [expressPath], {env: {ELECTRON_RUN_AS_NODE: '1'}});
-  [expressAppProcess.stdout, expressAppProcess.stderr].forEach(redirectOutput);
 });
 
 app.on('window-all-closed', () => {
@@ -95,10 +120,4 @@ app.on('window-all-closed', () => {
   }
 });
 
-const redirectOutput = function(stream) {
-  stream.on('data', (data) => {
-    data.toString().split('\n').forEach((line) => {
-      console.log(line);
-    });
-  });
-};
+
