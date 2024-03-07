@@ -5,7 +5,7 @@
   "main": "./out/main/index.js",
   "scripts": {
     "start": "electron-vite preview",
-    "dev": "electron-vite dev",
+    "dev": "electron-vite dev --sourcemap --remote-debugging-port=9222",
     "prebuild": "electron-vite build",
     "build:win": "npm run build && electron-builder --win --config",
     "build:mac": "npm run build && electron-builder --mac --config",

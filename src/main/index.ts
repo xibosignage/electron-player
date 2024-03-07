@@ -24,7 +24,7 @@ import {optimizer, is} from '@electron-toolkit/utils';
 import icon from '../../resources/icon.png?asset';
 import {spawn} from 'child_process';
 import {Config} from './config/config';
-import {Xmds} from "./xmds/xmds";
+import {Xmds} from './xmds/xmds';
 
 const createWindow = () => {
   const win = new BrowserWindow({
