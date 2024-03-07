@@ -48,6 +48,7 @@ export class Config {
 
     try {
       let data = await fs.readFile(this.savePath);
+      data = JSON.parse(data);
       this.hardwareKey = data.hardwareKey;
       this.cmsUrl = data.cmsUrl;
       this.cmsKey = data.cmsKey;

@@ -24,6 +24,7 @@ import {optimizer, is} from '@electron-toolkit/utils';
 import icon from '../../resources/icon.png?asset';
 import {spawn} from 'child_process';
 import {Config} from './config/config';
+import {Xmds} from "./xmds/xmds";
 
 const createWindow = () => {
   const win = new BrowserWindow({
@@ -60,6 +61,9 @@ const createWindow = () => {
 };
 
 const init = (win) => {
+  // Configure IPC
+  configureIpc(win);
+
   // Create a new Config object
   const config = new Config(app.getPath('userData'), process.platform);
   config.load().then(() => {
@@ -72,13 +76,14 @@ const init = (win) => {
 
       // Switch to the configuration page in the renderer.
       win.webContents.send('show-configure', config);
+    } else {
+      // We are configured so continue starting the rest of the application.
+      // Player API and static file serving
+      configureExpress();
+
+      const xmds = new Xmds(config, app.getPath('appData'));
+      xmds.getSchemaVersion().then((version) => console.log(version));
     }
-
-    configureIpc(win);
-
-    // We are configured so continue starting the rest of the application.
-    // Player API and static file serving
-    configureExpress();
   });
 };
 
