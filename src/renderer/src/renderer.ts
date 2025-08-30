@@ -20,34 +20,46 @@
  */
 import './assets/main.css';
 import $ from 'jquery';
+import XiboLayoutRenderer, {IXlr, OptionsType} from '@xibosignage/xibo-layout-renderer';
+import DefaultLayout from './layout/defaultLayout';
 
-window.electron.onShowConfigure((config) => {
-  console.log('onShowConfigure');
-
+window.electron.onConfigure((config) => {
+  console.log('onConfigure');
+  window.config = config;
   const $config = $('#config');
-  $config.show();
-  $config.find('.code').show();
 
-  // Make a request to the "Use Code" API.
-  $.ajax('https://auth.signlicence.co.uk/generateCode', {
-    type: 'POST',
-    dataType: 'json',
-    data: {
-      hardwareId: config.hardkwareKey,
-      type: config.platform,
-      version: config.versionNumber,
-    },
-    success: (data) => {
-      console.log(data);
+  if (config.cmsUrl) {
+    console.log('onConfigure: we have a URL, hide the config.');
+    $config.hide();
 
-      // Hide the loader and show the code.
-    },
-    error: (xhr) => {
-      console.log(xhr);
+    const xlrOptions: Partial<OptionsType> = {
+      platform: 'chromeOS',
+      config: {
+        cmsUrl: window.location.origin,
+        cmsKey: config.cmsKey,
+        schemaVersion: config.schemaVersion,
+        hardwareKey: config.hardwareKey,
+      },
+      icons: {
+        splashScreen: 'assets/logo.png',
+        logo: 'assets/logo.png',
+      },
+    };
+    
+    // Create a splash screen
+    const splash = new DefaultLayout();
+    splash.path = '0.xlf';
 
-      // Configure manually.
-      $config.find('.code').hide();
-      $config.find('.manual').show();
-    },
-  });
+    let xlr: IXlr = XiboLayoutRenderer([splash], xlrOptions as any);
+    xlr.init().then((response: any) => {
+      console.log('onConfigure: play schedules');
+      console.log(response);
+      xlr.playSchedules(response);
+    });
+  } else {
+    // Show the configure view
+    console.log('onConfigure: show configure view');
+    $config.show();
+    $config.find('.code').show();
+  }
 });

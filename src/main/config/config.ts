@@ -37,6 +37,7 @@ export class Config {
   hardwareKey: string | undefined;
   cmsUrl: string | undefined;
   cmsKey: string | undefined;
+  xmdsVersion: number | undefined;
 
   constructor(savePath, platform) {
     this.savePath = join(savePath, 'config.json');
@@ -55,6 +56,7 @@ export class Config {
     } catch {
       // Probably the file doesn't exist.
       this.hardwareKey = await machineId();
+      await this.save();
     }
   };
 

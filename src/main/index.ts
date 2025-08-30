@@ -18,7 +18,8 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
-import {app, shell, BrowserView, BrowserWindow, ipcMain} from 'electron';
+import { installExtension, JQUERY_DEBUGGER } from 'electron-devtools-installer';
+import {app, shell, WebContentsView, BrowserWindow, ipcMain} from 'electron';
 import {join} from 'path';
 import {optimizer, is} from '@electron-toolkit/utils';
 import icon from '../../resources/icon.png?asset';
@@ -74,23 +75,34 @@ const init = (win) => {
     if (!config.isConfigured()) {
       console.log('Not configured, showing configuration page');
 
+      // Bind to some events from the renderer for configuration.
+      ipcMain.on('xmds-try-register', (_event, cmsUrl, cmsKey, displayName) => {
+        console.log('xmds-try-register: ' + cmsUrl + ', ' + cmsKey + ', ' + displayName);
+        // const xmds = new Xmds(config, app.getPath('appData'));
+      });
+
       // Switch to the configuration page in the renderer.
-      win.webContents.send('show-configure', config);
+      win.webContents.send('configure', config);
     } else {
       // We are configured so continue starting the rest of the application.
+      console.log('Configured.');
+
       // Player API and static file serving
       configureExpress();
 
       const xmds = new Xmds(config, app.getPath('appData'));
-      xmds.getSchemaVersion().then((version) => console.log(version));
+      xmds.getSchemaVersion().then((version) => {
+        config.xmdsVersion = version;
+        win.webContents.send('configure', config);
+      });
     }
   });
 };
 
 const configureIpc = (win) => {
   ipcMain.on('open-child-window', (_event, url) => {
-    const view = new BrowserView();
-    win.addBrowserView(view);
+    const view = new WebContentsView();
+    win.contentView.addChildView(view);
     view.setBounds({x: 0, y: 0, width: 800, height: 600});
     view.webContents.loadURL(url);
   });
@@ -118,6 +130,11 @@ const configureExpress = () => {
 };
 
 app.whenReady().then(() => {
+  // Install dev tools extension.
+  installExtension(JQUERY_DEBUGGER)
+        .then((ext) => console.log(`Added Extension:  ${ext.name}`))
+        .catch((err) => console.log('An error occurred: ', err));
+
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.
   app.on('browser-window-created', (_, window) => {
@@ -138,5 +155,3 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 });
-
-

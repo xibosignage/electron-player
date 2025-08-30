@@ -19,15 +19,13 @@
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
 // @ts-ignore
-const {contextBridge, ipcRenderer} = require('electron/renderer');
+import {contextBridge, ipcRenderer} from 'electron/renderer';
 
 contextBridge.exposeInMainWorld('electron', {
   // Main to render
-  onShowConfigure: (callback) => ipcRenderer.on(
-    'show-configure',
-    (_event, value) => callback(value),
-  ),
+  onConfigure: (callback) => ipcRenderer.on('configure', (_event, value) => callback(value)),
 
   // Render to main
   openChildWindow: (url) => ipcRenderer.send('open-child-window', url),
+  xmdsTryRegister: (cmsUrl, cmsKey, displayName) => ipcRenderer.send('xmds-try-register', cmsUrl, cmsKey, displayName),
 });

@@ -13,7 +13,9 @@
   },
   "author": "Xibo Signage Ltd",
   "devDependencies": {
-    "electron": "^24.1.2",
+    "@types/jquery": "^3.5.32",
+    "electron": "^35.1.0",
+    "electron-devtools-installer": "^4.0.0",
     "electron-vite": "^2.0.0",
     "eslint": "^8.56.0",
     "eslint-config-google": "^0.14.0"
@@ -24,9 +26,12 @@
     "@electron-toolkit/tsconfig": "^1.0.1",
     "@electron-toolkit/utils": "^3.0.0",
     "@rushstack/eslint-patch": "^1.7.1",
-    "axios": "^1.6.7",
-    "express": "^4.18.3",
+    "@xibosignage/xibo-layout-renderer": "https+git@github.com:xibosignage/xibo-layout-renderer.git#557ff598de823c7dca4101e95d68daa9ed51c6a0",
+    "axios": "^1.8.4",
+    "express": "^4.21.2",
     "jquery": "^3.7.1",
+    "luxon": "^3.6.0",
+    "nanoevents": "^9.1.0",
     "node-machine-id": "^1.1.12"
   }
 }
