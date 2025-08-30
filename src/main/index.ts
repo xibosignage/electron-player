@@ -26,6 +26,11 @@ import icon from '../../resources/icon.png?asset';
 import {spawn} from 'child_process';
 import {Config} from './config/config';
 import {Xmds} from './xmds/xmds';
+import {State} from './common/state';
+
+const state = new State();
+state.width = 1280;
+state.height = 720;
 
 const createWindow = () => {
   const win = new BrowserWindow({
@@ -65,6 +70,8 @@ const init = (win) => {
   // Configure IPC
   configureIpc(win);
 
+  // TODO: Configure a new folder for local files.
+
   // Create a new Config object
   const config = new Config(app.getPath('userData'), process.platform);
   config.load().then(() => {
@@ -95,6 +102,11 @@ const init = (win) => {
         config.xmdsVersion = version;
         win.webContents.send('configure', config);
       });
+
+      // Set up a regular status update push
+      setInterval(() => {
+        win.webContents.send('state-change', state.toHtml(config));
+      }, 5000);
     }
   });
 };

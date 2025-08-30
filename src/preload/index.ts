@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Xibo Signage Ltd
+ * Copyright (c) 2025 Xibo Signage Ltd
  *
  * Xibo - Digital Signage - https://xibosignage.com
  *
@@ -24,6 +24,7 @@ import {contextBridge, ipcRenderer} from 'electron/renderer';
 contextBridge.exposeInMainWorld('electron', {
   // Main to render
   onConfigure: (callback) => ipcRenderer.on('configure', (_event, value) => callback(value)),
+  onStateChange: (callback) => ipcRenderer.on('state-change', (_event, value) => callback(value)),
 
   // Render to main
   openChildWindow: (url) => ipcRenderer.send('open-child-window', url),

@@ -33,7 +33,7 @@ window.electron.onConfigure((config) => {
     $config.hide();
 
     const xlrOptions: Partial<OptionsType> = {
-      platform: 'chromeOS',
+      platform: 'chromeOS', // TODO: XLR should support "electron" as a type (as well as webOS, Tizen, etc)
       config: {
         cmsUrl: window.location.origin,
         cmsKey: config.cmsKey,
@@ -41,8 +41,8 @@ window.electron.onConfigure((config) => {
         hardwareKey: config.hardwareKey,
       },
       icons: {
-        splashScreen: 'assets/logo.png',
-        logo: 'assets/logo.png',
+        splashScreen: '/logo.png',
+        logo: '/logo.png',
       },
     };
     
@@ -62,4 +62,8 @@ window.electron.onConfigure((config) => {
     $config.show();
     $config.find('.code').show();
   }
+});
+
+window.electron.onStateChange((state) => {
+  $('#status').html(state);
 });

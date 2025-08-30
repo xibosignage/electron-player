@@ -5,7 +5,7 @@
   "main": "./out/main/index.js",
   "scripts": {
     "start": "electron-vite preview",
-    "dev": "electron-vite dev --sourcemap --remote-debugging-port=9222",
+    "dev": "electron-vite dev --watch --sourcemap --remote-debugging-port=9222",
     "prebuild": "electron-vite build",
     "build:win": "npm run build && electron-builder --win --config",
     "build:mac": "npm run build && electron-builder --mac --config",
@@ -30,7 +30,7 @@
     "axios": "^1.8.4",
     "express": "^4.21.2",
     "jquery": "^3.7.1",
-    "luxon": "^3.6.0",
+    "luxon": "^3.7.1",
     "nanoevents": "^9.1.0",
     "node-machine-id": "^1.1.12"
   }
