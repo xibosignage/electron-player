@@ -18,6 +18,8 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
+if (require('electron-squirrel-startup')) app.quit();
+
 import { installExtension, JQUERY_DEBUGGER } from 'electron-devtools-installer';
 import {app, shell, WebContentsView, BrowserWindow, ipcMain} from 'electron';
 import {join} from 'path';
