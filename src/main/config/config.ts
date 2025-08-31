@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Xibo Signage Ltd
+ * Copyright (c) 2025 Xibo Signage Ltd
  *
  * Xibo - Digital Signage - https://xibosignage.com
  *
@@ -21,10 +21,13 @@
 const fs = require('fs/promises');
 import {join} from 'path';
 import {machineId} from 'node-machine-id';
+import { RegisterDisplay } from '../xmds/response/registerDisplay';
+import { State } from '../common/state';
 
 export class Config {
   // Environment
   readonly platform: string;
+  readonly appType: string = 'electron';
 
   // App information
   readonly version: string = "v4 R400";
@@ -32,16 +35,29 @@ export class Config {
 
   // Config file
   readonly savePath: string;
+  readonly cmsSavePath: string;
+
+  // State
+  state: State;
 
   // Main configuration
   hardwareKey: string | undefined;
   cmsUrl: string | undefined;
   cmsKey: string | undefined;
-  xmdsVersion: number | undefined;
 
-  constructor(savePath, platform) {
+  // Settings from the CMS
+  xmdsVersion: number | undefined;
+  displayName: string | undefined;
+  xmrChannel: string | undefined;
+  settings: any;
+
+  constructor(savePath: string, platform: string, state: State) {
     this.savePath = join(savePath, 'config.json');
+    this.cmsSavePath = join(savePath, 'cms_config.json');
     this.platform = platform;
+    this.settings = {};
+    this.state = state;
+    this.state.swVersion = this.versionCode;
   };
 
   async load() {
@@ -55,8 +71,22 @@ export class Config {
       this.cmsKey = data.cmsKey;
     } catch {
       // Probably the file doesn't exist.
-      this.hardwareKey = await machineId();
+      this.hardwareKey = (await machineId()).substring(0, 40);
       await this.save();
+    }
+
+    console.log(`Loading ${ this.cmsSavePath }`);
+
+    try {
+      let data = await fs.readFile(this.cmsSavePath);
+      data = JSON.parse(data);
+      this.displayName = data.displayName;
+      this.xmdsVersion = data.xmdsVersion;
+      this.settings = data.settings || {};
+    } catch {
+      // Probably the file doesn't exist.
+      this.displayName = this.platform + ' Unknown';
+      await this.saveCms();
     }
   };
 
@@ -72,7 +102,49 @@ export class Config {
     );
   };
 
+  async saveCms() {
+    console.log(`Saving ${ this.cmsSavePath }`);
+    await fs.writeFile(
+      this.cmsSavePath,
+      JSON.stringify({
+        displayName: this.displayName,
+        xmdsVersion: this.xmdsVersion,
+        settings: this.settings,
+      }, null, 2),
+    );
+  };
+
   isConfigured() {
     return this.cmsUrl && this.cmsKey;
+  }
+
+  async setConfig(registerDisplay: RegisterDisplay) {
+    console.log(`Set config from register display`);
+    this.settings['licenceCode'] = registerDisplay.getSetting('licenceCode', null);
+    this.settings['collectionInterval'] = registerDisplay.getSetting('collectInterval', 300);
+    this.settings['xmrWebSocketAddress'] = registerDisplay.getSetting('xmrWebSocketAddress', null);
+    this.settings['xmrCmsKey'] = registerDisplay.getSetting('xmrCmsKey', null);
+    this.settings['isSspEnabled'] = registerDisplay.getSetting('isAdspaceEnabled', 0) === '1';
+    this.settings['logLevel'] = registerDisplay.getSetting('logLevel', 'error');
+    this.settings['aggregationLevel'] = registerDisplay.getSetting('aggregationLevel', 'Individual');
+    this.settings['statsEnabled'] = registerDisplay.getSetting('statsEnabled', false) === '1';
+    this.state.displayStatus = registerDisplay.status || 0;
+
+    this.saveCms();
+  }
+
+  getSetting(setting: string, defaultValue: any) {
+    if (this.settings && this.settings[setting]) {
+      return this.settings[setting];
+    } else {
+      return defaultValue;
+    }
+  }
+
+  getXmdsPlayerType(): string {
+    // Temporary until we get a suitable display profile into the CMS
+    return 'chromeOS'
+    // We have a different display profile for electron on windows vs electron on linux.
+    //return this.platform == 'win32' ? 'electron-win' : 'electron-linux';
   }
 }

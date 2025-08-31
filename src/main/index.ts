@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Xibo Signage Ltd
+ * Copyright (c) 2025 Xibo Signage Ltd
  *
  * Xibo - Digital Signage - https://xibosignage.com
  *
@@ -31,6 +31,8 @@ import {State} from './common/state';
 const state = new State();
 state.width = 1280;
 state.height = 720;
+
+let xmds;
 
 const createWindow = () => {
   const win = new BrowserWindow({
@@ -73,7 +75,7 @@ const init = (win) => {
   // TODO: Configure a new folder for local files.
 
   // Create a new Config object
-  const config = new Config(app.getPath('userData'), process.platform);
+  const config = new Config(app.getPath('userData'), process.platform, state);
   config.load().then(() => {
     // eslint-disable-next-line max-len
     console.log(`Version: ${config.version}, hardwareKey: ${config.hardwareKey}`);
@@ -97,10 +99,33 @@ const init = (win) => {
       // Player API and static file serving
       configureExpress();
 
-      const xmds = new Xmds(config, app.getPath('appData'));
+      // Configure the renderer
+      win.webContents.send('configure', config);
+
+      // Configure XMDS
+      xmds = new Xmds(config, app.getPath('appData'));
+
+      // Bind to some events
+      xmds.on('registered', (data) => {
+        console.debug('[Xmds::on("registered")] > Registered', {
+          registerDisplay: data,
+          shouldParse: false,
+        });
+
+        config.setConfig(data);
+      });
+
+      xmds.on('requiredFiles', (data) => {
+        console.debug('[Xmds::on("requiredFiles")] > Required Files', {
+          registerDisplay: data,
+          shouldParse: false,
+        });
+      });
+
       xmds.getSchemaVersion().then((version) => {
         config.xmdsVersion = version;
-        win.webContents.send('configure', config);
+        
+        xmds.start(config.getSetting('collectionInterval', 60));
       });
 
       // Set up a regular status update push
