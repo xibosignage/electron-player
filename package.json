@@ -1,13 +1,13 @@
 {
   "name": "xibo-electron",
-  "version": "1.0.0",
+  "version": "0.1",
   "description": "Xibo Digital Signage Player",
   "main": "./dist/main/index.js",
   "scripts": {
     "start": "electron-vite preview --outDir=dist",
     "dev": "electron-vite dev --watch --sourcemap --remote-debugging-port=9222 --outDir=dist",
     "package": "electron-vite build --outDir=dist && electron-forge package",
-    "make ": "electron-vite build --outDir=dist && electron-forge make"
+    "make": "electron-vite build --outDir=dist && electron-forge make"
   },
   "author": "Xibo Signage Ltd",
   "devDependencies": {

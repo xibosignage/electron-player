@@ -2,8 +2,12 @@ module.exports = {
   packagerConfig: {
     ignore: [
       /^\/src/,
-      /(.eslintrc.json)|(.gitignore)|(electron.vite.config.ts)|(forge.config.cjs)|(tsconfig.*)/,
+      /(.eslintrc.js)|(.gitignore)|(electron.vite.config.js)|(forge.config.cjs)|(tsconfig.*)/,
+      /.vscode/,
+      /.idea/,
+      /.github/
     ],
+    icon: '/resources/icon',
   },
   rebuildConfig: {},
   makers: [
@@ -17,11 +21,19 @@ module.exports = {
     },
     {
       name: '@electron-forge/maker-deb',
-      config: {},
+      config: {
+        options: {
+          icon: '/resources/icon.png',
+        },
+      },
     },
     {
       name: '@electron-forge/maker-rpm',
-      config: {},
+      config: {
+        options: {
+          icon: '/resources/icon.png',
+        },
+      },
     },
   ],
 };
