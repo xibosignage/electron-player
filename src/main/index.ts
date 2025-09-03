@@ -28,6 +28,7 @@ import icon from '../../resources/icon.png?asset';
 import {spawn} from 'child_process';
 import {Config} from './config/config';
 import {Xmds} from './xmds/xmds';
+import {Xmr} from '@xibosignage/xibo-communication-framework';
 import {State} from './common/state';
 
 const state = new State();
@@ -35,6 +36,7 @@ state.width = 1280;
 state.height = 720;
 
 let xmds;
+let xmr;
 
 const createWindow = () => {
   const win = new BrowserWindow({
@@ -78,7 +80,7 @@ const init = (win) => {
 
   // Create a new Config object
   const config = new Config(app.getPath('userData'), process.platform, state);
-  config.load().then(() => {
+  config.load().then(async() => {
     // eslint-disable-next-line max-len
     console.log(`Version: ${config.version}, hardwareKey: ${config.hardwareKey}`);
 
@@ -106,6 +108,12 @@ const init = (win) => {
 
       // Configure XMDS
       xmds = new Xmds(config, app.getPath('appData'));
+      
+      // Configure XMR
+      xmr = new Xmr(config.xmrChannel || 'unknown');
+
+      // Initialize XMR
+      await xmr.init();      
 
       // Bind to some events
       xmds.on('registered', (data) => {
@@ -115,6 +123,18 @@ const init = (win) => {
         });
 
         config.setConfig(data);
+
+        // XMDS register was a success, so we should create an XMR instance
+        // TODO: Web Sockets are only supported by the CMS if the XMDS version is 7, otherwise ZeroMQ web sockets should be used.
+        // Use ws not http 
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+
+        // If the CMS has sent an alternative WS address, use that instead.
+        let xmrWebSocketAddress = config.getSetting(
+          'xmrWebSocketAddress',
+          config.cmsUrl?.replace(window.location.protocol, protocol) + '/xmr'
+        );
+        xmr.start(xmrWebSocketAddress, config.getSetting('xmrCmsKey', 'n/a'));
       });
 
       xmds.on('requiredFiles', (data) => {
@@ -122,6 +142,11 @@ const init = (win) => {
           registerDisplay: data,
           shouldParse: false,
         });
+      });
+
+      // Bind to some XMR events
+      xmr.on('connected', () => {
+        console.log('XMR Connected');
       });
 
       xmds.getSchemaVersion().then((version) => {
