@@ -86,8 +86,10 @@ export class RegisterDisplay {
 
     if (setting === 'collectInterval') {
       return parseInt(this.settings[setting] || defaultValue);
+    } else if (setting === 'xmrCmsKey' || setting === 'aggregationLevel') {
+      return this.settings[setting][0]._ || defaultValue;
     } else {
-      return this.settings[setting] || defaultValue;
+      return this.settings[setting][0] || defaultValue;
     }
   }
 }

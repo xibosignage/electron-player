@@ -127,12 +127,16 @@ const init = (win) => {
         // XMDS register was a success, so we should create an XMR instance
         // TODO: Web Sockets are only supported by the CMS if the XMDS version is 7, otherwise ZeroMQ web sockets should be used.
         // Use ws not http 
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        if (!config.cmsUrl) {
+          return;
+        }
+        const url = new URL(config.cmsUrl);
+        const protocol = url.protocol == 'https:' ? 'wss:' : 'ws:';
 
         // If the CMS has sent an alternative WS address, use that instead.
         let xmrWebSocketAddress = config.getSetting(
           'xmrWebSocketAddress',
-          config.cmsUrl?.replace(window.location.protocol, protocol) + '/xmr'
+          config.cmsUrl?.replace(url.protocol, protocol) + '/xmr'
         );
         xmr.start(xmrWebSocketAddress, config.getSetting('xmrCmsKey', 'n/a'));
       });

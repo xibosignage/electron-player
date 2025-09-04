@@ -34,7 +34,7 @@
     "@electron-toolkit/utils": "^3.0.0",
     "@rushstack/eslint-patch": "^1.7.1",
     "@types/xml2js": "^0.4.14",
-    "@xibosignage/xibo-communication-framework": "^0.0.3",
+    "@xibosignage/xibo-communication-framework": "^0.0.5",
     "@xibosignage/xibo-layout-renderer": "https+git@github.com:xibosignage/xibo-layout-renderer.git#557ff598de823c7dca4101e95d68daa9ed51c6a0",
     "axios": "^1.8.4",
     "electron-squirrel-startup": "^1.0.1",
