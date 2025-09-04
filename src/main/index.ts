@@ -20,6 +20,8 @@
  */
 if (require('electron-squirrel-startup')) app.quit();
 
+const fs = require('fs/promises');
+const fsSync = require('fs');
 import { installExtension, JQUERY_DEBUGGER } from 'electron-devtools-installer';
 import {app, shell, WebContentsView, BrowserWindow, ipcMain} from 'electron';
 import {join} from 'path';
@@ -30,6 +32,7 @@ import {Config} from './config/config';
 import {Xmds} from './xmds/xmds';
 import {Xmr} from '@xibosignage/xibo-communication-framework';
 import {State} from './common/state';
+import axios from 'axios';
 
 const state = new State();
 state.width = 1280;
@@ -79,7 +82,7 @@ const init = (win) => {
   // TODO: Configure a new folder for local files.
 
   // Create a new Config object
-  const config = new Config(app.getPath('userData'), process.platform, state);
+  const config = new Config(app, process.platform, state);
   config.load().then(async() => {
     // eslint-disable-next-line max-len
     console.log(`Version: ${config.version}, hardwareKey: ${config.hardwareKey}`);
@@ -99,6 +102,11 @@ const init = (win) => {
     } else {
       // We are configured so continue starting the rest of the application.
       console.log('Configured.');
+
+      // Ensure the library path exists
+      if (!fsSync.existsSync(config.getSetting('library'))) {
+        await fs.mkdir(config.getSetting('library'), {recursive: true});
+      }
 
       // Player API and static file serving
       configureExpress();
@@ -141,11 +149,53 @@ const init = (win) => {
         xmr.start(xmrWebSocketAddress, config.getSetting('xmrCmsKey', 'n/a'));
       });
 
-      xmds.on('requiredFiles', (data) => {
+      xmds.on('requiredFiles', async(data) => {
         console.debug('[Xmds::on("requiredFiles")] > Required Files', {
           registerDisplay: data,
           shouldParse: false,
         });
+
+        // Start by saving the required files response, so we can replay it when we're offline.
+        const libraryPath = config.getSetting('library');
+        await fs.writeFile(
+          join(libraryPath, 'requiredFiles.json'),
+          JSON.stringify(data, null, 2),
+        );
+
+        // TODO: implement an Electron specific LibraryManager to keep track of and download these files.
+        await Promise.all(data.files.map(async (file) => {
+          // Does this file already exist?
+          if (fsSync.existsSync(file.saveAs)) {
+            return;
+          }
+
+          // Download it.
+          if (file.download == 'http') {
+            const savePath = join(libraryPath, file.saveAs);
+            const writer = fsSync.createWriteStream(savePath);
+
+            console.log('[Xmds::on("requiredFiles")] > Downloading: ' + file.saveAs)
+            const response = await axios({
+              method: 'get',
+              url: file.path,
+              responseType: 'stream',
+            });
+
+            response.data.pipe(writer);
+
+            return new Promise((resolve, reject) => {
+              writer.on('finish', () => {
+                () => resolve;
+              });
+              writer.on('error', (err) => {
+                fsSync.unlink(savePath, () => {}); // Clean up the failed file
+                reject(err);
+              });
+            });
+          } else {
+            return;
+          }
+        }));
       });
 
       // Bind to some XMR events

@@ -46,16 +46,19 @@ export class Config {
   xmrChannel: string | undefined;
   cmsUrl: string | undefined;
   cmsKey: string | undefined;
+  library: string;
 
   // Settings from the CMS
   xmdsVersion: number | undefined;
   displayName: string | undefined;
   settings: any;
 
-  constructor(savePath: string, platform: string, state: State) {
+  constructor(app: Electron.App, platform: string, state: State) {
+    const savePath = app.getPath('userData');
     this.savePath = join(savePath, 'config.json');
     this.cmsSavePath = join(savePath, 'cms_config.json');
     this.platform = platform;
+    this.library = join(app.getPath('documents'), 'xibo_library');
     this.settings = {};
     this.state = state;
     this.state.swVersion = this.versionCode;
@@ -137,11 +140,14 @@ export class Config {
     this.saveCms();
   }
 
-  getSetting(setting: string, defaultValue: any) {
+  getSetting(setting: string, defaultValue?: any) {
+    if (setting == 'library') {
+      return this.library;
+    }
     if (this.settings && this.settings[setting]) {
       return this.settings[setting];
     } else {
-      return defaultValue;
+      return defaultValue || null;
     }
   }
 
