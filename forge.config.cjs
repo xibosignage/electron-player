@@ -24,6 +24,8 @@ module.exports = {
       config: {
         options: {
           icon: 'resources/icon.png',
+          maintainer: 'Xibo Signage Ltd',
+          homepage: 'https://xibosignage.com',
         },
       },
     },
