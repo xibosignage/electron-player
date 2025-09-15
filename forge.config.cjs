@@ -23,17 +23,23 @@ module.exports = {
       name: '@electron-forge/maker-deb',
       config: {
         options: {
-          icon: '/resources/icon.png',
+          icon: 'resources/icon.png',
+          maintainer: 'Xibo Signage Ltd',
+          homepage: 'https://xibosignage.com',
         },
       },
     },
     {
-      name: '@electron-forge/maker-rpm',
+      name: '@electron-forge/maker-snap',
       config: {
-        options: {
-          icon: '/resources/icon.png',
+        features: {
+          audio: true,
+          mpris: 'com.xibosignage.mpris',
+          webgl: true
         },
-      },
+        summary: 'Xibo Linux Player',
+        description: 'Xibo for Linux Digital Signage Player'
+      }
     },
   ],
 };
