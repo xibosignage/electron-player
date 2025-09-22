@@ -9,6 +9,19 @@
   ],
   "configurations": [
     {
+      "name": "Launch via NPM",
+      "request": "launch",
+      "runtimeArgs": [
+        "run-script",
+        "dev"
+      ],
+      "runtimeExecutable": "npm",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "type": "node"
+    },    
+    {
       "name": "Renderer",
       "port": 9222,
       "request": "attach",

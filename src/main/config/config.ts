@@ -23,6 +23,7 @@ import {join} from 'path';
 import {machineId} from 'node-machine-id';
 import { RegisterDisplay } from '../xmds/response/registerDisplay';
 import { State } from '../common/state';
+import { randomUUID } from 'crypto';
 
 export class Config {
   // Environment
@@ -42,19 +43,22 @@ export class Config {
 
   // Main configuration
   hardwareKey: string | undefined;
+  xmrChannel: string | undefined;
   cmsUrl: string | undefined;
   cmsKey: string | undefined;
+  library: string;
 
   // Settings from the CMS
   xmdsVersion: number | undefined;
   displayName: string | undefined;
-  xmrChannel: string | undefined;
   settings: any;
 
-  constructor(savePath: string, platform: string, state: State) {
+  constructor(app: Electron.App, platform: string, state: State) {
+    const savePath = app.getPath('userData');
     this.savePath = join(savePath, 'config.json');
     this.cmsSavePath = join(savePath, 'cms_config.json');
     this.platform = platform;
+    this.library = join(app.getPath('documents'), 'xibo_library');
     this.settings = {};
     this.state = state;
     this.state.swVersion = this.versionCode;
@@ -69,9 +73,11 @@ export class Config {
       this.hardwareKey = data.hardwareKey;
       this.cmsUrl = data.cmsUrl;
       this.cmsKey = data.cmsKey;
+      this.xmrChannel = data.xmrChannel;
     } catch {
       // Probably the file doesn't exist.
       this.hardwareKey = (await machineId()).substring(0, 40);
+      this.xmrChannel = randomUUID();
       await this.save();
     }
 
@@ -96,6 +102,7 @@ export class Config {
       this.savePath,
       JSON.stringify({
         hardwareKey: this.hardwareKey,
+        xmrChannel: this.xmrChannel,
         cmsUrl: this.cmsUrl,
         cmsKey: this.cmsKey,
       }, null, 2),
@@ -133,11 +140,14 @@ export class Config {
     this.saveCms();
   }
 
-  getSetting(setting: string, defaultValue: any) {
+  getSetting(setting: string, defaultValue?: any) {
+    if (setting == 'library') {
+      return this.library;
+    }
     if (this.settings && this.settings[setting]) {
       return this.settings[setting];
     } else {
-      return defaultValue;
+      return defaultValue || null;
     }
   }
 
