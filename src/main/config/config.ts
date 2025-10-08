@@ -37,6 +37,7 @@ export class Config {
   // Config file
   readonly savePath: string;
   readonly cmsSavePath: string;
+  readonly dbPath: string;
 
   // State
   state: State;
@@ -59,6 +60,7 @@ export class Config {
     this.cmsSavePath = join(savePath, 'cms_config.json');
     this.platform = platform;
     this.library = join(app.getPath('documents'), 'xibo_library');
+    this.dbPath = join(this.library, 'playerDb.db');
     this.settings = {};
     this.state = state;
     this.state.swVersion = this.versionCode;

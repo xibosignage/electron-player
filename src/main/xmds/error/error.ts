@@ -88,6 +88,7 @@ export function handleError(error: any, message?: string) {
     } else {
         errorObject.message = message;
         console.error(errorObject.message);
+        console.debug({error, errorObject});
         return errorObject;
     }
 }

@@ -24,6 +24,7 @@ body {
     overflow: hidden;
     width: 100%;
     min-height: 100vh;
+    -webkit-app-region: drag;
 }
 
 #player_container {

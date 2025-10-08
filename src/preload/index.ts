@@ -23,10 +23,13 @@ import {contextBridge, ipcRenderer} from 'electron/renderer';
 
 contextBridge.exposeInMainWorld('electron', {
   // Main to render
-  onConfigure: (callback) => ipcRenderer.on('configure', (_event, value) => callback(value)),
+  onConfigure: (callback) => ipcRenderer.on('configure', (_event, config) => callback(config)),
   onStateChange: (callback) => ipcRenderer.on('state-change', (_event, value) => callback(value)),
+  onUpdateLoop: (callback) => ipcRenderer.on('update-loop', (_event, value) => callback(value)),
+  onUpdateUniqueLayouts: (callback) => ipcRenderer.on('update-unique-layouts', (_event, value) => callback(value)),
 
   // Render to main
   openChildWindow: (url) => ipcRenderer.send('open-child-window', url),
   xmdsTryRegister: (cmsUrl, cmsKey, displayName) => ipcRenderer.send('xmds-try-register', cmsUrl, cmsKey, displayName),
+  initFaults: (faults) => ipcRenderer.send('initFaults', faults),
 });

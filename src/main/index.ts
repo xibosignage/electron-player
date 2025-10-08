@@ -21,18 +21,23 @@
 if (require('electron-squirrel-startup')) app.quit();
 
 const fs = require('fs/promises');
-const fsSync = require('fs');
 import { installExtension, JQUERY_DEBUGGER } from 'electron-devtools-installer';
-import {app, shell, WebContentsView, BrowserWindow, ipcMain} from 'electron';
+import {app, shell, WebContentsView, BrowserWindow, ipcMain, session} from 'electron';
 import {join} from 'path';
 import {optimizer, is} from '@electron-toolkit/utils';
+import {Xmr} from '@xibosignage/xibo-communication-framework';
+
 import icon from '../../resources/icon.png?asset';
 import {spawn} from 'child_process';
 import {Config} from './config/config';
 import {Xmds} from './xmds/xmds';
-import {Xmr} from '@xibosignage/xibo-communication-framework';
 import {State} from './common/state';
-import axios from 'axios';
+import { createFileServer } from './express';
+import { downloadFile, getDownloadedFiles, getLayoutFile, RequiredFileType } from './common/fileManager';
+import Schedule from './xmds/response/schedule/schedule';
+import ScheduleManager, { ScheduleLayoutsType } from './common/scheduleManager';
+import { InputLayoutType } from './common/types';
+// import FaultsLib from '../renderer/src/lib/faultsLib';
 
 const state = new State();
 state.width = 1280;
@@ -40,6 +45,8 @@ state.height = 720;
 
 let xmds;
 let xmr;
+let schedule: Schedule;
+let manager: ScheduleManager;
 
 const createWindow = () => {
   const win = new BrowserWindow({
@@ -54,6 +61,7 @@ const createWindow = () => {
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
+      webSecurity: true,
     },
   });
 
@@ -75,11 +83,126 @@ const createWindow = () => {
   }
 };
 
+const initXmrEventHandlers = async function() {
+  // Bind to some XMR events
+  xmr.on('connected', () => {
+    console.log('XMR Connected');
+  });
+  xmr.on('collectNow', () => {
+    console.debug('Requesting a collection immediately', {method: 'Xmr::screenShot'});
+    xmds.collectNow();
+  });
+  xmr.on('screenShot', async () => {
+    console.debug('Requesting a screenshot', {method: 'Xmr::screenShot'});
+    await xmds.screenshot();
+    await xmds.notifyStatus();
+  });
+  // xmr.on('licenceCheck', async () => {
+  //   console.debug('Requesting a licence check', {method: 'Xmr::licenceCheck'});
+  //   await config.checkLicence(true, 0);
+  //   await xmds.notifyStatus();
+  // });
+  // xmr.on('showStatusWindow', async(timeout) => {
+  //   $statusWindow?.style.setProperty('display', 'block');
+  //   setTimeout(() => {
+  //     $statusWindow?.style.setProperty('display', 'none');
+  //   }, timeout * 1000);
+  // });
+}
+
+const initXmdsEventHandlers = async function() {
+  const config = new Config(app, process.platform, state);
+
+  // Bind to some events
+  xmds.on('registered', (data) => {
+    console.debug('[Xmds::on("registered")] > Registered', {
+      registerDisplay: data,
+      shouldParse: false,
+    });
+
+    config.setConfig(data);
+
+    // XMDS register was a success, so we should create an XMR instance
+    // TODO: Web Sockets are only supported by the CMS if the XMDS version is 7, otherwise ZeroMQ web sockets should be used.
+    // Use ws not http 
+    if (!config.cmsUrl) {
+      return;
+    }
+    const url = new URL(config.cmsUrl);
+    const protocol = url.protocol == 'https:' ? 'wss:' : 'ws:';
+
+    // If the CMS has sent an alternative WS address, use that instead.
+    let xmrWebSocketAddress = config.getSetting(
+      'xmrWebSocketAddress',
+      config.cmsUrl?.replace(url.protocol, protocol) + '/xmr'
+    );
+    xmr.start(xmrWebSocketAddress, config.getSetting('xmrCmsKey', 'n/a'));
+  });
+
+  xmds.on('requiredFiles', async(data) => {
+    console.debug('[Xmds::on("requiredFiles")] > Required Files', {
+      registerDisplay: data,
+      shouldParse: false,
+    });
+
+    // Start by saving the required files response, so we can replay it when we're offline.
+    const libraryPath = config.getSetting('library');
+    await fs.writeFile(
+      join(libraryPath, 'requiredFiles.json'),
+      JSON.stringify(data, null, 2),
+    );
+
+    // TODO: implement an Electron specific LibraryManager to keep track of and download these files.
+    await Promise.all(data.files.map(async (file) => {
+
+      // Download it.
+      if (file.download == 'http') {
+        console.log('[Xmds::on("requiredFiles")] > Downloading: ' + file.saveAs)
+        return await downloadFile(file);
+      } else {
+        return;
+      }
+    }));
+
+    // Print all downloaded files
+    const downloadedFiles = await getDownloadedFiles();
+    console.log('[Xmds::on("requiredFiles")] > Downloaded files: ', {
+      downloadedFiles,
+    });
+  });
+
+  xmds.on('schedule', (data) => {
+    schedule = data;
+    console.debug('[Xmds::on("schedule")] > Schedule', {
+      schedule: data,
+      shouldParse: false,
+    });
+
+    // Update schedule of ScheduleManager
+    
+    // New schedule from XMDS, update the schedule manager
+    manager.update(schedule).then(() => {
+      console.debug('>>>> XLR.debug Schedule updated', schedule);
+      manager.isAssessing = false;
+    });
+  });
+  
+  xmds.getSchemaVersion().then((version) => {
+    config.xmdsVersion = version;
+    
+    xmds.start(config.getSetting('collectionInterval', 60));
+  });
+};
+
 const init = (win) => {
   // Configure IPC
   configureIpc(win);
 
   // TODO: Configure a new folder for local files.
+  configureFileManager();
+
+  // Create a new Faults object
+  // initializeFaults();
 
   // Create a new Config object
   const config = new Config(app, process.platform, state);
@@ -103,11 +226,6 @@ const init = (win) => {
       // We are configured so continue starting the rest of the application.
       console.log('Configured.');
 
-      // Ensure the library path exists
-      if (!fsSync.existsSync(config.getSetting('library'))) {
-        await fs.mkdir(config.getSetting('library'), {recursive: true});
-      }
-
       // Player API and static file serving
       configureExpress();
 
@@ -121,93 +239,57 @@ const init = (win) => {
       xmr = new Xmr(config.xmrChannel || 'unknown');
 
       // Initialize XMR
-      await xmr.init();      
+      await xmr.init();    
+      
+      // Bind event handlers
+      await initXmrEventHandlers();
+      await initXmdsEventHandlers();
 
-      // Bind to some events
-      xmds.on('registered', (data) => {
-        console.debug('[Xmds::on("registered")] > Registered', {
-          registerDisplay: data,
-          shouldParse: false,
+      manager = new ScheduleManager(schedule);
+
+      manager.on('layouts', async (layouts) => {
+        console.debug({
+          method: 'manager::layouts',
+          message: 'updated layout loop received with ' + layouts.length + ' layouts'
         });
 
-        config.setConfig(data);
+        if (schedule) {
+          let scheduleLayouts =
+            [...schedule.layouts, schedule.defaultLayout].reduce((arr: InputLayoutType[], item) => {
+              const _layout = getLayoutFile(item.file);
+              return [
+                ...arr,
+                {
+                  layoutId: item.file,
+                  response: item.response,
+                  path: _layout.name,
+                  shortPath: _layout.name,
+                }
+              ];
+            }, []);
 
-        // XMDS register was a success, so we should create an XMR instance
-        // TODO: Web Sockets are only supported by the CMS if the XMDS version is 7, otherwise ZeroMQ web sockets should be used.
-        // Use ws not http 
-        if (!config.cmsUrl) {
-          return;
+          win.webContents.send('update-unique-layouts', scheduleLayouts);
         }
-        const url = new URL(config.cmsUrl);
-        const protocol = url.protocol == 'https:' ? 'wss:' : 'ws:';
 
-        // If the CMS has sent an alternative WS address, use that instead.
-        let xmrWebSocketAddress = config.getSetting(
-          'xmrWebSocketAddress',
-          config.cmsUrl?.replace(url.protocol, protocol) + '/xmr'
-        );
-        xmr.start(xmrWebSocketAddress, config.getSetting('xmrCmsKey', 'n/a'));
+        const _layouts = layouts.reduce((arr: InputLayoutType[], item) => {
+          const layoutFile = getLayoutFile(item.file);
+
+          return [
+            ...arr,
+            {
+              layoutId: item.file,
+              path: layoutFile?.name || '',
+              shortPath: layoutFile?.name || '',
+              response: item.response,
+            },
+          ]
+        }, []);
+
+        // Send updated layout loop to XLR
+        win.webContents.send('update-loop', _layouts);
       });
 
-      xmds.on('requiredFiles', async(data) => {
-        console.debug('[Xmds::on("requiredFiles")] > Required Files', {
-          registerDisplay: data,
-          shouldParse: false,
-        });
-
-        // Start by saving the required files response, so we can replay it when we're offline.
-        const libraryPath = config.getSetting('library');
-        await fs.writeFile(
-          join(libraryPath, 'requiredFiles.json'),
-          JSON.stringify(data, null, 2),
-        );
-
-        // TODO: implement an Electron specific LibraryManager to keep track of and download these files.
-        await Promise.all(data.files.map(async (file) => {
-          // Does this file already exist?
-          if (fsSync.existsSync(file.saveAs)) {
-            return;
-          }
-
-          // Download it.
-          if (file.download == 'http') {
-            const savePath = join(libraryPath, file.saveAs);
-            const writer = fsSync.createWriteStream(savePath);
-
-            console.log('[Xmds::on("requiredFiles")] > Downloading: ' + file.saveAs)
-            const response = await axios({
-              method: 'get',
-              url: file.path,
-              responseType: 'stream',
-            });
-
-            response.data.pipe(writer);
-
-            return new Promise((resolve, reject) => {
-              writer.on('finish', () => {
-                () => resolve;
-              });
-              writer.on('error', (err) => {
-                fsSync.unlink(savePath, () => {}); // Clean up the failed file
-                reject(err);
-              });
-            });
-          } else {
-            return;
-          }
-        }));
-      });
-
-      // Bind to some XMR events
-      xmr.on('connected', () => {
-        console.log('XMR Connected');
-      });
-
-      xmds.getSchemaVersion().then((version) => {
-        config.xmdsVersion = version;
-        
-        xmds.start(config.getSetting('collectionInterval', 60));
-      });
+      await manager.start(10);
 
       // Set up a regular status update push
       setInterval(() => {
@@ -230,8 +312,8 @@ const configureExpress = () => {
   // Start express
   const appName = app.getPath('exe');
   const expressPath = is.dev ?
-    './out/main/express.js' :
-    join('./resources/app.asar', './out/main/express.js');
+    './dist/main/express.js' :
+    join('./resources/app.asar', './dist/main/express.js');
   const redirectOutput = function(stream) {
     stream.on('data', (data) => {
       data.toString().split('\n').forEach((line) => {
@@ -240,6 +322,10 @@ const configureExpress = () => {
     });
   };
 
+
+  const config = new Config(app, process.platform, state);
+  createFileServer(config);
+
   console.log(expressPath);
 
   const expressAppProcess =
@@ -247,7 +333,39 @@ const configureExpress = () => {
   [expressAppProcess.stdout, expressAppProcess.stderr].forEach(redirectOutput);
 };
 
+const configureFileManager = () => {
+  ipcMain.handle('download-file', async (_event, file: RequiredFileType) => {
+    await downloadFile(file);
+    return getDownloadedFiles();
+  });
+
+  ipcMain.handle('get-files', async () => {
+    return getDownloadedFiles();
+  });
+};
+
+const initializeFaults = () => {
+  // const faults = new FaultsLib();
+  // ipcMain.on('initFaults', (_events, faults) => {
+  //   console.debug('initializeFaults', {faults});
+  // });
+};
+
 app.whenReady().then(() => {
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' http://localhost:9696 data:; connect-src 'self' http://localhost:9696; frame-src 'self' http://localhost:9696; font-src 'self' data:;",
+        ],
+        'Access-Control-Allow-Origin': ['*'],  // Allow any domain to access
+        'Access-Control-Allow-Methods': ['GET, POST, PUT, DELETE, OPTIONS'],  // Allowed methods
+        'Access-Control-Allow-Headers': ['Content-Type, Authorization']  // Allowed headers
+      }
+    });
+  });
+
   // Install dev tools extension.
   installExtension(JQUERY_DEBUGGER)
         .then((ext) => console.log(`Added Extension:  ${ext.name}`))

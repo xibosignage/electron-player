@@ -19,11 +19,16 @@
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
 import './assets/main.css';
-import $ from 'jquery';
-import XiboLayoutRenderer, {IXlr, OptionsType} from '@xibosignage/xibo-layout-renderer';
-import DefaultLayout from './layout/defaultLayout';
+import '@xibosignage/xibo-layout-renderer/dist/styles.css';
 
-window.electron.onConfigure((config) => {
+import $ from 'jquery';
+import XiboLayoutRenderer, {ConsumerPlatform, IXlr, OptionsType } from '@xibosignage/xibo-layout-renderer';
+import DefaultLayout from './layout/defaultLayout';
+import { Config } from 'src/main/config/config';
+
+let xlr: IXlr;
+
+window.electron.onConfigure((config: Config) => {
   console.log('onConfigure');
   window.config = config;
   const $config = $('#config');
@@ -33,12 +38,13 @@ window.electron.onConfigure((config) => {
     $config.hide();
 
     const xlrOptions: Partial<OptionsType> = {
-      platform: 'chromeOS', // TODO: XLR should support "electron" as a type (as well as webOS, Tizen, etc)
+      appHost: 'http://localhost:9696/files/',
+      platform: ConsumerPlatform.ELECTRON, // TODO: XLR should support "electron" as a type (as well as webOS, Tizen, etc)
       config: {
         cmsUrl: window.location.origin,
-        cmsKey: config.cmsKey,
-        schemaVersion: config.schemaVersion,
-        hardwareKey: config.hardwareKey,
+        cmsKey: config.cmsKey ?? '',
+        schemaVersion: config.xmdsVersion as number,
+        hardwareKey: config.hardwareKey as string,
       },
       icons: {
         splashScreen: '/logo.png',
@@ -50,7 +56,9 @@ window.electron.onConfigure((config) => {
     const splash = new DefaultLayout();
     splash.path = '0.xlf';
 
-    let xlr: IXlr = XiboLayoutRenderer([splash], xlrOptions as any);
+    let layoutLoop = [splash];
+
+    xlr = XiboLayoutRenderer(layoutLoop, xlrOptions as any);
     xlr.init().then((response: any) => {
       console.log('onConfigure: play schedules');
       console.log(response);
@@ -67,3 +75,21 @@ window.electron.onConfigure((config) => {
 window.electron.onStateChange((state) => {
   $('#status').html(state);
 });
+
+window.electron.onUpdateLoop((layouts) => {
+  if (xlr) {
+    console.log('[Renderer::XLR]', { layouts });
+    xlr.emitter.emit('updateLoop', layouts);
+  }
+});
+
+window.electron.onUpdateUniqueLayouts(async layouts => {
+  if (xlr) {
+    console.log('[Renderer::onUpdateUniqueLayouts]', { layouts });
+    await xlr.updateScheduleLayouts(layouts);
+  }
+});
+
+// window.electron.onInitFaults((faults) => {
+//   window.faults = faults;
+// });

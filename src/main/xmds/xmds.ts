@@ -25,7 +25,8 @@ import {createNanoEvents, Emitter} from 'nanoevents';
 import {RegisterDisplay} from './response/registerDisplay';
 import { ErrorCodes, handleError } from "./error/error";
 import RequiredFiles from "./response/requiredFiles";
-import Schedule from "./response/schedule";
+import Schedule from "./response/schedule/schedule";
+// import FaultsLib from "../../renderer/src/lib/faultsLib";
 
 interface XmdsEvents {
   collecting: () => void;
@@ -129,8 +130,12 @@ export class Xmds {
 
     if (this.config.state.displayStatus === 0) {
       console.log('Display state is 0, checking requried files and schedule');
+
       await this.requiredFiles(checkRf ?? '');
       await this.schedule(checkSchedule ?? '');
+
+      await this.notifyStatus();
+      await this.reportFaults();
     }
 
     this.emitter.emit('collected');
@@ -235,5 +240,75 @@ export class Xmds {
         })
         .catch((error) => handleError(error));
     }
+  }
+
+  async screenshot() {
+    // It is not possible to get screenshots from ChromeOS, but we need a screenshot to access notify status
+    // and, it is a useful way to get "proof of life".
+    const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
+      ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
+      '   <tns:SubmitScreenShot>\n' +
+      '     <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
+      '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
+      '     <screenShot xsi:type-="xsd:base64Binary">iVBORw0KGgoAAAANSUhEUgAAAMgAAADIBAMAAABfdrOtAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAADUExURQAAAKd6PdoAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAArSURBVHja7cExAQAAAMKg9U9tCU8gAAAAAAAAAAAAAAAAAAAAAAAAALipAU7oAAG73DR2AAAAAElFTkSuQmCC</screenShot>\n' +
+      '   </tns:SubmitScreenShot>\n' +
+      ' </soap:Body>\n' +
+      '</soap:Envelope>';
+
+    try {
+      return await axios.post(
+        '/xmds.php?v=' + this.config.xmdsVersion + '&method=',
+        soapXml
+      );
+    } catch (e) {
+      return handleError(e);
+    }
+  }
+
+  async notifyStatus() {
+    const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
+      ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
+      '   <tns:NotifyStatus>\n' +
+      '     <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
+      '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
+      '     <status xsi:type-="xsd:string">' + this.config.state.toJson() + '</status>\n' +
+      '   </tns:NotifyStatus>\n' +
+      ' </soap:Body>\n' +
+      '</soap:Envelope>';
+
+    try {
+      return await axios.post(
+        this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=notifyStatus',
+        soapXml
+      );
+    } catch (e) {
+      return handleError(e);
+    }
+  }
+  
+  async reportFaults() {
+    // try {
+    //   const faults = new FaultsLib();
+    //   const faultsParam = await faults.toJson();
+
+    //   console.debug('[XMDS::reportFaults] > faultsParam', faultsParam);
+
+    //   const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
+    //       ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
+    //       '   <tns:ReportFaults>\n' +
+    //       '     <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
+    //       '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
+    //       '     <fault xsi:type-="xsd:string">' + faultsParam + '</fault>\n' +
+    //       '   </tns:ReportFaults>\n' +
+    //       ' </soap:Body>\n' +
+    //       '</soap:Envelope>';
+
+    //   return await axios.post(
+    //     '/xmds.php?v=' + this.config.xmdsVersion + '&method=reportFaults',
+    //     soapXml
+    //   );
+    // } catch (e) {
+    //   return handleError(e);
+    // }
   }
 }

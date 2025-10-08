@@ -21,10 +21,16 @@
 export {}
 
 import { Config } from '../../main/config/config';
+import ScheduleManager from '../../main/common/scheduleManager';
+// import FaultsLib from './lib/faultsLib';
 
 declare global {
   interface Window {
     // Add your custom property to the Window interface
     config: Config;
+    // faults: FaultsLib;
+    ScheduleManager: ScheduleManager;
   }
+
+  var window: Window;
 }
