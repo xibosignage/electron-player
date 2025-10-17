@@ -1,9 +1,10 @@
 import axios from "axios";
-import db from './db';
 import fs from 'fs';
 import { join } from 'path';
 import { app } from "electron";
+import * as cheerio from 'cheerio';
 
+import db from './db';
 import { Config } from "../config/config";
 import { State } from "./state";
 
@@ -23,6 +24,9 @@ export type RequiredFileType = {
     md5: string;
     status: 'success' | 'failed' | 'skipped';
     lastDownloaded: string;
+    layoutid?: string;
+    regionid?: string;
+    mediaid?: string;
 };
 
 export async function downloadFile(file: RequiredFileType) {
@@ -55,7 +59,20 @@ export async function downloadFile(file: RequiredFileType) {
             timeout: 15000, // 15s timeout
         });
 
-        fs.writeFileSync(localPath, response.data);
+        let fileData = response.data;
+
+        // Rewrite local server URLs in CSS files
+        if (file.fileType === 'fontCss') {
+            fileData = Buffer.from(rewriteFontUrls(response.data.toString('utf-8'), (fileName) => {
+                return localFileUrlFromFileName(fileName);
+            }));
+
+            console.debug('[FileManager::downloadFile] Rewrote font CSS URLs:', {
+                fileData: fileData.toString('utf-8'),
+            });
+        }
+
+        fs.writeFileSync(localPath, fileData);
         size = fs.statSync(localPath).size;
 
         db.prepare(`
@@ -117,4 +134,81 @@ export function getDownloadedFiles() {
 
 export function getLayoutFile(layoutId: number) {
     return db.prepare(`SELECT * FROM files WHERE fileId = ? AND type = 'layout'`).get(String(layoutId));
+}
+
+export function localFileUrlFromFileName(fileName: string) {
+    return import.meta.env.VITE_LOCAL_SERVER_URL +
+        '/files/' +
+        encodeURIComponent(fileName);
+}
+
+export function buildLocalFileUrl(url: string) {
+    const match = url.match(/[?&]file=([^&]+)/i);
+
+    if (match === null) return url;
+
+    const fileValue = decodeURIComponent(match[1]);
+
+    return localFileUrlFromFileName(fileValue);
+}
+
+export function rewriteFontUrls(cssText: string, replacerFn: (fileName: string, fullUrl: string) => string): string {
+  const regex = /url\((['"]?)(https?:\/\/[^'")?]+\?file=([^&'")]+\.(?:woff2?|ttf|otf|eot|svg))[^'")]*?)\1\)/gi;
+  return cssText.replace(regex, (_match, quote, fullUrl, fileName) => {
+    const newUrl = replacerFn(fileName, fullUrl);
+    return `url(${quote}${newUrl}${quote})`;
+  });
+}
+
+export function parseHtmlResourceLinks(resourceHtml: string) {
+    const $html = cheerio.load(resourceHtml);
+
+    $html('script, link').each((_, element) => {
+        const $el = $html(element);
+        const attr = $el.is('script') ? 'src' : 'href';
+        const url = $el.attr(attr);
+
+        if (url) {
+            const localFileUrl = buildLocalFileUrl(url);
+            $el.attr(attr, localFileUrl);
+
+            console.debug('[FileManager::downloadResourceFile] Resource URL regex match:', {
+                localFileUrl,
+            });
+        }
+    });
+
+    return $html.html();
+}
+
+export async function downloadResourceFile(file: RequiredFileType, resourceHtml: string) {
+    const resourceSaveAs = `layout_${file.layoutid}_region_${file.regionid}_media_${file.mediaid}`;
+    const saveAs = resourceSaveAs + '.html';
+    const localPath = join(xiboLibDir, saveAs);
+    let status: RequiredFileType['status'] = 'success';
+    let size = 0;
+
+    try {
+        fs.writeFileSync(localPath, parseHtmlResourceLinks(resourceHtml));
+        size = fs.statSync(localPath).size;
+
+        db.prepare(`
+            INSERT INTO files (name, url, localPath, size, status, fileId, type, fileType, md5)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(name) DO UPDATE SET
+                url = excluded.url,
+                localPath = excluded.localPath,
+                size = excluded.size,
+                status = excluded.status,
+                type = excluded.type,
+                fileType = excluded.fileType,
+                md5 = excluded.md5,
+                lastDownloaded = CURRENT_TIMESTAMP
+        `).run(saveAs, localPath, localPath, size, status, file.id, file.type, 'html', '');
+
+        console.log(`[FileManager] Download successful: ${saveAs}`);
+    } catch (err) {
+        console.error(`[FileManager] Error downloading resource ${saveAs}:`, err);
+        status = 'failed';
+    }
 }

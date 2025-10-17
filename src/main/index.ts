@@ -33,9 +33,9 @@ import {Config} from './config/config';
 import {Xmds} from './xmds/xmds';
 import {State} from './common/state';
 import { createFileServer } from './express';
-import { downloadFile, getDownloadedFiles, getLayoutFile, RequiredFileType } from './common/fileManager';
+import { downloadFile, downloadResourceFile, getDownloadedFiles, getLayoutFile, RequiredFileType } from './common/fileManager';
 import Schedule from './xmds/response/schedule/schedule';
-import ScheduleManager, { ScheduleLayoutsType } from './common/scheduleManager';
+import ScheduleManager from './common/scheduleManager';
 import { InputLayoutType } from './common/types';
 // import FaultsLib from '../renderer/src/lib/faultsLib';
 
@@ -159,6 +159,9 @@ const initXmdsEventHandlers = async function() {
       if (file.download == 'http') {
         console.log('[Xmds::on("requiredFiles")] > Downloading: ' + file.saveAs)
         return await downloadFile(file);
+      } else if (file.type === 'resource') {
+        const resourceHtml = await xmds.getResource(file);
+        return await downloadResourceFile(file, resourceHtml);
       } else {
         return;
       }
@@ -344,12 +347,12 @@ const configureFileManager = () => {
   });
 };
 
-const initializeFaults = () => {
-  // const faults = new FaultsLib();
-  // ipcMain.on('initFaults', (_events, faults) => {
-  //   console.debug('initializeFaults', {faults});
-  // });
-};
+// const initializeFaults = () => {
+//   const faults = new FaultsLib();
+//   ipcMain.on('initFaults', (_events, faults) => {
+//     console.debug('initializeFaults', {faults});
+//   });
+// };
 
 app.whenReady().then(() => {
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
@@ -357,7 +360,7 @@ app.whenReady().then(() => {
       responseHeaders: {
         ...details.responseHeaders,
         'Content-Security-Policy': [
-          "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' http://localhost:9696 data:; connect-src 'self' http://localhost:9696; frame-src 'self' http://localhost:9696; font-src 'self' data:;",
+          "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' http://localhost:9696 data:; connect-src 'self' http://localhost:9696; frame-src 'self' http://localhost:9696; font-src 'self' http://localhost:9696 http://localhost data:;",
         ],
         'Access-Control-Allow-Origin': ['*'],  // Allow any domain to access
         'Access-Control-Allow-Methods': ['GET, POST, PUT, DELETE, OPTIONS'],  // Allowed methods

@@ -18,6 +18,8 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
+
+import xml2js from 'xml2js';
 import {Config} from "../config/config";
 import axios from "axios";
 import {createNanoEvents, Emitter} from 'nanoevents';
@@ -26,6 +28,7 @@ import {RegisterDisplay} from './response/registerDisplay';
 import { ErrorCodes, handleError } from "./error/error";
 import RequiredFiles from "./response/requiredFiles";
 import Schedule from "./response/schedule/schedule";
+import { RequiredFileType } from "../common/fileManager";
 // import FaultsLib from "../../renderer/src/lib/faultsLib";
 
 interface XmdsEvents {
@@ -310,5 +313,38 @@ export class Xmds {
     // } catch (e) {
     //   return handleError(e);
     // }
+  }
+
+  async getResource(file: RequiredFileType) {
+    try {
+      const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
+          ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
+          '   <tns:GetResource>\n' +
+          '     <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
+          '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
+          '     <layoutId xsi:type="xsd:string">' + file?.layoutid + '</layoutId>\n' +
+          '     <regionId xsi:type="xsd:string">' + file?.regionid + '</regionId>\n' +
+          '     <mediaId xsi:type="xsd:string">' + file?.regionid + '</mediaId>\n' +
+          '   </tns:GetResource>\n' +
+          ' </soap:Body>\n' +
+          '</soap:Envelope>';
+
+      return await axios.post(
+        this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=getResource',
+        soapXml
+      )
+      .then(async(response) => {
+        const parser = new xml2js.Parser();
+        const rootDoc = await parser.parseStringPromise(response.data);
+
+        // Get the encoded XML
+        const xml = rootDoc["SOAP-ENV:Envelope"]["SOAP-ENV:Body"][0]["ns1:GetResourceResponse"][0].resource[0]._;
+
+        return xml;
+      })
+      .catch((error) => handleError(error));
+    } catch (e) {
+      return handleError(e);
+    }
   }
 }
