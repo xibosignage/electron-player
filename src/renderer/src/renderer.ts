@@ -78,7 +78,7 @@ window.electron.onStateChange((state) => {
 
 window.electron.onUpdateLoop((layouts) => {
   if (xlr) {
-    console.log('[Renderer::XLR]', { layouts });
+    console.log('>>>> XLR.debug [Renderer::XLR]', { layouts });
     xlr.emitter.emit('updateLoop', layouts);
   }
 });

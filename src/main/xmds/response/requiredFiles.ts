@@ -19,22 +19,16 @@
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
 import xml2js from 'xml2js';
+import { MediaInventoryFileType } from '../../common/types';
 
-type PurgeItemType = {
+export type PurgeItemType = {
     id: number | null;
     storedAs: string | null;
 };
 
-type RequiredFileType = {
-    readonly type: string | null;
-    readonly id: number | string;
-    readonly size: number;
-    readonly md5: string;
+export type RequiredFileType = MediaInventoryFileType & {
     readonly download: string;
-    readonly path: string;
     readonly code?: string;
-    readonly saveAs: string;
-    readonly fileType: string;
     readonly layoutId: number;
     readonly regionId: number | null;
     readonly mediaId: number | null;
@@ -77,7 +71,24 @@ export default class RequiredFiles {
 
         if (doc.files.file && doc.files.file.length > 0) {
             this.files = doc.files.file.reduce((a: RequiredFileType[], b) => {
-                return [...a, b.$];
+                const _file = b.$;
+
+                if (Boolean(_file.layoutid)) {
+                    _file.layoutId = parseInt(_file.layoutid);
+                    delete _file.layoutid;
+                }
+
+                if (Boolean(_file.regionid)) {
+                    _file.regionId = parseInt(_file.regionid);
+                    delete _file.regionid;
+                }
+
+                if (Boolean(_file.mediaid)) {
+                    _file.mediaId = parseInt(_file.mediaid);
+                    delete _file.mediaid;
+                }
+
+                return [...a, _file];
             }, []);
         }
 

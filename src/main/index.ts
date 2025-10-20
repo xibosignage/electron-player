@@ -33,7 +33,7 @@ import {Config} from './config/config';
 import {Xmds} from './xmds/xmds';
 import {State} from './common/state';
 import { createFileServer } from './express';
-import { downloadFile, downloadResourceFile, getDownloadedFiles, getLayoutFile, RequiredFileType } from './common/fileManager';
+import { downloadFile, downloadResourceFile, getDownloadedFiles, getLayoutFile, FileManagerFileType } from './common/fileManager';
 import Schedule from './xmds/response/schedule/schedule';
 import ScheduleManager from './common/scheduleManager';
 import { InputLayoutType } from './common/types';
@@ -43,8 +43,8 @@ const state = new State();
 state.width = 1280;
 state.height = 720;
 
-let xmds;
-let xmr;
+let xmds: Xmds;
+let xmr: Xmr;
 let schedule: Schedule;
 let manager: ScheduleManager;
 
@@ -110,9 +110,7 @@ const initXmrEventHandlers = async function() {
   // });
 }
 
-const initXmdsEventHandlers = async function() {
-  const config = new Config(app, process.platform, state);
-
+const initXmdsEventHandlers = async function(config: Config, xmr: Xmr) {
   // Bind to some events
   xmds.on('registered', (data) => {
     console.debug('[Xmds::on("registered")] > Registered', {
@@ -152,26 +150,25 @@ const initXmdsEventHandlers = async function() {
       JSON.stringify(data, null, 2),
     );
 
-    // TODO: implement an Electron specific LibraryManager to keep track of and download these files.
-    await Promise.all(data.files.map(async (file) => {
+    // Set initial media inventory report
+    await xmds.submitMediaInventory(data.files);
 
+    // TODO: implement an Electron specific LibraryManager to keep track of and download these files.
+    const downloadedFiles = (await Promise.all(data.files.map(async (file) => {
       // Download it.
       if (file.download == 'http') {
         console.log('[Xmds::on("requiredFiles")] > Downloading: ' + file.saveAs)
-        return await downloadFile(file);
+        return await downloadFile(( file as unknown) as FileManagerFileType );
       } else if (file.type === 'resource') {
         const resourceHtml = await xmds.getResource(file);
-        return await downloadResourceFile(file, resourceHtml);
+        return await downloadResourceFile((file as unknown) as FileManagerFileType, resourceHtml);
       } else {
-        return;
+        return null;
       }
-    }));
+    }))).filter(d => d !== null);
 
-    // Print all downloaded files
-    const downloadedFiles = await getDownloadedFiles();
-    console.log('[Xmds::on("requiredFiles")] > Downloaded files: ', {
-      downloadedFiles,
-    });
+    // Update media inventory as files are downloaded
+    await xmds.submitMediaInventory((downloadedFiles as unknown) as FileManagerFileType[], true);
   });
 
   xmds.on('schedule', (data) => {
@@ -185,7 +182,7 @@ const initXmdsEventHandlers = async function() {
     
     // New schedule from XMDS, update the schedule manager
     manager.update(schedule).then(() => {
-      console.debug('>>>> XLR.debug Schedule updated', schedule);
+      console.debug('>>>> XLR.debug Schedule updated', { schedule });
       manager.isAssessing = false;
     });
   });
@@ -246,7 +243,7 @@ const init = (win) => {
       
       // Bind event handlers
       await initXmrEventHandlers();
-      await initXmdsEventHandlers();
+      await initXmdsEventHandlers(config, xmr);
 
       manager = new ScheduleManager(schedule);
 
@@ -337,7 +334,7 @@ const configureExpress = () => {
 };
 
 const configureFileManager = () => {
-  ipcMain.handle('download-file', async (_event, file: RequiredFileType) => {
+  ipcMain.handle('download-file', async (_event, file: FileManagerFileType) => {
     await downloadFile(file);
     return getDownloadedFiles();
   });

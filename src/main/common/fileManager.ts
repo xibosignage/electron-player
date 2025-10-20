@@ -7,49 +7,32 @@ import * as cheerio from 'cheerio';
 import db from './db';
 import { Config } from "../config/config";
 import { State } from "./state";
+import { RequiredFileType } from "../xmds/response/requiredFiles";
 
 const state = new State();
 const config = new Config(app, process.platform, state);
 const xiboLibDir = config.getSetting('library');
 
-export type RequiredFileType = {
-    id: string;
-    download: string;
-    saveAs: string;
-    type: string;
-    fileType: string;
-    path: string;
+export type FileManagerFileType =  RequiredFileType & {
     localPath: string;
-    size: number;
-    md5: string;
     status: 'success' | 'failed' | 'skipped';
     lastDownloaded: string;
-    layoutid?: string;
-    regionid?: string;
-    mediaid?: string;
 };
 
-export async function downloadFile(file: RequiredFileType) {
+export async function downloadFile(file: FileManagerFileType) {
     const localPath = join(xiboLibDir, file.saveAs);
-    let status: RequiredFileType['status'] = 'success';
+    let status: FileManagerFileType['status'] = 'success';
     let size = 0;
 
     // Check if file already exists
     if (fs.existsSync(localPath)) {
-        return;
-        // const existing = db.prepare(`SELECT * FROM files WHERE name = ?`).get(fileName);
-        // if (existing && existing.status === 'success') {
-        //     console.log(`[FileManager] Skipping existing file: ${fileName}`);
-        //     status = 'skipped';
-        //     size = fs.statSync(localPath).size;
-        //     return {
-        //         name: fileName,
-        //         url: fileUrl,
-        //         localPath,
-        //         size,
-        //         status,
-        //     };
-        // }
+        const existing = db.prepare(`SELECT * FROM files WHERE name = ?`).get(file.saveAs);
+        if (existing && existing.status === 'success') {
+            console.log(`[FileManager] Skipping existing file: ${file.saveAs}`);
+            status = 'skipped';
+
+            return file;
+        }
     }
 
     try {
@@ -119,13 +102,7 @@ export async function downloadFile(file: RequiredFileType) {
         `).run(file.saveAs, file.path, '', 0, status, '', '', '', '');
     }
 
-    return {
-        name: file.saveAs,
-        url: file.path,
-        localPath,
-        size,
-        status,
-    };
+    return file;
 }
 
 export function getDownloadedFiles() {
@@ -181,11 +158,11 @@ export function parseHtmlResourceLinks(resourceHtml: string) {
     return $html.html();
 }
 
-export async function downloadResourceFile(file: RequiredFileType, resourceHtml: string) {
-    const resourceSaveAs = `layout_${file.layoutid}_region_${file.regionid}_media_${file.mediaid}`;
+export async function downloadResourceFile(file: FileManagerFileType, resourceHtml: string) {
+    const resourceSaveAs = `layout_${file.layoutId}_region_${file.regionId}_media_${file.mediaId}`;
     const saveAs = resourceSaveAs + '.html';
     const localPath = join(xiboLibDir, saveAs);
-    let status: RequiredFileType['status'] = 'success';
+    let status: FileManagerFileType['status'] = 'success';
     let size = 0;
 
     try {
@@ -211,4 +188,6 @@ export async function downloadResourceFile(file: RequiredFileType, resourceHtml:
         console.error(`[FileManager] Error downloading resource ${saveAs}:`, err);
         status = 'failed';
     }
+
+    return file;
 }

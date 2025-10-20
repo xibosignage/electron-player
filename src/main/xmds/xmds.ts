@@ -26,9 +26,9 @@ import {createNanoEvents, Emitter} from 'nanoevents';
 
 import {RegisterDisplay} from './response/registerDisplay';
 import { ErrorCodes, handleError } from "./error/error";
-import RequiredFiles from "./response/requiredFiles";
+import RequiredFiles, { RequiredFileType } from "./response/requiredFiles";
 import Schedule from "./response/schedule/schedule";
-import { RequiredFileType } from "../common/fileManager";
+import { mediaInventoryFileXmlString } from '../common/parser';
 // import FaultsLib from "../../renderer/src/lib/faultsLib";
 
 interface XmdsEvents {
@@ -217,6 +217,55 @@ export class Xmds {
     }
   }
 
+  async mediaInventory(files: string) {
+    const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
+        ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
+        '   <tns:MediaInventory>\n' +
+        '     <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
+        '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
+        '     <mediaInventory xsi:type-="xsd:string">&lt;files&gt;' + files + '&lt;/files&gt;</mediaInventory>\n' +
+        '   </tns:MediaInventory>\n' +
+        ' </soap:Body>\n' +
+        '</soap:Envelope>';
+
+    return await axios.post(
+      this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=mediaInventory',
+      soapXml
+    );
+  }
+
+  async submitMediaInventory(files: RequiredFileType[], isComplete: boolean = false) {
+      // Store xmlFileString for mediaInventory use
+      const requiredFiles = await Promise.all(files.map((fileObj) => {
+          return {
+            xmlString: mediaInventoryFileXmlString({
+              id: fileObj.id,
+              type: fileObj.type as string,
+              fileType: fileObj.fileType,
+              size: fileObj.size,
+              md5: fileObj.md5,
+              path: fileObj.path,
+              saveAs: fileObj.saveAs,
+            }, isComplete),
+            copy: fileObj,
+        };
+      }));
+
+      const [xmlFilesString, mediaFiles] = requiredFiles.reduce(
+        ([filesString, fileObj]: [string, RequiredFileType[]], b) => {
+          filesString += b.xmlString;
+          
+          return [filesString, [...fileObj, b.copy]];
+        }, ['', [] as RequiredFileType[]]);
+
+      if (xmlFilesString.length > 0) {
+          // Report current state of files
+          await this.mediaInventory(xmlFilesString);
+      }
+
+      return mediaFiles;
+  }
+
   async schedule(crc32: string) {
     if (crc32 == "" || crc32 != this.checkSchedule) {
       // Make a new request.
@@ -322,9 +371,9 @@ export class Xmds {
           '   <tns:GetResource>\n' +
           '     <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
           '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
-          '     <layoutId xsi:type="xsd:string">' + file?.layoutid + '</layoutId>\n' +
-          '     <regionId xsi:type="xsd:string">' + file?.regionid + '</regionId>\n' +
-          '     <mediaId xsi:type="xsd:string">' + file?.regionid + '</mediaId>\n' +
+          '     <layoutId xsi:type="xsd:string">' + file.layoutId + '</layoutId>\n' +
+          '     <regionId xsi:type="xsd:string">' + file.regionId + '</regionId>\n' +
+          '     <mediaId xsi:type="xsd:string">' + file.mediaId + '</mediaId>\n' +
           '   </tns:GetResource>\n' +
           ' </soap:Body>\n' +
           '</soap:Envelope>';
@@ -342,9 +391,19 @@ export class Xmds {
 
         return xml;
       })
-      .catch((error) => handleError(error));
+      .catch((error) => {
+        console.error('[Xmds::getResource] > Error fetching resource XML: ', {
+          error,
+        });
+
+        handleError(error)
+      });
     } catch (e) {
-      return handleError(e);
+      console.error('[Xmds::getResource] > Error fetching resource XML: ', {
+        e,
+      });
+
+      handleError(e);
     }
   }
 }
