@@ -1,10 +1,11 @@
 import { DateTime } from 'luxon';
+import Dexie from 'dexie';
 
-import { db } from "./database/db";
 import FaultsDB from "./database/faultsDB";
 import { handleError } from '../../../main/xmds/error/error';
 
 export default class FaultsLib {
+    table!: Dexie.Table<FaultsDB, number>;
     clearDBInterval: NodeJS.Timeout | undefined;
 
     constructor() {
@@ -13,7 +14,7 @@ export default class FaultsLib {
     }
 
     clearDB() {
-        (async () => await db.faults.clear())();
+        // (async () => await this.table.clear())();
     }
 
     composeFaultObj(data: FaultsDB) {
@@ -26,15 +27,15 @@ export default class FaultsLib {
             _faultObj.expires = data.expires;
         }
 
-        return _faultObj;
+        return _faultObj as FaultsDB;
     }
 
     async add(fault: FaultsDB) {
         try {
-            const faultExists = await db.faults.get(fault.code);
+            const faultExists = await this.table.get(fault.code);
 
             if (!faultExists) {
-                return Promise.resolve(await db.faults.add(this.composeFaultObj(fault)));
+                return Promise.resolve(await this.table.add(this.composeFaultObj(fault)));
             }
 
             return faultExists;
@@ -56,7 +57,7 @@ export default class FaultsLib {
     }
 
     async clearExpired() {
-        const faults = await db.faults.toArray();
+        const faults = await this.table.toArray();
         console.debug('[Faults::clearExpired] Clearing expired faults', {
             faults: faults,
             shouldParse: false,
@@ -79,13 +80,13 @@ export default class FaultsLib {
             });
 
             if (expiry && (now > expiry)) {
-                await db.faults.delete(fault.code);
+                await this.table.delete(fault.code);
             }
         }));
     }
 
     async toJson() {
-        const faults = await db.faults.toArray();
+        const faults = await this.table.toArray();
         return JSON.stringify(faults);
     }
 }

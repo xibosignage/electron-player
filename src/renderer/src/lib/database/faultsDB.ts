@@ -3,7 +3,7 @@ import PlayerDB from './db';
 
 export default class FaultsDB extends Entity<PlayerDB> {
     code!: number;
-    readon!: string;
+    reason!: string;
     date?: string;
     expires?: string;
     mediaId?: number | string | null;

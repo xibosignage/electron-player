@@ -135,6 +135,6 @@ export class Layout implements LayoutInterface {
     }
 
     getPath(): string {
-        return getLayoutFile(this.file)?.name;
+        return getLayoutFile(this.file)?.name ?? '';
     }
 }

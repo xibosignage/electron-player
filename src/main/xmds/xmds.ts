@@ -26,10 +26,11 @@ import {createNanoEvents, Emitter} from 'nanoevents';
 
 import {RegisterDisplay} from './response/registerDisplay';
 import { ErrorCodes, handleError } from "./error/error";
-import RequiredFiles, { RequiredFileType } from "./response/requiredFiles";
+import RequiredFiles from "./response/requiredFiles";
 import Schedule from "./response/schedule/schedule";
-import { mediaInventoryFileXmlString } from '../common/parser';
-// import FaultsLib from "../../renderer/src/lib/faultsLib";
+import { LogsThreshold, RequiredFile } from '../common/types';
+import { ConsoleDB } from '../../shared/console/ConsoleDB';
+import { submitLogsXmlString } from '../common/parser';
 
 interface XmdsEvents {
   collecting: () => void;
@@ -37,25 +38,24 @@ interface XmdsEvents {
   registered: (message: RegisterDisplay) => void;
   requiredFiles: (object: RequiredFiles) => void;
   schedule: (object: Schedule) => void;
+  submitLogs: () => void;
+  reportFaults: () => void;
+  submitStats: () => void;
 }
 
 export class Xmds {
-  readonly config: Config;
-  readonly savePath: string;
-
   emitter: Emitter<XmdsEvents>;
 
   collectIntervalTime: number = 300;
   interval: NodeJS.Timeout | undefined;
+  logsInterval: NodeJS.Timeout | undefined;
+  hasSubmittedLogs: boolean | null = null;
 
   // CRC32
   checkRf: string | null = null;
   checkSchedule: string | null = null;
 
-  constructor(config, savePath) {
-    this.config = config;
-    this.savePath = savePath;
-
+  constructor(private config: Config) {
     // Emitter
     this.emitter = createNanoEvents<XmdsEvents>();
   }
@@ -103,7 +103,9 @@ export class Xmds {
   }
 
   async updateInterval(intervalTime: number) {
-    if (intervalTime !== this.collectIntervalTime) {
+    const isValidIntervalTime = !isNaN(intervalTime * 1000);
+
+    if (isValidIntervalTime && intervalTime !== this.collectIntervalTime) {
       console.debug('[Xmds::updateInterval] Updating XMDS collection interval to ' + intervalTime + ' seconds');
       this.collectIntervalTime = intervalTime;
       await this.startInterval();
@@ -134,11 +136,20 @@ export class Xmds {
     if (this.config.state.displayStatus === 0) {
       console.log('Display state is 0, checking requried files and schedule');
 
+      this.emitter.emit('submitLogs');
+
       await this.requiredFiles(checkRf ?? '');
       await this.schedule(checkSchedule ?? '');
 
+      console.debug('[Xmds::collect] Checking if stats are enabled', { statsEnabled: this.config.settings.statsEnabled });
+      // Check if stats are enabled
+      if (Boolean(this.config.settings.statsEnabled)) {
+        this.emitter.emit('submitStats');
+      }
+
       await this.notifyStatus();
-      await this.reportFaults();
+      
+      this.emitter.emit('reportFaults');
     }
 
     this.emitter.emit('collected');
@@ -173,7 +184,7 @@ export class Xmds {
           this.checkRf = registerDisplay.checkRf || null;
 
           // Update the collection interval as necessary
-          await this.updateInterval(registerDisplay.getSetting('collectInterval', 300));
+          await this.updateInterval(registerDisplay.getSetting('collectInterval', 300) as number);
 
           console.debug('Display registered', {
             method: 'XMDS::registerDisplay',
@@ -182,11 +193,12 @@ export class Xmds {
           });
           // Emit
           this.emitter.emit('registered', registerDisplay);
-        });
+        })
+        .catch((err) => console.error(err));
   }
 
   async requiredFiles(crc32: string) {
-    if (crc32 == "" || crc32 != this.checkRf) {
+    if (crc32 == null || crc32 != this.checkRf) {
       // Make a new request.
       const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
         '  <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
@@ -210,8 +222,8 @@ export class Xmds {
           this.emitter.emit('requiredFiles', requiredFiles);
         })
         .catch((error) => {
-          const err = handleError(error);
-          console.error(err.message);
+          // const err = handleError(error);
+          // console.error(err.message);
           console.error(error);
         });
     }
@@ -234,40 +246,17 @@ export class Xmds {
     );
   }
 
-  async submitMediaInventory(files: RequiredFileType[], isComplete: boolean = false) {
-      // Store xmlFileString for mediaInventory use
-      const requiredFiles = await Promise.all(files.map((fileObj) => {
-          return {
-            xmlString: mediaInventoryFileXmlString({
-              id: fileObj.id,
-              type: fileObj.type as string,
-              fileType: fileObj.fileType,
-              size: fileObj.size,
-              md5: fileObj.md5,
-              path: fileObj.path,
-              saveAs: fileObj.saveAs,
-            }, isComplete),
-            copy: fileObj,
-        };
-      }));
-
-      const [xmlFilesString, mediaFiles] = requiredFiles.reduce(
-        ([filesString, fileObj]: [string, RequiredFileType[]], b) => {
-          filesString += b.xmlString;
-          
-          return [filesString, [...fileObj, b.copy]];
-        }, ['', [] as RequiredFileType[]]);
-
-      if (xmlFilesString.length > 0) {
+  async submitMediaInventory(mediaInventory: { xmlString: string; files: RequiredFile[] }) {
+      if (mediaInventory.xmlString.length > 0) {
           // Report current state of files
-          await this.mediaInventory(xmlFilesString);
+          await this.mediaInventory(mediaInventory.xmlString);
       }
 
-      return mediaFiles;
+      return mediaInventory.files;
   }
 
   async schedule(crc32: string) {
-    if (crc32 == "" || crc32 != this.checkSchedule) {
+    if (crc32 == null || crc32 != this.checkSchedule) {
       // Make a new request.
       const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
         '  <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
@@ -317,6 +306,129 @@ export class Xmds {
     }
   }
 
+  async handleSubmitLogs(db: ConsoleDB) {
+    const logLevel = this.config.getSetting('logLevel', 'error');
+    const logLevelCategory = logLevel.charAt(0).toUpperCase() + logLevel.slice(1);
+    const logs = db.getLogsByCategory(logLevelCategory, LogsThreshold);
+
+    this.hasSubmittedLogs = false;
+
+    if (logs.length === 0) {
+      console.debug('[Xmds::handleSubmitLogs] > No logs to submit, clearing interval');
+
+      if (this.logsInterval !== undefined) {
+        this.hasSubmittedLogs = null;
+        clearInterval(this.logsInterval);
+      }
+
+      return;
+    }
+
+    // clear logsInterval when logs count < LogsThreshold
+    if (logs.length < LogsThreshold && this.logsInterval !== undefined) {
+      this.hasSubmittedLogs = null;
+      clearInterval(this.logsInterval);
+    }
+
+    let logsXmlStr = '';
+
+    logs.forEach((log) => logsXmlStr += submitLogsXmlString(log));
+
+    const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
+        ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
+        '   <tns:SubmitLog>\n' +
+        '     <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
+        '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
+        '     <logXml xsi:type="xsd:string">&lt;logs&gt;' + logsXmlStr + '&lt;/logs&gt;</logXml>\n' +
+        '   </tns:SubmitLog>\n' +
+        ' </soap:Body>\n' +
+        '</soap:Envelope>';
+
+    await axios.post(
+      this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=submitLog',
+      soapXml
+    )
+      .then(async response => {
+        const parser = new xml2js.Parser();
+        const rootDoc = await parser.parseStringPromise(response.data);
+
+        // Get the encoded XML
+        const result = rootDoc["SOAP-ENV:Envelope"]["SOAP-ENV:Body"][0]["ns1:SubmitLogResponse"][0].success[0]._;
+
+        console.debug('[Xmds::submitLogs] Logs submitted to CMS');
+        // If response succeeded, then delete pushed logs
+        if (result === 'true') {
+          console.log('Log start with uid: ' + logs[0].uid);
+          console.log('Deleting pushed logs, count = ' + logs.length);
+
+          db.deleteLogs(logs);
+
+          console.log('Deleted pushed logs');
+
+          this.hasSubmittedLogs = true;
+        }
+      })
+      .catch((error) => {
+        handleError(error, 'Unable to submit logs');
+      });
+  }
+
+  async submitLogs(db: ConsoleDB) {
+    console.debug('[Xmds::submitLogs] Submitting Logs to CMS');
+    const logLevel = this.config.getSetting('logLevel', 'error');
+    const logLevelCategory = logLevel.charAt(0).toUpperCase() + logLevel.slice(1);
+
+    if (logLevelCategory === 'Off') {
+      console.debug('[Xmds::submitLogs] > Log level is off, skipping log submission');
+    }
+
+    const logsCount = db.count();
+
+    if (logsCount > LogsThreshold) {
+      const batchInterval = 10; // 10 seconds interval for batch submission
+
+      // then submit backlog of logs in batch of LogsThreshold
+      this.logsInterval = setInterval(async () => {
+        if (this.hasSubmittedLogs || this.hasSubmittedLogs === null) {
+          await this.handleSubmitLogs(db);
+        }
+      }, batchInterval * 1000); 
+    } else {
+      if (this.logsInterval !== undefined) {
+        clearInterval(this.logsInterval);
+      }
+
+      await this.handleSubmitLogs(db);
+    }
+  }
+
+  async submitStats(statsXmlString: string) {
+    // Make a new request.
+    const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
+        '  <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
+        '    <tns:SubmitStats>\n' +
+        '      <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
+        '      <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
+        '      <statXml xsi:type="xsd:string">&lt;records&gt;' + statsXmlString + '&lt;/records&gt;</statXml>\n' +
+        '    </tns:SubmitStats>\n' +
+        '  </soap:Body>\n' +
+        '</soap:Envelope>';
+
+    return await axios.post(
+        this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=submitStat',
+        soapXml,)
+        .then(async response => {
+          const parser = new xml2js.Parser();
+          const rootDoc = await parser.parseStringPromise(response.data);
+
+          // Get the encoded XML
+          const result = rootDoc["SOAP-ENV:Envelope"]["SOAP-ENV:Body"][0]["ns1:SubmitStatsResponse"][0].success[0]._;
+
+          return result === 'true';
+        })
+        .catch((error) => handleError(error));
+  }
+
   async notifyStatus() {
     const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
       ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
@@ -339,6 +451,7 @@ export class Xmds {
   }
   
   async reportFaults() {
+    console.debug('[Xmds::reportFaults] Reporting Faults to CMS');
     // try {
     //   const faults = new FaultsLib();
     //   const faultsParam = await faults.toJson();
@@ -364,7 +477,7 @@ export class Xmds {
     // }
   }
 
-  async getResource(file: RequiredFileType) {
+  async getResource(file: RequiredFile) {
     try {
       const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
           ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +

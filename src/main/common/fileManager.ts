@@ -4,40 +4,36 @@ import { join } from 'path';
 import { app } from "electron";
 import * as cheerio from 'cheerio';
 
-import db from './db';
+import { FileStore } from "./fileStore";
 import { Config } from "../config/config";
 import { State } from "./state";
-import { RequiredFileType } from "../xmds/response/requiredFiles";
+import { LocalFile, RequiredFile } from "./types";
 
 const state = new State();
 const config = new Config(app, process.platform, state);
 const xiboLibDir = config.getSetting('library');
+const store = new FileStore(config.dbPath)
 
-export type FileManagerFileType =  RequiredFileType & {
+export type FileManagerFileType =  RequiredFile & {
     localPath: string;
-    status: 'success' | 'failed' | 'skipped';
+    status: 'success' | 'failed' | 'skipped' | 'updated';
     lastDownloaded: string;
 };
 
-export async function downloadFile(file: FileManagerFileType) {
-    const localPath = join(xiboLibDir, file.saveAs);
-    let status: FileManagerFileType['status'] = 'success';
+export async function downloadAndSaveFile(
+    file: FileManagerFileType,
+    options: {
+        localPath: string;
+        status: FileManagerFileType['status'];
+    },
+    transaction: 'insert' | 'update' = 'insert'
+) {
+    let status = options.status ?? 'success';
     let size = 0;
-
-    // Check if file already exists
-    if (fs.existsSync(localPath)) {
-        const existing = db.prepare(`SELECT * FROM files WHERE name = ?`).get(file.saveAs);
-        if (existing && existing.status === 'success') {
-            console.log(`[FileManager] Skipping existing file: ${file.saveAs}`);
-            status = 'skipped';
-
-            return file;
-        }
-    }
-
+    
     try {
         console.log(`[FileManager] Downloading: ${file.path}`);
-        const response = await axios.get(file.path, {
+        const response = await axios.get(file.path as string, {
             responseType: 'arraybuffer',
             timeout: 15000, // 15s timeout
         });
@@ -55,22 +51,22 @@ export async function downloadFile(file: FileManagerFileType) {
             });
         }
 
-        fs.writeFileSync(localPath, fileData);
-        size = fs.statSync(localPath).size;
+        fs.writeFileSync(options.localPath, fileData);
+        size = fs.statSync(options.localPath).size;
 
-        db.prepare(`
-            INSERT INTO files (name, url, localPath, size, status, fileId, type, fileType, md5)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(name) DO UPDATE SET
-                url = excluded.url,
-                localPath = excluded.localPath,
-                size = excluded.size,
-                status = excluded.status,
-                type = excluded.type,
-                fileType = excluded.fileType,
-                md5 = excluded.md5,
-                lastDownloaded = CURRENT_TIMESTAMP
-        `).run(file.saveAs, file.path, localPath, size, status, file.id, file.type, file.fileType, file.md5);
+        const localFile: FileManagerFileType = {
+            ...file,
+            localPath: options.localPath,
+            size,
+            status,
+            lastDownloaded: new Date().toISOString(),
+        };
+
+        if (transaction === 'insert') {
+            store.insert(localFile);
+        } else if (transaction === 'update') {
+            store.update(localFile);
+        }
 
         console.log(`[FileManager] Download successful: ${file.saveAs}`);
     } catch (err) {
@@ -78,16 +74,16 @@ export async function downloadFile(file: FileManagerFileType) {
         status = 'failed';
 
         // Remove partially downloaded file if exists
-        if (fs.existsSync(localPath)) {
+        if (fs.existsSync(options.localPath)) {
             try {
-                fs.unlinkSync(localPath);
+                fs.unlinkSync(options.localPath);
                 console.log(`[FileManager] Removed incomplete file: ${file.saveAs}`);
             } catch (unlinkErr) {
                 console.warn(`[FileManager] Failed to remove incomplete file: ${file.saveAs}`, unlinkErr);
             }
         }
 
-        db.prepare(`
+        store.db.prepare(`
             INSERT INTO files (name, url, localPath, size, status, fileId, type, fileType, md5)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(name) DO UPDATE SET
@@ -105,12 +101,46 @@ export async function downloadFile(file: FileManagerFileType) {
     return file;
 }
 
-export function getDownloadedFiles() {
-  return db.prepare(`SELECT * FROM files ORDER BY lastDownloaded DESC`).all();
+export async function downloadFile(file: FileManagerFileType) {
+    const localPath = join(xiboLibDir, file.saveAs as string);
+
+    // Check if file already exists
+    if (fs.existsSync(localPath)) {
+        const existing = store.db.prepare(`SELECT * FROM files WHERE name = ?`).get(file.saveAs) as FileManagerFileType | undefined;
+        if (existing && existing.status === 'success') {
+            if (existing.md5 !== file.md5) {
+                // Update local file and file meta data
+                console.log(`[FileManager] Updating existing file: ${file.saveAs}`);
+                console.log(`[FileManager] Updating file due to MD5 mismatch: ${file.saveAs}`);
+
+                return await downloadAndSaveFile(file, {
+                    localPath,
+                    status: 'updated',
+                }, 'update');
+            }
+
+            console.log('[FileManager] Existing file MD5 matches, skipping download of existing file:', {
+                storedMd5: existing.md5,
+                fileMd5: file.md5,
+                fileName: file.saveAs,
+                method: 'FileManager::downloadFile',
+            });
+            return file;
+        }
+    }
+
+    return await downloadAndSaveFile(file, {
+        localPath,
+        status: 'success',
+    }, 'insert');
 }
 
-export function getLayoutFile(layoutId: number) {
-    return db.prepare(`SELECT * FROM files WHERE fileId = ? AND type = 'layout'`).get(String(layoutId));
+export function getDownloadedFiles() {
+  return store.db.prepare<LocalFile[]>(`SELECT * FROM files ORDER BY lastDownloaded DESC`).all();
+}
+
+export function getLayoutFile(layoutId: number): LocalFile | undefined {
+    return store.db.prepare(`SELECT * FROM files WHERE fileId = ? AND type = 'layout'`).get(String(layoutId)) as LocalFile | undefined;
 }
 
 export function localFileUrlFromFileName(fileName: string) {
@@ -169,7 +199,7 @@ export async function downloadResourceFile(file: FileManagerFileType, resourceHt
         fs.writeFileSync(localPath, parseHtmlResourceLinks(resourceHtml));
         size = fs.statSync(localPath).size;
 
-        db.prepare(`
+        store.db.prepare(`
             INSERT INTO files (name, url, localPath, size, status, fileId, type, fileType, md5)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(name) DO UPDATE SET

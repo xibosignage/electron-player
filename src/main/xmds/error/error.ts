@@ -18,7 +18,8 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
-import {DurationLike} from "luxon";
+import xml2js from 'xml2js';
+// import {DurationLike} from "luxon";
 
 export enum ErrorCodes {
   NotAuthorisedMsg = 'This Display is not authorised.',
@@ -29,8 +30,8 @@ export enum ErrorCodes {
  * An error from XMDS.
  */
 export class Error {
-  readonly code: string;
-  readonly message: string;
+  code?: string | number;
+  message: string = '';
 
   /**
    * Expect message to contain a SOAP Fault, e.g.
@@ -45,19 +46,52 @@ export class Error {
    *   </SOAP-ENV:Envelope>
    * @param response
    */
-  constructor(response: string, code?: number) {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(response, 'text/xml');
-    this.code = doc.getElementsByTagName('faultcode')[0]?.innerHTML;
-    this.message = doc.getElementsByTagName('faultstring')[0]?.innerHTML;
-
-    let expiryDuration: DurationLike = { days: 1 };
-    // Check if we have a valid XML doc
-    if (doc && doc.getElementsByTagName('parsererror').length > 0) {
-      this.message = response;
-      expiryDuration = { hours: 1 };
-    }
+  constructor(private response: string, code?: string | number) {
+    this.response = response;
+    this.code = code;
   }
+
+  async parse() {
+    const isValidXml = await isValidXmlString(this.response);
+
+    if (isValidXml) {
+      const parser = new xml2js.Parser();
+      const rootDoc = await parser.parseStringPromise(this.response);
+
+      console.debug('[MAIN] Error > rootDoc', {
+        response: this.response,
+        rootDoc,
+      });
+      
+      // this.code = doc.getElementsByTagName('faultcode')[0]?.innerHTML;
+      // this.message = doc.getElementsByTagName('faultstring')[0]?.innerHTML;
+    } else {
+      this.message = this.response;
+    }
+
+    // let expiryDuration: DurationLike = { days: 1 };
+    // // Check if we have a valid XML doc
+    // if (doc && doc.getElementsByTagName('parsererror').length > 0) {
+    //   this.message = response;
+    //   expiryDuration = { hours: 1 };
+    // }
+  }
+}
+
+export function isValidXmlString(xmlString: string) {
+  const parser = new xml2js.Parser();
+
+  return new Promise(resolve => {
+    parser.parseString(xmlString, (err, _result) => {
+      if (err) {
+        // If an error occurs, the XML string is not valid
+        resolve(false);
+      } else {
+        // If no error, the XML string is considered valid
+        resolve(true);
+      }
+    })
+  })
 }
 
 export function handleError(error: any, message?: string) {
@@ -68,16 +102,31 @@ export function handleError(error: any, message?: string) {
     };
 
     if (response) {
-        errorObject.message = response.data;
-        errorObject.status = response.status;
+      let errorMsg: string[] = [];
 
-        let errResponse: Error = new Error(response.data);
+      if (String(response.data).length > 0) {
+        errorMsg.push('response.data=' + response.data);
+      }
 
-        if (errResponse.message === ErrorCodes.NotAuthorisedMsg) {
-            throw new Error(errResponse.message);
-        }
+      if (String(message).length > 0) {
+        errorMsg.push(message as string);
+      }
 
-        return errResponse;
+      if (String(errMessage).length > 0) {
+        errorMsg.push(errMessage);
+      }
+
+      errorObject.message = errorMsg.join(' - ');
+      errorObject.status = response.status;
+
+      let errResponse: Error = new Error(errorObject.message);
+      errResponse.parse();
+
+      if (errResponse.message === ErrorCodes.NotAuthorisedMsg) {
+          throw new Error(errResponse.message);
+      }
+
+      return errResponse;
     } else if (request) {
         // request sent but no response received
         errorObject.status = request.status;

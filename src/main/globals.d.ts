@@ -1,10 +1,14 @@
-import ScheduleManager from "./common/scheduleManager";
+// // 
 
-declare global {
-  interface Window {
-    // Add your custom property to the Window interface
-    ScheduleManager: ScheduleManager;
-  }
+// import ScheduleManager from "./common/scheduleManager";
 
-  var window: Window;
-}
+// export {}
+
+// declare global {
+//   interface Window {
+//     // Add your custom property to the Window interface
+//     ScheduleManager: ScheduleManager;
+//   }
+
+//   declare var window: Window;
+// }

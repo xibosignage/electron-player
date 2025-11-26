@@ -85,7 +85,10 @@ export default class Schedule implements ScheduleInterface {
         this.defaultLayout = new DefaultLayout();
         this.defaultLayout.hydrateFromResponse(doc.schedule.default[0]);
         const defaultLayoutFile = getLayoutFile(this.defaultLayout.file);
-        this.defaultLayout.path = defaultLayoutFile.name;
+
+        if (defaultLayoutFile) {
+            this.defaultLayout.path = defaultLayoutFile.name;
+        }
 
         // TODO: decide how XMDS should return the schedule (imagine it is part of XCL)
         // is a JS object sufficient?

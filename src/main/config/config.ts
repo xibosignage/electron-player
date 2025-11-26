@@ -72,10 +72,10 @@ export class Config {
     try {
       let data = await fs.readFile(this.savePath);
       data = JSON.parse(data);
-      this.hardwareKey = data.hardwareKey;
+      this.hardwareKey = data.hardwareKey ?? (await machineId()).substring(0, 40);
       this.cmsUrl = data.cmsUrl;
       this.cmsKey = data.cmsKey;
-      this.xmrChannel = data.xmrChannel;
+      this.xmrChannel = data.xmrChannel ?? randomUUID();
     } catch {
       // Probably the file doesn't exist.
       this.hardwareKey = (await machineId()).substring(0, 40);
@@ -124,7 +124,12 @@ export class Config {
   };
 
   isConfigured() {
-    return this.cmsUrl && this.cmsKey;
+    return this.cmsUrl !== undefined && this.cmsKey !== undefined;
+  }
+  
+  isLicensed() {
+    return true;
+    // return this.licence.licensed;
   }
 
   async setConfig(registerDisplay: RegisterDisplay) {
@@ -158,5 +163,27 @@ export class Config {
     return 'chromeOS'
     // We have a different display profile for electron on windows vs electron on linux.
     //return this.platform == 'win32' ? 'electron-win' : 'electron-linux';
+  }
+
+  toJson(): string {
+    return JSON.stringify({
+      platform: this.platform,
+      appType: this.appType,
+      version: this.version,
+      versionCode: this.versionCode,
+      savePath: this.savePath,
+      cmsSavePath: this.cmsSavePath,
+      dbPath: this.dbPath,
+      hardwareKey: this.hardwareKey,
+      xmrChannel: this.xmrChannel,
+      cmsUrl: this.cmsUrl,
+      cmsKey: this.cmsKey,
+      library: this.library,
+      xmdsVersion: this.xmdsVersion,
+      displayName: this.displayName,
+      settings: this.settings,
+      isConfigured: this.isConfigured(),
+      state: this.state.toJson(),
+    });
   }
 }

@@ -334,14 +334,20 @@ export default class ScheduleManager {
         } else if (!splashScreenOnly && this.layouts.length !== loop.length) {
             hasChanged = true;
         } else if (!splashScreenOnly && this.layouts.length === loop.length) {
-            const existingLayoutIds = getLayoutIds((this.layouts as unknown) as InputLayoutType[]);
-            const newLayoutIds = getLayoutIds((loop as unknown) as InputLayoutType[]);
+            const existingLayoutIds = getLayoutIds(this.layouts);
+            const newLayoutIds = getLayoutIds(loop);
             hasChanged = existingLayoutIds.join(',') !== newLayoutIds.join(',');
         }
 
+        console.debug('>>>>> XLR.debug Assess complete, hasChanged = ' + hasChanged, {
+            loop: { length: loop.length, ids: getLayoutIds(loop), },
+            layouts: { length: layouts.length, ids: getLayoutIds(layouts), },
+            thisLayouts: { length: this.layouts.length, ids: getLayoutIds(this.layouts), },
+            method: 'Schedule: Manager: Assess'
+        });
+
         if (hasChanged) {
             console.debug('>>>> XLR.debug Assessment finished, schedule loop changed', {
-                loop,
                 method: 'Schedule: Manager: Assess'
             });
 
@@ -389,8 +395,8 @@ export default class ScheduleManager {
                 ...arr,
                 {
                     layoutId: item.file,
-                    path: layoutFile === null ? '' : layoutFile.name,
-                    shortPath: layoutFile === null ? '' : layoutFile.name,
+                    path: layoutFile && layoutFile !== null ? layoutFile.name : '',
+                    shortPath: layoutFile && layoutFile !== null ? layoutFile.name : '',
                     response: item.response,
                 }
             ];

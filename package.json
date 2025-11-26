@@ -5,7 +5,7 @@
   "main": "./dist/main/index.js",
   "scripts": {
     "start": "electron-vite preview --outDir=dist",
-    "dev": "electron-vite dev --watch --sourcemap --remote-debugging-port=9222 --outDir=dist --inspect src/main/index.ts",
+    "dev": "electron-vite dev --watch --sourcemap --debug hmr --remote-debugging-port=9222 --outDir=dist --inspect src/main/index.ts",
     "package": "electron-vite build --outDir=dist && electron-forge package",
     "make": "electron-vite build --outDir=dist && electron-forge make",
     "rebuild": "electron-rebuild -f -w better-sqlite3"
@@ -35,6 +35,8 @@
     "@electron-toolkit/tsconfig": "^1.0.1",
     "@electron-toolkit/utils": "^3.0.0",
     "@rushstack/eslint-patch": "^1.7.1",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/he": "^1.2.3",
     "@types/luxon": "^3.7.1",
     "@types/xml2js": "^0.4.14",
     "@xibosignage/xibo-communication-framework": "^0.0.5",
@@ -47,11 +49,13 @@
     "electron-build": "^0.0.3",
     "electron-squirrel-startup": "^1.0.1",
     "express": "^4.21.2",
+    "he": "^1.2.0",
     "jquery": "^3.7.1",
     "luxon": "^3.7.1",
     "nanoevents": "^9.1.0",
     "node-machine-id": "^1.1.12",
     "rollup-plugin-dts": "^6.2.3",
+    "uuid": "^13.0.0",
     "xml2js": "^0.6.2"
   }
 }
