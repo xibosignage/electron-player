@@ -22,16 +22,17 @@ if (require('electron-squirrel-startup')) app.quit();
 
 const fs = require('fs/promises');
 import { installExtension, JQUERY_DEBUGGER } from 'electron-devtools-installer';
-import {app, shell, WebContentsView, BrowserWindow, ipcMain, session} from 'electron';
-import {join} from 'path';
-import {optimizer, is, electronApp} from '@electron-toolkit/utils';
-import {Xmr} from '@xibosignage/xibo-communication-framework';
+import { app, shell, WebContentsView, BrowserWindow, ipcMain, session } from 'electron';
+import { join } from 'path';
+import { optimizer, is, electronApp } from '@electron-toolkit/utils';
+import { Xmr } from '@xibosignage/xibo-communication-framework';
+import axios from 'axios';
 
 import icon from '../../resources/icon.png?asset';
-import {spawn} from 'child_process';
-import {Config} from './config/config';
-import {Xmds} from './xmds/xmds';
-import {State} from './common/state';
+import { spawn } from 'child_process';
+import { Config } from './config/config';
+import { Xmds } from './xmds/xmds';
+import { State } from './common/state';
 import { createFileServer } from './express';
 import { downloadFile, downloadResourceFile, getDownloadedFiles, getLayoutFile, FileManagerFileType } from './common/fileManager';
 import Schedule from './xmds/response/schedule/schedule';
@@ -43,6 +44,37 @@ import { PoPStats } from './common/stats/PoPStats';
 import { submitStatXmlString } from './common/parser';
 import { Layout } from './xmds/response/schedule/events/layout';
 import { ConfigData, MainCallbackType } from '../shared/types';
+
+// Axios interceptors
+axios.interceptors.request.use(req => {
+  console.log('[HTTP →]', {
+    method: req.method,
+    url: req.url,
+    data: req.data,
+    headers: req.headers,
+  });
+  return req;
+});
+
+axios.interceptors.response.use(
+  res => {
+    console.log('[HTTP ←]', {
+      status: res.status,
+      url: res.config.url,
+      data: res.data,
+    });
+    return res;
+  },
+  err => {
+    console.error('[HTTP ✖]', {
+      message: err.message,
+      code: err.code,
+      url: err.config?.url,
+      response: err.response,
+    });
+    return Promise.reject(err);
+  }
+);
 
 const popStats = new PoPStats();
 const db = new ConsoleDB();
@@ -59,7 +91,7 @@ ipcMain.handle('renderer-log', (_event, level: string, args: any) => {
 
 let appConfig: ConfigData;
 const state = new State();
-const config = new Config(app, process.platform, state);
+export const config = new Config(app, process.platform, state);
 state.width = 1280;
 state.height = 720;
 
@@ -83,14 +115,36 @@ ipcMain.handle('load-config', async (_event) => await loadConfig());
 
 ipcMain.handle('get-config', async (_event) => appConfig);
 
+// Bind to some events from the renderer for configuration.
+ipcMain.handle('xmds-try-register', async (_event, _config) => {
+  console.log('xmds-try-register: ', { _config });
+  const configData = _config as ConfigData;
+  config.cmsUrl = configData.cmsUrl;
+  config.cmsKey = configData.cmsKey;
+  config.displayName = configData.displayName;
+
+  try {
+    const xmds = new Xmds(config);
+
+    const xmdsRegister = await xmds.registerDisplay();
+
+    return { success: true, data: xmdsRegister };
+  } catch (err) {
+    return {
+      success: false,
+      error: err,
+    }
+  }
+});
+
 const configureIpc = (win) => {
   ipcMain.on('open-child-window', (_event, url) => {
     const view = new WebContentsView();
     win.contentView.addChildView(view);
-    view.setBounds({x: 0, y: 0, width: 800, height: 600});
+    view.setBounds({ x: 0, y: 0, width: 800, height: 600 });
     view.webContents.loadURL(url);
   });
-  
+
   // renderer requests a callback
   ipcMain.handle('request-callback', () => {
     return {
@@ -110,30 +164,6 @@ const configureIpc = (win) => {
       win.webContents.send('stats-bc-message', payload);
     });
   });
-
-  // Bind to some events from the renderer for configuration.
-  ipcMain.handle('xmds-try-register', async (_event, _config) => {
-    console.log('xmds-try-register: ', { _config });
-    const configData = _config as ConfigData;
-    config.cmsUrl = configData.cmsUrl;
-    config.cmsKey = configData.cmsKey;
-    config.displayName = configData.displayName;
-
-    // Save config
-    config.save();
-    config.saveCms();
-
-    try {
-      const xmds = new Xmds(config);
-      
-      await xmds.getSchemaVersion();
-      
-      await xmds.registerDisplay();
-    } catch (err) {
-      throw err;
-    }
-  });
-  
 };
 
 const configureExpress = () => {
@@ -142,7 +172,7 @@ const configureExpress = () => {
   const expressPath = is.dev ?
     './dist/main/express.js' :
     join('./resources/app.asar', './dist/main/express.js');
-  const redirectOutput = function(stream) {
+  const redirectOutput = function (stream) {
     stream.on('data', (data) => {
       data.toString().split('\n').forEach((line) => {
         console.log(line);
@@ -157,7 +187,7 @@ const configureExpress = () => {
   console.log(expressPath);
 
   const expressAppProcess =
-      spawn(appName, [expressPath], {env: {ELECTRON_RUN_AS_NODE: '1'}});
+    spawn(appName, [expressPath], { env: { ELECTRON_RUN_AS_NODE: '1' } });
   [expressAppProcess.stdout, expressAppProcess.stderr].forEach(redirectOutput);
 };
 
@@ -199,7 +229,7 @@ const createWindow = () => {
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url);
-    return {action: 'deny'};
+    return { action: 'deny' };
   });
 
   mainWindow.setMenuBarVisibility(false);
@@ -220,17 +250,17 @@ const createWindow = () => {
   }
 };
 
-const initXmrEventHandlers = async function() {
+const initXmrEventHandlers = async function () {
   // Bind to some XMR events
   xmr.on('connected', () => {
     console.log('XMR Connected');
   });
   xmr.on('collectNow', () => {
-    console.debug('Requesting a collection immediately', {method: 'Xmr::screenShot'});
+    console.debug('Requesting a collection immediately', { method: 'Xmr::screenShot' });
     xmds.collectNow();
   });
   xmr.on('screenShot', async () => {
-    console.debug('Requesting a screenshot', {method: 'Xmr::screenShot'});
+    console.debug('Requesting a screenshot', { method: 'Xmr::screenShot' });
     await xmds.screenshot();
     await xmds.notifyStatus();
   });
@@ -239,15 +269,12 @@ const initXmrEventHandlers = async function() {
   //   await config.checkLicence(true, 0);
   //   await xmds.notifyStatus();
   // });
-  // xmr.on('showStatusWindow', async(timeout) => {
-  //   $statusWindow?.style.setProperty('display', 'block');
-  //   setTimeout(() => {
-  //     $statusWindow?.style.setProperty('display', 'none');
-  //   }, timeout * 1000);
-  // });
+  xmr.on('showStatusWindow', async (timeout) => {
+    mainWindow.webContents.send('showStatusWindow', timeout);
+  });
 }
 
-const initXmdsEventHandlers = async function(config: Config, xmr: Xmr) {
+const initXmdsEventHandlers = async function (config: Config, xmr: Xmr) {
   // Bind to some events
   xmds.on('collecting', () => {
     console.debug('[Xmds::on("collecting")] > Collecting Data with collection interval ' +
@@ -280,7 +307,7 @@ const initXmdsEventHandlers = async function(config: Config, xmr: Xmr) {
     xmr.start(xmrWebSocketAddress, config.getSetting('xmrCmsKey', 'n/a'));
   });
 
-  xmds.on('requiredFiles', async(data) => {
+  xmds.on('requiredFiles', async (data) => {
     console.debug('[Xmds::on("requiredFiles")] > Required Files', {
       registerDisplay: data,
       shouldParse: false,
@@ -303,7 +330,7 @@ const initXmdsEventHandlers = async function(config: Config, xmr: Xmr) {
       // Download it.
       if (file.download == 'http') {
         console.log('[Xmds::on("requiredFiles")] > Downloading: ' + file.saveAs)
-        return await downloadFile(( file as unknown) as FileManagerFileType );
+        return await downloadFile((file as unknown) as FileManagerFileType);
       } else if (file.type === 'resource') {
         const resourceHtml = await xmds.getResource(file);
         return await downloadResourceFile((file as unknown) as FileManagerFileType, resourceHtml);
@@ -326,7 +353,7 @@ const initXmdsEventHandlers = async function(config: Config, xmr: Xmr) {
     });
 
     // Update schedule of ScheduleManager
-    
+
     // New schedule from XMDS, update the schedule manager
     manager.update(schedule).then(() => {
       console.debug('>>>> XLR.debug Schedule updated', { schedule });
@@ -360,16 +387,16 @@ const initXmdsEventHandlers = async function(config: Config, xmr: Xmr) {
       });
 
       xmds.submitStats(statsXmlString).then((success) => {
-        
+
         console.debug('[Xmds::submitStats] Stats submitted to CMS');
         // If response succeeded, then delete pushed logs
         if (success) {
-            console.log('Deleting pushed stats, count = ' + stats.length);
+          console.log('Deleting pushed stats, count = ' + stats.length);
 
-            popStats.clearSubmitted(stats);
+          popStats.clearSubmitted(stats);
 
-            console.log('Deleted pushed stats');
-          }
+          console.log('Deleted pushed stats');
+        }
       });
     }
   });
@@ -394,7 +421,7 @@ const mainFunctions = {
 
       // Put license checking here
     }
-    
+
     // Configure XMR
     if (!xmr) {
       xmr = new Xmr(config.xmrChannel || 'unknown');
@@ -407,7 +434,7 @@ const mainFunctions = {
     await initXmdsEventHandlers(config, xmr);
 
     if (!manager) {
-      manager = new ScheduleManager(schedule);
+      manager = new ScheduleManager(schedule, config);
 
       manager.on('layouts', async (layouts) => {
         console.debug({
@@ -459,7 +486,7 @@ const mainFunctions = {
 
     // Set up a regular status update push
     setInterval(() => {
-      win.webContents.send('state-change', state.toHtml(config));
+      win.webContents.send('state-change', config.state.toHtml(config));
     }, 5000);
 
     xmds.start(config.getSetting('collectionInterval', 60));
@@ -528,8 +555,8 @@ app.whenReady().then(() => {
 
   // Install dev tools extension.
   installExtension(JQUERY_DEBUGGER)
-        .then((ext) => console.log(`Added Extension:  ${ext.name}`))
-        .catch((err) => console.log('An error occurred: ', err));
+    .then((ext) => console.log(`Added Extension:  ${ext.name}`))
+    .catch((err) => console.log('An error occurred: ', err));
 
   createWindow();
 

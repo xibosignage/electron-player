@@ -20,17 +20,18 @@
  */
 
 import xml2js from 'xml2js';
-import {Config} from "../config/config";
-import axios from "axios";
-import {createNanoEvents, Emitter} from 'nanoevents';
+import { Config } from "../config/config";
+import axios, { AxiosError } from "axios";
+import { createNanoEvents, Emitter } from 'nanoevents';
 
-import {RegisterDisplay} from './response/registerDisplay';
+import { RegisterDisplay } from './response/registerDisplay';
 import { ErrorCodes, handleError } from "./error/error";
 import RequiredFiles from "./response/requiredFiles";
 import Schedule from "./response/schedule/schedule";
 import { LogsThreshold, RequiredFile } from '../common/types';
 import { ConsoleDB } from '../../shared/console/ConsoleDB';
 import { submitLogsXmlString } from '../common/parser';
+import { AxiosErrorCodes, handleXmdsError } from '../common/error/XmdsError';
 
 interface XmdsEvents {
   collecting: () => void;
@@ -79,7 +80,7 @@ export class Xmds {
 
     return this.config.xmdsVersion;
   };
-  
+
   async start(intervalTime: number) {
     this.collectIntervalTime = intervalTime;
 
@@ -148,53 +149,81 @@ export class Xmds {
       }
 
       await this.notifyStatus();
-      
+
       this.emitter.emit('reportFaults');
     }
 
     this.emitter.emit('collected');
   }
-  
+
   async registerDisplay() {
     const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
-        '  <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
-        '    <tns:RegisterDisplay>\n' +
-        '      <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
-        '      <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
-        '      <displayName xsi:type="xsd:string">' + this.config.displayName + '</displayName>\n' +
-        '      <clientType xsi:type="xsd:string">' + this.config.getXmdsPlayerType() + '</clientType>\n' +
-        '      <clientVersion xsi:type="xsd:string">' + this.config.version + '</clientVersion>\n' +
-        '      <clientCode xsi:type="xsd:int">' + this.config.versionCode + '</clientCode>\n' +
-        '      <macAddress xsi:type="xsd:string">n/a</macAddress>\n' +
-        '      <xmrChannel xsi:type="xsd:string">' + this.config.xmrChannel + '</xmrChannel>\n' +
-        '      <operatingSystem xsi:type="xsd:string">' + JSON.stringify(this.config.platform) + '</operatingSystem>\n' +
-        '      <licenceResult xsi:type="xsd:string"></licenceResult>\n' +
-        '    </tns:RegisterDisplay>\n' +
-        '  </soap:Body>\n' +
-        '</soap:Envelope>';
+      '  <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
+      '    <tns:RegisterDisplay>\n' +
+      '      <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
+      '      <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
+      '      <displayName xsi:type="xsd:string">' + this.config.displayName + '</displayName>\n' +
+      '      <clientType xsi:type="xsd:string">' + this.config.getXmdsPlayerType() + '</clientType>\n' +
+      '      <clientVersion xsi:type="xsd:string">' + this.config.version + '</clientVersion>\n' +
+      '      <clientCode xsi:type="xsd:int">' + this.config.versionCode + '</clientCode>\n' +
+      '      <macAddress xsi:type="xsd:string">n/a</macAddress>\n' +
+      '      <xmrChannel xsi:type="xsd:string">' + this.config.xmrChannel + '</xmrChannel>\n' +
+      '      <operatingSystem xsi:type="xsd:string">' + JSON.stringify(this.config.platform) + '</operatingSystem>\n' +
+      '      <licenceResult xsi:type="xsd:string"></licenceResult>\n' +
+      '    </tns:RegisterDisplay>\n' +
+      '  </soap:Body>\n' +
+      '</soap:Envelope>';
 
     return await axios.post(
-        this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=registerDisplay',
-        soapXml)
-        .then(async (response) => {
-          // Parse out the checkRf/checkSchedule values and store them.
-          const registerDisplay = new RegisterDisplay(response.data);
-          await registerDisplay.parse();
-          this.checkSchedule = registerDisplay.checkSchedule || null;
-          this.checkRf = registerDisplay.checkRf || null;
+      this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=registerDisplay',
+      soapXml,
+      {
+        headers: {
+          'Content-Type': 'text/xml; charset=utf-8',
+        },
+        responseType: 'text',
+        transformResponse: r => r,
+        validateStatus: () => true,
+      }
+    ).then(async ({ data, status }) => {
+      if (status === 200) {
+        // Parse out the checkRf/checkSchedule values and store them.
+        const registerDisplay = new RegisterDisplay(data);
+        await registerDisplay.parse();
+        this.checkSchedule = registerDisplay.checkSchedule || null;
+        this.checkRf = registerDisplay.checkRf || null;
 
-          // Update the collection interval as necessary
-          await this.updateInterval(registerDisplay.getSetting('collectInterval', 300) as number);
+        // Update the collection interval as necessary
+        await this.updateInterval(registerDisplay.getSetting('collectInterval', 300) as number);
 
-          console.debug('Display registered', {
-            method: 'XMDS::registerDisplay',
-            checkSchedule: registerDisplay.checkSchedule,
-            checkRf: registerDisplay.checkRf,
-          });
-          // Emit
-          this.emitter.emit('registered', registerDisplay);
-        })
-        .catch((err) => console.error(err));
+        // Save config
+        this.config.save();
+        this.config.saveCms();
+
+        console.debug('Display registered', {
+          method: 'XMDS::registerDisplay',
+          checkSchedule: registerDisplay.checkSchedule,
+          checkRf: registerDisplay.checkRf,
+        });
+        // Emit
+        this.emitter.emit('registered', registerDisplay);
+      } else if (status >= 400) {
+        throw await handleXmdsError(data);
+      }
+    }).catch(error => {
+      if (error instanceof AxiosError) {
+        if (error.code === AxiosErrorCodes.ECONNREFUSED) {
+          throw new Error('Unable to connect to the given CMS Address. Please check your connection and try again.');
+        } else {
+          throw {
+            code: error.code,
+            message: error.message,
+          }
+        }
+      } else {
+        throw error;
+      }
+    });
   }
 
   async requiredFiles(crc32: string) {
@@ -211,7 +240,7 @@ export class Xmds {
       await axios.post(
         this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=requiredFiles',
         soapXml)
-        .then(async(response) => {
+        .then(async (response) => {
           const requiredFiles = new RequiredFiles(response.data);
           await requiredFiles.parse();
 
@@ -231,14 +260,14 @@ export class Xmds {
 
   async mediaInventory(files: string) {
     const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
-        ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
-        '   <tns:MediaInventory>\n' +
-        '     <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
-        '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
-        '     <mediaInventory xsi:type-="xsd:string">&lt;files&gt;' + files + '&lt;/files&gt;</mediaInventory>\n' +
-        '   </tns:MediaInventory>\n' +
-        ' </soap:Body>\n' +
-        '</soap:Envelope>';
+      ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
+      '   <tns:MediaInventory>\n' +
+      '     <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
+      '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
+      '     <mediaInventory xsi:type-="xsd:string">&lt;files&gt;' + files + '&lt;/files&gt;</mediaInventory>\n' +
+      '   </tns:MediaInventory>\n' +
+      ' </soap:Body>\n' +
+      '</soap:Envelope>';
 
     return await axios.post(
       this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=mediaInventory',
@@ -247,12 +276,12 @@ export class Xmds {
   }
 
   async submitMediaInventory(mediaInventory: { xmlString: string; files: RequiredFile[] }) {
-      if (mediaInventory.xmlString.length > 0) {
-          // Report current state of files
-          await this.mediaInventory(mediaInventory.xmlString);
-      }
+    if (mediaInventory.xmlString.length > 0) {
+      // Report current state of files
+      await this.mediaInventory(mediaInventory.xmlString);
+    }
 
-      return mediaInventory.files;
+    return mediaInventory.files;
   }
 
   async schedule(crc32: string) {
@@ -269,7 +298,7 @@ export class Xmds {
       return await axios.post(
         this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=schedule',
         soapXml,)
-        .then(async(response) => {
+        .then(async (response) => {
           const playerSchedule = new Schedule(response.data);
           await playerSchedule.parse();
 
@@ -298,7 +327,7 @@ export class Xmds {
 
     try {
       return await axios.post(
-        '/xmds.php?v=' + this.config.xmdsVersion + '&method=',
+        this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=',
         soapXml
       );
     } catch (e) {
@@ -335,14 +364,14 @@ export class Xmds {
     logs.forEach((log) => logsXmlStr += submitLogsXmlString(log));
 
     const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
-        ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
-        '   <tns:SubmitLog>\n' +
-        '     <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
-        '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
-        '     <logXml xsi:type="xsd:string">&lt;logs&gt;' + logsXmlStr + '&lt;/logs&gt;</logXml>\n' +
-        '   </tns:SubmitLog>\n' +
-        ' </soap:Body>\n' +
-        '</soap:Envelope>';
+      ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
+      '   <tns:SubmitLog>\n' +
+      '     <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
+      '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
+      '     <logXml xsi:type="xsd:string">&lt;logs&gt;' + logsXmlStr + '&lt;/logs&gt;</logXml>\n' +
+      '   </tns:SubmitLog>\n' +
+      ' </soap:Body>\n' +
+      '</soap:Envelope>';
 
     await axios.post(
       this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=submitLog',
@@ -392,7 +421,7 @@ export class Xmds {
         if (this.hasSubmittedLogs || this.hasSubmittedLogs === null) {
           await this.handleSubmitLogs(db);
         }
-      }, batchInterval * 1000); 
+      }, batchInterval * 1000);
     } else {
       if (this.logsInterval !== undefined) {
         clearInterval(this.logsInterval);
@@ -405,28 +434,28 @@ export class Xmds {
   async submitStats(statsXmlString: string) {
     // Make a new request.
     const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
-        '  <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
-        '    <tns:SubmitStats>\n' +
-        '      <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
-        '      <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
-        '      <statXml xsi:type="xsd:string">&lt;records&gt;' + statsXmlString + '&lt;/records&gt;</statXml>\n' +
-        '    </tns:SubmitStats>\n' +
-        '  </soap:Body>\n' +
-        '</soap:Envelope>';
+      '  <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
+      '    <tns:SubmitStats>\n' +
+      '      <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
+      '      <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
+      '      <statXml xsi:type="xsd:string">&lt;records&gt;' + statsXmlString + '&lt;/records&gt;</statXml>\n' +
+      '    </tns:SubmitStats>\n' +
+      '  </soap:Body>\n' +
+      '</soap:Envelope>';
 
     return await axios.post(
-        this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=submitStat',
-        soapXml,)
-        .then(async response => {
-          const parser = new xml2js.Parser();
-          const rootDoc = await parser.parseStringPromise(response.data);
+      this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=submitStat',
+      soapXml,)
+      .then(async response => {
+        const parser = new xml2js.Parser();
+        const rootDoc = await parser.parseStringPromise(response.data);
 
-          // Get the encoded XML
-          const result = rootDoc["SOAP-ENV:Envelope"]["SOAP-ENV:Body"][0]["ns1:SubmitStatsResponse"][0].success[0]._;
+        // Get the encoded XML
+        const result = rootDoc["SOAP-ENV:Envelope"]["SOAP-ENV:Body"][0]["ns1:SubmitStatsResponse"][0].success[0]._;
 
-          return result === 'true';
-        })
-        .catch((error) => handleError(error));
+        return result === 'true';
+      })
+      .catch((error) => handleError(error));
   }
 
   async notifyStatus() {
@@ -449,7 +478,7 @@ export class Xmds {
       return handleError(e);
     }
   }
-  
+
   async reportFaults() {
     console.debug('[Xmds::reportFaults] Reporting Faults to CMS');
     // try {
@@ -480,37 +509,37 @@ export class Xmds {
   async getResource(file: RequiredFile) {
     try {
       const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
-          ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
-          '   <tns:GetResource>\n' +
-          '     <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
-          '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
-          '     <layoutId xsi:type="xsd:string">' + file.layoutId + '</layoutId>\n' +
-          '     <regionId xsi:type="xsd:string">' + file.regionId + '</regionId>\n' +
-          '     <mediaId xsi:type="xsd:string">' + file.mediaId + '</mediaId>\n' +
-          '   </tns:GetResource>\n' +
-          ' </soap:Body>\n' +
-          '</soap:Envelope>';
+        ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
+        '   <tns:GetResource>\n' +
+        '     <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
+        '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
+        '     <layoutId xsi:type="xsd:string">' + file.layoutId + '</layoutId>\n' +
+        '     <regionId xsi:type="xsd:string">' + file.regionId + '</regionId>\n' +
+        '     <mediaId xsi:type="xsd:string">' + file.mediaId + '</mediaId>\n' +
+        '   </tns:GetResource>\n' +
+        ' </soap:Body>\n' +
+        '</soap:Envelope>';
 
       return await axios.post(
         this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=getResource',
         soapXml
       )
-      .then(async(response) => {
-        const parser = new xml2js.Parser();
-        const rootDoc = await parser.parseStringPromise(response.data);
+        .then(async (response) => {
+          const parser = new xml2js.Parser();
+          const rootDoc = await parser.parseStringPromise(response.data);
 
-        // Get the encoded XML
-        const xml = rootDoc["SOAP-ENV:Envelope"]["SOAP-ENV:Body"][0]["ns1:GetResourceResponse"][0].resource[0]._;
+          // Get the encoded XML
+          const xml = rootDoc["SOAP-ENV:Envelope"]["SOAP-ENV:Body"][0]["ns1:GetResourceResponse"][0].resource[0]._;
 
-        return xml;
-      })
-      .catch((error) => {
-        console.error('[Xmds::getResource] > Error fetching resource XML: ', {
-          error,
+          return xml;
+        })
+        .catch((error) => {
+          console.error('[Xmds::getResource] > Error fetching resource XML: ', {
+            error,
+          });
+
+          handleError(error)
         });
-
-        handleError(error)
-      });
     } catch (e) {
       console.error('[Xmds::getResource] > Error fetching resource XML: ', {
         e,

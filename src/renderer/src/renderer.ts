@@ -23,7 +23,7 @@ import './assets/main.css';
 import '@xibosignage/xibo-layout-renderer/dist/styles.css';
 
 import $ from 'jquery';
-import XiboLayoutRenderer, {ConsumerPlatform, IXlr, OptionsType } from '@xibosignage/xibo-layout-renderer';
+import XiboLayoutRenderer, { ConsumerPlatform, IXlr, OptionsType } from '@xibosignage/xibo-layout-renderer';
 import DefaultLayout from './layout/defaultLayout';
 
 // import { ConfigHandler } from '@renderer/ConfigHandler';
@@ -83,7 +83,7 @@ export const startApp = async () => {
       logo: '/logo.png',
     },
   };
-  
+
   // Create a splash screen
   const splash = new DefaultLayout();
   splash.path = '0.xlf';
@@ -126,9 +126,17 @@ window.electron.onUpdateLoop((layouts) => {
 
 window.electron.onUpdateUniqueLayouts(async layouts => {
   if (xlr) {
-    console.log('[Renderer::onUpdateUniqueLayouts]', { layouts });
+    console.debug('[Renderer::onUpdateUniqueLayouts]', { layouts });
     await xlr.updateScheduleLayouts(layouts);
   }
+});
+
+window.electron.onShowStatusWindow((timeout) => {
+  console.debug('[Renderer::onShowStatusWindow]', { timeout });
+  $('#status').show();
+  setTimeout(() => {
+    $('#status').hide();
+  }, timeout * 1000);
 });
 
 const init = async () => {

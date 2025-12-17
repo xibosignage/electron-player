@@ -2,9 +2,7 @@ import { createNanoEvents, Emitter } from "nanoevents";
 import Schedule from "../xmds/response/schedule/schedule";
 import { Layout } from "../xmds/response/schedule/events/layout";
 import { DefaultLayout } from "../xmds/response/schedule/events/defaultLayout";
-import { State } from "./state";
 import { Config } from "../config/config";
-import { app } from "electron";
 import { getLayoutIds } from "./parser";
 import { InputLayoutType } from "./types";
 import { getLayoutFile } from "./fileManager";
@@ -14,9 +12,6 @@ export type ScheduleLayoutsType = Layout | DefaultLayout; // Add SspLayout
 interface ScheduleEvents {
     layouts: (object: ScheduleLayoutsType[]) => void;
 }
-
-const state = new State();
-const config = new Config(app, process.platform, state);
 
 export default class ScheduleManager {
     emitter: Emitter<ScheduleEvents>;
@@ -35,11 +30,14 @@ export default class ScheduleManager {
     playStats: { [scheduleId: number]: number } = {};
     scheduleIdsThatHaveMaxPlays: number[] = [];
 
-    constructor(schedule: Schedule) {
+    config: Config;
+
+    constructor(schedule: Schedule, config: Config) {
         this.emitter = createNanoEvents<ScheduleEvents>();
         this.schedule = schedule;
         this.layouts = [];
         this.layouts.push(this.getSplash());
+        this.config = config;
     }
 
     on<E extends keyof ScheduleEvents>(event: E, callback: ScheduleEvents[E]) {
@@ -70,7 +68,7 @@ export default class ScheduleManager {
         this.sspAverageDuration = averageDuration;
 
         console.info('SSP Share of Voice and Average Duration changed to '
-          + this.sspShareOfVoice + ' / ' + this.sspAverageDuration, {
+            + this.sspShareOfVoice + ' / ' + this.sspAverageDuration, {
             method: 'Schedule: Manager: Assess'
         });
     }
@@ -94,7 +92,7 @@ export default class ScheduleManager {
             console.info('No layouts in the schedule and no default, show splash screen', {
                 method: 'Schedule: Manager: Assess',
             });
-            config.state.scheduleLoop = 'Splash only';
+            this.config.state.scheduleLoop = 'Splash only';
             this.layouts = [this.getSplash()];
             this.emitter.emit('layouts', [this.getSplash()]);
             this.isAssessing = false;
@@ -199,8 +197,8 @@ export default class ScheduleManager {
 
         // We must have at least 1 normal schedule before we assess interrupts.
         if (layouts.length <= 0 &&
-          this.schedule &&
-          this.schedule.defaultLayout && await this.schedule.defaultLayout.isValid()
+            this.schedule &&
+            this.schedule.defaultLayout && await this.schedule.defaultLayout.isValid()
         ) {
             console.debug('>>>> XLR.debug No layouts, showing default layout.', {
                 method: 'Schedule: Manager: Assess'
@@ -376,7 +374,7 @@ export default class ScheduleManager {
 
         // Update the status window with the new layout loop.
         if (this.layouts.length > 0) {
-            config.state.scheduleLoop = this.layouts.map((el) => {
+            this.config.state.scheduleLoop = this.layouts.map((el) => {
                 return el.hash();
             }).join(', ');
         }
@@ -408,7 +406,7 @@ export default class ScheduleManager {
         splash.path = '0.xlf';
         return splash;
     }
-    
+
     hasSplashScreen(layouts: ScheduleLayoutsType[]) {
         for (const layout of layouts) {
             if (layout.file === 0) return true;

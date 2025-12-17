@@ -1,12 +1,8 @@
 import { DateTime } from "luxon";
 import axios, { AxiosResponse } from "axios";
-
-import { handleError } from "../../main/xmds/error/error";
-// import { Xmds } from "../../main/xmds/xmds";
 import { ConfigData, MainCallbackType } from "../../shared/types";
 
 export class ConfigHandler {
-    // readonly xmds: Xmds;
     readonly runApp = (_callbackParams: MainCallbackType): Promise<void> => {
         return Promise.resolve();
     };
@@ -102,7 +98,7 @@ export class ConfigHandler {
 
 
         const manualSubmitButton = document.getElementById('manualSubmitButton');
-    
+
         // Listen to the submit button being pressed.
         manualSubmitButton!.removeEventListener('click', this.handleManualSubmitButton);
         manualSubmitButton!.addEventListener('click', this.handleManualSubmitButton.bind(this));
@@ -127,7 +123,7 @@ export class ConfigHandler {
         this.config.cmsKey = (<HTMLInputElement>document.getElementsByName('cms-key')[0]).value;
         this.config.displayName = (<HTMLInputElement>document.getElementsByName('display-name')[0]).value;
         this.config.cmsUrl = (<HTMLInputElement>document.getElementsByName('cms-address')[0]).value;
-        
+
         this.handleRegisterDisplayCallback()
             .finally(() => {
                 $submitBtn.disabled = false;
@@ -139,20 +135,19 @@ export class ConfigHandler {
     async handleRegisterDisplayCallback() {
         try {
             await window.apiHandler.xmdsTryRegister(this.config);
-            // Assert this ID on the config object and save it.
-            // this.config.cmsKey = this.config.cmsKey;
-            // await this.config.save();
 
             // Close the config panel.
             this.$configPanel?.style.setProperty('display', 'none');
             await this.runApp({ context: 'main' });
         } catch (error) {
-            const reqError = handleError(error);
+            console.debug('[ConfigHandler::handleRegisterDisplayCallback]', error);
+
+            const reqError = error;
 
             if (reqError instanceof Error) {
                 this.$configPanelError!.textContent = reqError.message;
             } else {
-                console.log(reqError);
+                console.debug(reqError);
             }
         }
     }
@@ -181,7 +176,7 @@ export class ConfigHandler {
         this.codeInterval = setInterval(() => {
             axios.get('https://auth.signlicence.co.uk/getDetails?user_code='
                 + response.data.user_code + "&device_code=" + response.data.device_code)
-                .then(async  (response: AxiosResponse) => {
+                .then(async (response: AxiosResponse) => {
                     console.debug(response.data);
 
                     // If we get a message back, continue on.
@@ -192,8 +187,9 @@ export class ConfigHandler {
                     clearInterval(this.codeInterval);
 
                     // The response should contain the cmsKey.
-                    // this.xmds.cmsKey = response.data.cmsKey;
-                    // this.xmds.displayName = '';
+                    this.config.cmsKey = response.data.cmsKey;
+                    this.config.cmsUrl = response.data.cmsAddress;
+                    this.config.displayName = this.config.displayName + ' Linux player';
 
                     await this.handleRegisterDisplayCallback();
                 });
@@ -230,22 +226,13 @@ export class ConfigHandler {
     async licenseGenerateCode() {
         return axios.post('https://auth.signlicence.co.uk/generateCode', {
             hardwareId: this.config.hardwareKey,
-            type: 'chromeOS',
+            type: 'linux',
             version: this.config.version
         })
-        .then((response) => {
-            console.log('Raw response:', response);
-            // try {
-            //     const data = JSON.parse(response); // Manually parse the JSON
-            //     console.debug({ data });
-            // // Process the data
-            // } catch (e) {
-            //     console.error('Error parsing JSON:', e);
-            // // Handle the JSON parsing error
-            // }
-            // if (callback) callback.apply(this, [response]);
-            this.handleCodeInterval(response);
-        });
+            .then((response) => {
+                console.debug('ConfigHandler::licenseGenerateCode', response);
+                this.handleCodeInterval(response);
+            });
     }
 
     hideCodeCheckboxHandler(activationCode: string | null) {
@@ -311,7 +298,7 @@ export class ConfigHandler {
     setConfigDetails() {
         const $dateTimeTxt = (<HTMLElement>this.$configPanel!.querySelector('#date-time--text'));
         const $dateTimeTxt2 = (<HTMLElement>this.$configPanel!.querySelector('#date-time--text2'));
-        
+
         const dateTimeNow = DateTime.now().toFormat('FF');
 
         if ($dateTimeTxt) {

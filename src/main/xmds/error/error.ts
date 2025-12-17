@@ -62,9 +62,15 @@ export class Error {
         response: this.response,
         rootDoc,
       });
-      
-      // this.code = doc.getElementsByTagName('faultcode')[0]?.innerHTML;
-      // this.message = doc.getElementsByTagName('faultstring')[0]?.innerHTML;
+      const fault = rootDoc['SOAP-ENV:Envelope']['SOAP-ENV:Body'][0]['SOAP-ENV:Fault'][0];
+      console.debug('Error::parse', {
+        fault,
+      })
+
+      if (Boolean(fault)) {
+        this.code = fault['faultcode'][0];
+        this.message = fault['faultstring'][0];
+      }
     } else {
       this.message = this.response;
     }
@@ -75,6 +81,17 @@ export class Error {
     //   this.message = response;
     //   expiryDuration = { hours: 1 };
     // }
+  }
+
+  getMsg() {
+    return this.message;
+  }
+
+  getError() {
+    return {
+      code: this.code,
+      message: this.message,
+    }
   }
 }
 
@@ -95,49 +112,56 @@ export function isValidXmlString(xmlString: string) {
 }
 
 export function handleError(error: any, message?: string) {
-    const { response, request, message: errMessage, status } = error;
-    let errorObject = {
-        message: errMessage,
-        status,
-    };
+  const { response, request, message: errMessage, status } = error;
+  let errorObject = {
+    message: errMessage,
+    status,
+  };
 
-    if (response) {
-      let errorMsg: string[] = [];
+  console._log('[handleError]', {
+    error,
+    response,
+    request,
+    message,
+  })
 
-      if (String(response.data).length > 0) {
-        errorMsg.push('response.data=' + response.data);
-      }
+  if (response) {
+    let errorMsg: string[] = [];
 
-      if (String(message).length > 0) {
-        errorMsg.push(message as string);
-      }
-
-      if (String(errMessage).length > 0) {
-        errorMsg.push(errMessage);
-      }
-
-      errorObject.message = errorMsg.join(' - ');
-      errorObject.status = response.status;
-
-      let errResponse: Error = new Error(errorObject.message);
-      errResponse.parse();
-
-      if (errResponse.message === ErrorCodes.NotAuthorisedMsg) {
-          throw new Error(errResponse.message);
-      }
-
-      return errResponse;
-    } else if (request) {
-        // request sent but no response received
-        errorObject.status = request.status;
-
-        console.error(errorObject.message);
-
-        return errorObject;
-    } else {
-        errorObject.message = message;
-        console.error(errorObject.message);
-        console.debug({error, errorObject});
-        return errorObject;
+    if (String(response.data).length > 0) {
+      errorMsg.push('response.data=' + response.data);
     }
+
+    if (String(message).length > 0) {
+      errorMsg.push(message as string);
+    }
+
+    if (String(errMessage).length > 0) {
+      errorMsg.push(errMessage);
+    }
+
+    errorObject.message = errorMsg.join(' - ');
+    errorObject.status = response.status;
+
+    let errResponse: Error = new Error(errorObject.message);
+    errResponse.parse();
+
+    if (errResponse.message === ErrorCodes.NotAuthorisedMsg) {
+      throw new Error(errResponse.message);
+    }
+
+    return errResponse;
+  } else if (request) {
+    // request sent but no response received
+    errorObject.status = request.status;
+
+    console.error(errorObject.message);
+
+    return errorObject;
+  } else {
+    errorObject.message = message;
+    console.error(errorObject.message);
+    console.debug({ error, errorObject });
+    return errorObject;
+  }
 }

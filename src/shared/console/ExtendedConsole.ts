@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import he from 'he';
 
-import type { ConsoleDB, LogEntry  } from './ConsoleDB';
+import type { ConsoleDB, LogEntry } from './ConsoleDB';
 import { flatLogObj, FlattenedObject, flattenObject, unflattenObject } from '../../main/common/parser';
 import { LogCategoryType } from '../loggerLib';
 import { ConfigData } from '../types';
@@ -85,7 +85,7 @@ export function createExtendedConsole(
 
     if (db) {
       let logEntry = getLogEntryFromArgs(undefined, data) as LogEntry | undefined;
-      
+
       // Try to serialize data
       if (!logEntry) {
         logEntry = serializeArgs(data.flat()) as LogEntry;
@@ -106,8 +106,9 @@ export function createExtendedConsole(
       }
 
     }
-    
+
     if (sendToMain) {
+      console._log(`[ExtendedConsole::${context}] Sending log to main`, { level, data });
       sendToMain(level, ...data);
     }
   }
@@ -192,7 +193,7 @@ export function serializeArgs(input: any[]): LogEntry {
     refId: undefined,
     log: {} as Record<string, any>
   };
-  
+
   let consoleDataObj: LogEntry | undefined = undefined;
 
   // Parse consoleData and check for possible submitLogs params

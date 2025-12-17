@@ -19,8 +19,8 @@
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
 const fs = require('fs/promises');
-import {join} from 'path';
-import {machineId} from 'node-machine-id';
+import { join } from 'path';
+import { machineId } from 'node-machine-id';
 import { RegisterDisplay } from '../xmds/response/registerDisplay';
 import { State } from '../common/state';
 import { randomUUID } from 'crypto';
@@ -63,11 +63,11 @@ export class Config {
     this.dbPath = join(this.library, 'playerDb.db');
     this.settings = {};
     this.state = state;
-    this.state.swVersion = this.versionCode;
+    this.state.appVersionCode = import.meta.env.VITE_APP_VERSION_CODE || this.versionCode;
   };
 
   async load() {
-    console.log(`Loading ${ this.savePath }`);
+    console.log(`Loading ${this.savePath}`);
 
     try {
       let data = await fs.readFile(this.savePath);
@@ -83,7 +83,7 @@ export class Config {
       await this.save();
     }
 
-    console.log(`Loading ${ this.cmsSavePath }`);
+    console.log(`Loading ${this.cmsSavePath}`);
 
     try {
       let data = await fs.readFile(this.cmsSavePath);
@@ -99,7 +99,7 @@ export class Config {
   };
 
   async save() {
-    console.log(`Saving ${ this.savePath }`);
+    console.log(`Saving ${this.savePath}`);
     await fs.writeFile(
       this.savePath,
       JSON.stringify({
@@ -112,7 +112,7 @@ export class Config {
   };
 
   async saveCms() {
-    console.log(`Saving ${ this.cmsSavePath }`);
+    console.log(`Saving ${this.cmsSavePath}`);
     await fs.writeFile(
       this.cmsSavePath,
       JSON.stringify({
@@ -124,9 +124,12 @@ export class Config {
   };
 
   isConfigured() {
-    return this.cmsUrl !== undefined && this.cmsKey !== undefined;
+    const isCmsUrlSet = this.cmsUrl !== undefined && this.cmsUrl !== null && this.cmsUrl.trim() !== '';
+    const isCmsKeySet = this.cmsKey !== undefined && this.cmsKey !== null && this.cmsKey.trim() !== '';
+
+    return isCmsUrlSet && isCmsKeySet;
   }
-  
+
   isLicensed() {
     return true;
     // return this.licence.licensed;

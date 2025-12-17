@@ -19,7 +19,7 @@
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
 // @ts-ignore
-import {contextBridge, ipcRenderer} from 'electron/renderer';
+import { contextBridge, ipcRenderer } from 'electron/renderer';
 import { createExtendedConsole, serializeArgs } from '../shared/console/ExtendedConsole';
 import { ApiHandler, ConfigData } from '../shared/types';
 
@@ -28,6 +28,7 @@ const extendedConsole = createExtendedConsole({
   context: 'renderer',
   sendToMain: (level, args) => {
     const logMessage = serializeArgs(args);
+    console._log(`[ExtendedConsole::Renderer]`, { logMessage, args });
     ipcRenderer.invoke('renderer-log', level, logMessage);
   },
 });
@@ -41,8 +42,14 @@ const apiHandler: ApiHandler = {
   loadConfig: () => {
     return ipcRenderer.invoke('load-config');
   },
-  xmdsTryRegister: (config: ConfigData) => {
-    return ipcRenderer.invoke('xmds-try-register', config);
+  xmdsTryRegister: async (config: ConfigData) => {
+    const response = await ipcRenderer.invoke('xmds-try-register', config);
+
+    if (!response.success && response.error) {
+      throw new Error(response.error.message);
+    }
+
+    return response.data;
   },
   getConfig: () => ipcRenderer.invoke('get-config'),
 }
@@ -55,10 +62,10 @@ contextBridge.exposeInMainWorld('electron', {
   onStateChange: (callback) => ipcRenderer.on('state-change', (_event, value) => callback(value)),
   onUpdateLoop: (callback) => ipcRenderer.on('update-loop', (_event, value) => callback(value)),
   onUpdateUniqueLayouts: (callback) => ipcRenderer.on('update-unique-layouts', (_event, value) => callback(value)),
+  onShowStatusWindow: (callback) => ipcRenderer.on('showStatusWindow', (_event, timeout) => callback(timeout)),
 
   // Render to main
   openChildWindow: (url) => ipcRenderer.send('open-child-window', url),
-  xmdsTryRegister: (config: ConfigData) => ipcRenderer.send('xmds-try-register', config),
   initFaults: (faults) => ipcRenderer.send('initFaults', faults),
 
   // Broadcast channel for stats
