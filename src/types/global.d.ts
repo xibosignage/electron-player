@@ -1,9 +1,9 @@
 import { ExtendedConsole } from "@shared/console/ExtendedConsole";
 import { CustomConsole } from "@shared/console/CustomConsole";
-import { ApiHandler, ConfigData } from "@shared/types";
+import { ApiHandler, ConfigData, PlayerAPI } from "@shared/types";
 import { IXlr } from "@xibosignage/xibo-layout-renderer";
 
-export {};
+export { };
 
 declare global {
     interface Console {
@@ -22,6 +22,7 @@ declare global {
         config: ConfigData
         electron: ElectronApi;
         apiHandler: ApiHandler;
+        playerAPI: PlayerAPI;
         xlr: IXlr;
     }
 

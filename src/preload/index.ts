@@ -21,7 +21,7 @@
 // @ts-ignore
 import { contextBridge, ipcRenderer } from 'electron/renderer';
 import { createExtendedConsole, serializeArgs } from '../shared/console/ExtendedConsole';
-import { ApiHandler, ConfigData } from '../shared/types';
+import { ApiHandler, ConfigData, PlayerAPI } from '../shared/types';
 
 // Create renderer console that forwards logs to main via IPC
 const extendedConsole = createExtendedConsole({
@@ -56,7 +56,7 @@ const apiHandler: ApiHandler = {
 
 contextBridge.exposeInMainWorld('apiHandler', apiHandler);
 
-contextBridge.exposeInMainWorld('electron', {
+const playerApi: PlayerAPI = {
   // Main to render
   onConfigure: (callback) => ipcRenderer.on('configure', (_event, config: ConfigData) => callback(config)),
   onStateChange: (callback) => ipcRenderer.on('state-change', (_event, value) => callback(value)),
@@ -83,4 +83,6 @@ contextBridge.exposeInMainWorld('electron', {
       args,
     });
   },
-});
+};
+
+contextBridge.exposeInMainWorld('playerAPI', playerApi);

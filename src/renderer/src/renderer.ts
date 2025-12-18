@@ -47,13 +47,13 @@ const bc = new BroadcastChannel('statsBC');
 bc.addEventListener('message', (event) => {
   const eventData = event.data;
   console.debug('[Renderer::BroadcastChannel:statsBC] Received event', event);
-  window.electron.sendStatsBCMessage(eventData);
+  window.playerAPI.sendStatsBCMessage(eventData);
 });
 
 const runConfigHandler = async (config: ConfigData) => {
-  const { callbackName } = await window.electron.requestCallback();
+  const { callbackName } = await window.playerAPI.requestCallback();
   const mainCallback = async (...args) => {
-    return await window.electron.invokeCallback(callbackName, ...args);
+    return await window.playerAPI.invokeCallback(callbackName, ...args);
   };
 
   // Show the configure view
@@ -101,7 +101,7 @@ export const startApp = async () => {
   window.xlr = xlr;
 };
 
-window.electron.onConfigure(async (config: ConfigData) => {
+window.playerAPI.onConfigure(async (config: ConfigData) => {
   console.log('onConfigure');
   window.config = config;
 
@@ -112,26 +112,26 @@ window.electron.onConfigure(async (config: ConfigData) => {
   }
 });
 
-window.electron.onStateChange((state) => {
+window.playerAPI.onStateChange((state) => {
   $('#status').html(state);
 });
 
-window.electron.onUpdateLoop((layouts) => {
-  console.debug('[window.electron.onUpdateLoop]', { layouts });
+window.playerAPI.onUpdateLoop((layouts) => {
+  console.debug('[window.playerAPI.onUpdateLoop]', { layouts });
   if (xlr) {
-    console.debug('[window.electron.onUpdateLoop] > Emitting updateLoop to XLR');
+    console.debug('[window.playerAPI.onUpdateLoop] > Emitting updateLoop to XLR');
     xlr.emitter.emit('updateLoop', layouts);
   }
 });
 
-window.electron.onUpdateUniqueLayouts(async layouts => {
+window.playerAPI.onUpdateUniqueLayouts(async layouts => {
   if (xlr) {
     console.debug('[Renderer::onUpdateUniqueLayouts]', { layouts });
     await xlr.updateScheduleLayouts(layouts);
   }
 });
 
-window.electron.onShowStatusWindow((timeout) => {
+window.playerAPI.onShowStatusWindow((timeout) => {
   console.debug('[Renderer::onShowStatusWindow]', { timeout });
   $('#status').show();
   setTimeout(() => {
@@ -147,9 +147,9 @@ const init = async () => {
   if (!config.isConfigured) {
     runConfigHandler(config);
   } else {
-    const { callbackName } = await window.electron.requestCallback();
+    const { callbackName } = await window.playerAPI.requestCallback();
     const mainCallback = async (...args) => {
-      return await window.electron.invokeCallback(callbackName, ...args);
+      return await window.playerAPI.invokeCallback(callbackName, ...args);
     };
 
     // Run mainCallback

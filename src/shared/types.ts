@@ -18,6 +18,8 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
+import { InputLayoutType } from "@xibosignage/xibo-layout-renderer";
+
 export interface ConfigData {
   platform: string;
   appType: string;
@@ -45,4 +47,25 @@ export interface ApiHandler {
   loadConfig: () => Promise<ConfigData>;
   xmdsTryRegister: (config: ConfigData) => Promise<void>;
   getConfig: () => Promise<ConfigData>;
+}
+
+export interface PlayerAPI {
+  // Main to render
+  onConfigure: (callback: (config: ConfigData) => void) => void;
+  onStateChange: (callback: (state: string) => void) => void;
+  onUpdateLoop: (callback: (layouts: InputLayoutType[]) => void) => void;
+  onUpdateUniqueLayouts: (callback: (layouts: InputLayoutType[]) => void) => void;
+  onShowStatusWindow: (callback: (timeout: number) => void) => void;
+
+  // Render to main
+  openChildWindow: (url: string) => void;
+  initFaults: (faults: any[]) => void;
+
+  // Broadcast channel for stats
+  sendStatsBCMessage: (payload: any) => void;
+  onStatsBCMessage: (callback: (payload: any) => void) => void;
+
+  // Callbacks
+  requestCallback: () => Promise<{ callbackName: string }>;
+  invokeCallback: (callbackName: string, ...args: any[]) => Promise<any>;
 }
