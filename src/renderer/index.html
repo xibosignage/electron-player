@@ -22,15 +22,193 @@
 <html>
     <head>
         <meta charset="UTF-8">
-        <meta
-                http-equiv="Content-Security-Policy"
-                content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
-        />
         <meta name="viewport" content="viewport-fit=cover, width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=5.0" />
         <meta name="description" content="Xibo Digital Signage" />
         <title>Xibo Digital Signage</title>
     </head>
     <body>
+        <div class="page-1 layout" id="config" style="display: none;">
+            <div class="top-header">
+                <h3>Choose how to connect your CMS</h3>
+                <span class="toggle-config">
+                    <button type="button" class="active" data-target="activation-code">
+                        Use Activation Code
+                    </button>
+                    <button type="button" data-target="configure-manually">
+                        Configure Manually
+                    </button>
+                </span>
+            </div>
+            <!-- Activation Code and Configure Manually -->
+            <div class="active-page">
+                <!-- Activation Code -->
+                <div class="activation-container shared-container">
+                    <div id="activation-code" class="item1">
+                        <div class="activation-code">
+                            <h2>Activation Code</h2>
+                            <p>
+                                Keep this page open until you've added your display to the CMS.
+                            </p>
+                            <!-- Text code here -->
+                            <code class="code-text"></code>
+                            <span class="checkbox hide-code--wrapper">
+                                <input type="checkbox" id="hide-code" />
+                                <label for="hide-code">Hide</label>
+                            </span>
+                            </div>
+                            <div class="details">
+                            <div>
+                                <p>Firmware version:</p>
+                                <p id="firmware">%VITE_APP_VERSION%</p> <!-- Placeholder for firmware version -->
+                            </div>
+                            <div>
+                                <p id="date-time--text">Date and Time Placeholder</p> <!-- This can be updated dynamically as well -->
+                                <!-- <p id="wifi-name" class="wifi-name"></p> Placeholder for Wi-Fi name -->
+                            </div>
+                        </div>
+                        <!-- Temporarily hidden for ChromeOS
+                        <div class="advanced-details" id="advanced-details-1">
+                        <p>Show advanced</p>
+                        <span class="icon"></span>
+                        </div>
+                        <div id="hidden-details-1" class="hidden-details">
+                        <div>
+                            <p>MAC address:</p>
+                            <p id="mac-address"></p>
+                        </div>
+                        <div>
+                            <p>IP address:</p>
+                            <p id="ip-address"></p>
+                        </div>
+                        </div>
+                        -->
+                    </div>
+                    <div class="item2 activation-code">
+                        <div class="slideshow-container">
+                            <div class="mySlides fade">
+                                <img src="/assets/images/graphic-01.png" style="width: 100%" />
+                            </div>
+
+                            <div class="mySlides fade">
+                                <img src="/assets/images/graphic-02.png" style="width: 100%" />
+                            </div>
+
+                            <div class="mySlides fade">
+                                <img src="/assets/images/graphic-03.png" style="width: 100%" />
+                            </div>
+
+                            <div class="mySlides fade">
+                                <img src="/assets/images/graphic-04.png" style="width: 100%" />
+                            </div>
+                            <div style="text-align: center">
+                                <span class="dot" data-slide="0"></span>
+                                <span class="dot" data-slide="1"></span>
+                                <span class="dot" data-slide="2"></span>
+                                <span class="dot" data-slide="3"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Configure Manually -->
+                <div class="config-container shared-container" style="display: none">
+                    <div id="configure-manually" class="item1">
+                        <div class="configure-manually">
+                            <h2>Configure Manually</h2>
+                            <p>Instructions for manual configuration.</p>
+                            <!-- Form for manaul configuration -->
+                            <form action="">
+                                <div class="input-container">
+                                    <label for="displayName">Display Name:</label>
+                                    <input required type="text" id="displayName" name="display-name" />
+                                    <p>Once connected, this can only be changed in the CMS.</p>
+                                </div>
+                                <div class="input-container input--cms-address">
+                                    <label for="cmsAddress">CMS Address:</label>
+                                    <input required type="text" id="cmsAddress" name="cms-address" value="http://localhost" />
+                                    <!-- <p>Enter the address of your CMS.</p> -->
+                                </div>
+                                <div class="input-container">
+                                    <label for="cmsKey">CMS Key:
+                                        <span class="checkbox hide-cmsKey--wrapper">
+                                            <input type="checkbox" id="hide-cmsKey" />
+                                            <label for="hide-cmsKey">Hide</label>
+                                        </span>
+                                    </label>
+                                    <input required type="text" id="cmsKey" name="cms-key" />
+                                    <p>
+                                        Enter the secret key for the CMS to validate this player.
+                                    </p>
+                                </div>
+                                <div class="flex-content-both">
+                                    <div class="error"></div>
+                                    <div class="flex-content-end">
+                                        <img id="config-loader" alt="Loading..." src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBzdGFuZGFsb25lPSJubyI/Pgo8IURPQ1RZUEUgc3ZnIFBVQkxJQyAiLS8vVzNDLy9EVEQgU1ZHIDEuMS8vRU4iICJodHRwOi8vd3d3LnczLm9yZy9HcmFwaGljcy9TVkcvMS4xL0RURC9zdmcxMS5kdGQiPgo8c3ZnIHdpZHRoPSI0MHB4IiBoZWlnaHQ9IjQwcHgiIHZpZXdCb3g9IjAgMCA0MCA0MCIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB4bWw6c3BhY2U9InByZXNlcnZlIiBzdHlsZT0iZmlsbC1ydWxlOmV2ZW5vZGQ7Y2xpcC1ydWxlOmV2ZW5vZGQ7c3Ryb2tlLWxpbmVqb2luOnJvdW5kO3N0cm9rZS1taXRlcmxpbWl0OjEuNDE0MjE7IiB4PSIwcHgiIHk9IjBweCI+CiAgICA8ZGVmcz4KICAgICAgICA8c3R5bGUgdHlwZT0idGV4dC9jc3MiPjwhW0NEQVRBWwogICAgICAgICAgICBALXdlYmtpdC1rZXlmcmFtZXMgc3BpbiB7CiAgICAgICAgICAgICAgZnJvbSB7CiAgICAgICAgICAgICAgICAtd2Via2l0LXRyYW5zZm9ybTogcm90YXRlKDBkZWcpCiAgICAgICAgICAgICAgfQogICAgICAgICAgICAgIHRvIHsKICAgICAgICAgICAgICAgIC13ZWJraXQtdHJhbnNmb3JtOiByb3RhdGUoMzU5ZGVnKQogICAgICAgICAgICAgIH0KICAgICAgICAgICAgfQogICAgICAgICAgICBAa2V5ZnJhbWVzIHNwaW4gewogICAgICAgICAgICAgIGZyb20gewogICAgICAgICAgICAgICAgdHJhbnNmb3JtOiByb3RhdGUoMGRlZykKICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgdG8gewogICAgICAgICAgICAgICAgdHJhbnNmb3JtOiByb3RhdGUoMzU5ZGVnKQogICAgICAgICAgICAgIH0KICAgICAgICAgICAgfQogICAgICAgICAgICBzdmcgewogICAgICAgICAgICAgICAgLXdlYmtpdC10cmFuc2Zvcm0tb3JpZ2luOiA1MCUgNTAlOwogICAgICAgICAgICAgICAgLXdlYmtpdC1hbmltYXRpb246IHNwaW4gMS41cyBsaW5lYXIgaW5maW5pdGU7CiAgICAgICAgICAgICAgICAtd2Via2l0LWJhY2tmYWNlLXZpc2liaWxpdHk6IGhpZGRlbjsKICAgICAgICAgICAgICAgIGFuaW1hdGlvbjogc3BpbiAxLjVzIGxpbmVhciBpbmZpbml0ZTsKICAgICAgICAgICAgfQogICAgICAgIF1dPjwvc3R5bGU+CiAgICA8L2RlZnM+CiAgICA8ZyBpZD0ib3V0ZXIiPgogICAgICAgIDxnPgogICAgICAgICAgICA8cGF0aCBkPSJNMjAsMEMyMi4yMDU4LDAgMjMuOTkzOSwxLjc4ODEzIDIzLjk5MzksMy45OTM5QzIzLjk5MzksNi4xOTk2OCAyMi4yMDU4LDcuOTg3ODEgMjAsNy45ODc4MUMxNy43OTQyLDcuOTg3ODEgMTYuMDA2MSw2LjE5OTY4IDE2LjAwNjEsMy45OTM5QzE2LjAwNjEsMS43ODgxMyAxNy43OTQyLDAgMjAsMFoiIHN0eWxlPSJmaWxsOmJsYWNrOyIvPgogICAgICAgIDwvZz4KICAgICAgICA8Zz4KICAgICAgICAgICAgPHBhdGggZD0iTTUuODU3ODYsNS44NTc4NkM3LjQxNzU4LDQuMjk4MTUgOS45NDYzOCw0LjI5ODE1IDExLjUwNjEsNS44NTc4NkMxMy4wNjU4LDcuNDE3NTggMTMuMDY1OCw5Ljk0NjM4IDExLjUwNjEsMTEuNTA2MUM5Ljk0NjM4LDEzLjA2NTggNy40MTc1OCwxMy4wNjU4IDUuODU3ODYsMTEuNTA2MUM0LjI5ODE1LDkuOTQ2MzggNC4yOTgxNSw3LjQxNzU4IDUuODU3ODYsNS44NTc4NloiIHN0eWxlPSJmaWxsOnJnYigyMTAsMjEwLDIxMCk7Ii8+CiAgICAgICAgPC9nPgogICAgICAgIDxnPgogICAgICAgICAgICA8cGF0aCBkPSJNMjAsMzIuMDEyMkMyMi4yMDU4LDMyLjAxMjIgMjMuOTkzOSwzMy44MDAzIDIzLjk5MzksMzYuMDA2MUMyMy45OTM5LDM4LjIxMTkgMjIuMjA1OCw0MCAyMCw0MEMxNy43OTQyLDQwIDE2LjAwNjEsMzguMjExOSAxNi4wMDYxLDM2LjAwNjFDMTYuMDA2MSwzMy44MDAzIDE3Ljc5NDIsMzIuMDEyMiAyMCwzMi4wMTIyWiIgc3R5bGU9ImZpbGw6cmdiKDEzMCwxMzAsMTMwKTsiLz4KICAgICAgICA8L2c+CiAgICAgICAgPGc+CiAgICAgICAgICAgIDxwYXRoIGQ9Ik0yOC40OTM5LDI4LjQ5MzlDMzAuMDUzNiwyNi45MzQyIDMyLjU4MjQsMjYuOTM0MiAzNC4xNDIxLDI4LjQ5MzlDMzUuNzAxOSwzMC4wNTM2IDM1LjcwMTksMzIuNTgyNCAzNC4xNDIxLDM0LjE0MjFDMzIuNTgyNCwzNS43MDE5IDMwLjA1MzYsMzUuNzAxOSAyOC40OTM5LDM0LjE0MjFDMjYuOTM0MiwzMi41ODI0IDI2LjkzNDIsMzAuMDUzNiAyOC40OTM5LDI4LjQ5MzlaIiBzdHlsZT0iZmlsbDpyZ2IoMTAxLDEwMSwxMDEpOyIvPgogICAgICAgIDwvZz4KICAgICAgICA8Zz4KICAgICAgICAgICAgPHBhdGggZD0iTTMuOTkzOSwxNi4wMDYxQzYuMTk5NjgsMTYuMDA2MSA3Ljk4NzgxLDE3Ljc5NDIgNy45ODc4MSwyMEM3Ljk4NzgxLDIyLjIwNTggNi4xOTk2OCwyMy45OTM5IDMuOTkzOSwyMy45OTM5QzEuNzg4MTMsMjMuOTkzOSAwLDIyLjIwNTggMCwyMEMwLDE3Ljc5NDIgMS43ODgxMywxNi4wMDYxIDMuOTkzOSwxNi4wMDYxWiIgc3R5bGU9ImZpbGw6cmdiKDE4NywxODcsMTg3KTsiLz4KICAgICAgICA8L2c+CiAgICAgICAgPGc+CiAgICAgICAgICAgIDxwYXRoIGQ9Ik01Ljg1Nzg2LDI4LjQ5MzlDNy40MTc1OCwyNi45MzQyIDkuOTQ2MzgsMjYuOTM0MiAxMS41MDYxLDI4LjQ5MzlDMTMuMDY1OCwzMC4wNTM2IDEzLjA2NTgsMzIuNTgyNCAxMS41MDYxLDM0LjE0MjFDOS45NDYzOCwzNS43MDE5IDcuNDE3NTgsMzUuNzAxOSA1Ljg1Nzg2LDM0LjE0MjFDNC4yOTgxNSwzMi41ODI0IDQuMjk4MTUsMzAuMDUzNiA1Ljg1Nzg2LDI4LjQ5MzlaIiBzdHlsZT0iZmlsbDpyZ2IoMTY0LDE2NCwxNjQpOyIvPgogICAgICAgIDwvZz4KICAgICAgICA8Zz4KICAgICAgICAgICAgPHBhdGggZD0iTTM2LjAwNjEsMTYuMDA2MUMzOC4yMTE5LDE2LjAwNjEgNDAsMTcuNzk0MiA0MCwyMEM0MCwyMi4yMDU4IDM4LjIxMTksMjMuOTkzOSAzNi4wMDYxLDIzLjk5MzlDMzMuODAwMywyMy45OTM5IDMyLjAxMjIsMjIuMjA1OCAzMi4wMTIyLDIwQzMyLjAxMjIsMTcuNzk0MiAzMy44MDAzLDE2LjAwNjEgMzYuMDA2MSwxNi4wMDYxWiIgc3R5bGU9ImZpbGw6cmdiKDc0LDc0LDc0KTsiLz4KICAgICAgICA8L2c+CiAgICAgICAgPGc+CiAgICAgICAgICAgIDxwYXRoIGQ9Ik0yOC40OTM5LDUuODU3ODZDMzAuMDUzNiw0LjI5ODE1IDMyLjU4MjQsNC4yOTgxNSAzNC4xNDIxLDUuODU3ODZDMzUuNzAxOSw3LjQxNzU4IDM1LjcwMTksOS45NDYzOCAzNC4xNDIxLDExLjUwNjFDMzIuNTgyNCwxMy4wNjU4IDMwLjA1MzYsMTMuMDY1OCAyOC40OTM5LDExLjUwNjFDMjYuOTM0Miw5Ljk0NjM4IDI2LjkzNDIsNy40MTc1OCAyOC40OTM5LDUuODU3ODZaIiBzdHlsZT0iZmlsbDpyZ2IoNTAsNTAsNTApOyIvPgogICAgICAgIDwvZz4KICAgIDwvZz4KPC9zdmc+Cg=="/>
+                                        <input type="submit" value="Connect" id="manualSubmitButton" />
+                                    </div>
+                                </div>
+                            </form>
+                            <div class="details">
+                                <div>
+                                    <p>Firmware version:</p>
+                                    <p id="firmware">%VITE_APP_VERSION%</p> <!-- Placeholder for firmware version -->
+                                </div>
+                                <div>
+                                    <p id="date-time--text2">Date and Time</p> <!-- This can be updated dynamically as well -->
+                                <!--<p id="wifi-name" class="wifi-name"></p>  Placeholder for Wi-Fi name -->
+                                </div>
+                            </div>
+                            <!-- Temporarily hidden for ChromeOS
+                            <div class="advanced-details" id="advanced-details-2">
+                                <p>Show advanced</p>
+                                <span class="icon"></span>
+                            </div>
+                            <div id="hidden-details-2" class="hidden-details">
+                                <div>
+                                <p>MAC address:</p>
+                                <p id="mac-address"></p>
+                                </div>
+                                <div>
+                                <p>IP address:</p>
+                                <p id="ip-address"></p>
+                                </div>
+                            </div>
+                            -->
+                        </div>
+                    </div>
+                    <div class="item2 configure-manually">
+                        <img src="/assets/images/graphic-05.png" style="width: 80%; margin: auto"  alt="Graphics05"/>
+                    </div>
+                </div>
+            </div>
+            <!-- Unavailable Code and No connection -->
+            <div class="inactive-page" style="display: none;">
+                <!-- Unavailable Code Container-->
+                <div class="unavailable-code inactive-layout" style="display: none;">
+                    <img src="/assets/images/help.svg" style="width: 30px" />
+                    <img src="/assets/images/code.svg" style="width: 100px" />
+                    <h1>Activation Code Unavailable</h1>
+                    <p style="text-align: center; line-height: 0.8; font-size: small;">
+                        Sorry, the activation code is not available, please try again. <br></br> You can
+                        also connect to the CMS by selecting “Configure Manually” above.
+                    </p>
+                    <button class="btn" id="retry-use-code">
+                        Retry
+                    </button>
+                </div>
+                <!-- No connection Container-->
+                <div class="no-network inactive-layout" style="display: none;">
+                    <img src="/assets/images/no-wifi.svg" style="width: 100px" />
+                    <h1>Unable to Connect</h1>
+                    <p style="text-align: center; line-height: 0.8; font-size: small;">
+                        Please make sure that you have an internet connection and try again.<br></br>
+                        You can also connect to the CMS by selecting “Configure Manually” above.
+                    </p>
+                    <button class="btn">
+                        Retry
+                    </button>
+                </div>
+            </div>
+        </div>
         <div style="display: none;" id="status"></div>
         <script type="module" src="/src/renderer.ts"></script>
     </body>

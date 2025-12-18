@@ -31,6 +31,7 @@ export default defineConfig({
           index: resolve(__dirname, 'src/main/index.ts'),
           express: resolve(__dirname, 'src/main/express.ts'),
         },
+        external: ['better-sqlite3'],
       },
     },
   },
@@ -41,6 +42,7 @@ export default defineConfig({
     resolve: {
       alias: {
         '@renderer': resolve('src/renderer/src'),
+        '@shared': resolve('./src/shared'),
       },
     },
   },

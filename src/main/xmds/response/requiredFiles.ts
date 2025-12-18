@@ -19,31 +19,13 @@
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
 import xml2js from 'xml2js';
+import { RequiredFile } from '../../common/types';
+import { mediaInventoryFileXmlString } from '../../common/parser';
 
-type PurgeItemType = {
+export type PurgeItemType = {
     id: number | null;
     storedAs: string | null;
 };
-
-type RequiredFileType = {
-    readonly type: string | null;
-    readonly id: number | string;
-    readonly size: number;
-    readonly md5: string;
-    readonly download: string;
-    readonly path: string;
-    readonly code?: string;
-    readonly saveAs: string;
-    readonly fileType: string;
-    readonly layoutId: number;
-    readonly regionId: number | null;
-    readonly mediaId: number | null;
-    readonly updated: number | null;
-    readonly updateInterval: number | null;
-    readonly width: number;
-    readonly height: number;
-    shortPath: RequestInfo | URL;
-}
 
 /**
  * Register Required Files.
@@ -54,7 +36,7 @@ export default class RequiredFiles {
     filterFrom: string | undefined;
     filterTo: string | undefined;
     purge?: PurgeItemType[];
-    files: RequiredFileType[] = [];
+    files: RequiredFile[] = [];
 
     constructor(response: string) {
         this.response = response;
@@ -76,13 +58,32 @@ export default class RequiredFiles {
         this.purge = [];
 
         if (doc.files.file && doc.files.file.length > 0) {
-            this.files = doc.files.file.reduce((a: RequiredFileType[], b) => {
-                return [...a, b.$];
+            this.files = doc.files.file.reduce((a: RequiredFile[], b) => {
+                const _file = b.$;
+
+                if (Boolean(_file.layoutid)) {
+                    _file.layoutId = parseInt(_file.layoutid);
+                    delete _file.layoutid;
+                }
+
+                if (Boolean(_file.regionid)) {
+                    _file.regionId = parseInt(_file.regionid);
+                    delete _file.regionid;
+                }
+
+                if (Boolean(_file.mediaid)) {
+                    _file.mediaId = parseInt(_file.mediaid);
+                    delete _file.mediaid;
+                }
+
+                return [...a, _file];
             }, []);
         }
 
-        if (doc.files.purge && doc.files.purge.length > 0 && doc.files.purge[0] !== '') {
-            this.purge = doc.files.purge.reduce((a: PurgeItemType[], b) => {
+        if (doc.files.purge && doc.files.purge.length > 0 &&
+            doc.files.purge[0] !== '' && Boolean(doc.files.purge[0].item)
+        ) {
+            this.purge = doc.files.purge[0].item.reduce((a: PurgeItemType[], b) => {
                 let idAttrib: number | null = parseInt(b.$.id ?? '');
                 const storedAsAttrib = b.$.storedAs;
 
@@ -93,5 +94,35 @@ export default class RequiredFiles {
                 return [...a, {id: idAttrib, storedAs: storedAsAttrib}];
             }, []);
         }
+    }
+
+    async composeMediaInventory(isComplete: boolean = false): Promise<{ xmlString: string; files: RequiredFile[]; }> {
+      // Store xmlFileString for mediaInventory use
+      const requiredFiles = await Promise.all(this.files.map((fileObj) => {
+          return {
+            xmlString: mediaInventoryFileXmlString({
+              id: fileObj.id,
+              type: fileObj.type as string,
+              fileType: fileObj.fileType || '',
+              size: fileObj.size || 0,
+              md5: fileObj.md5 || '',
+              path: fileObj.path || '',
+              saveAs: fileObj.saveAs || '',
+            }, isComplete),
+            copy: fileObj,
+        };
+      }));
+
+      const [xmlFilesString, mediaFiles] = requiredFiles.reduce(
+        ([filesString, fileObj]: [string, RequiredFile[]], b) => {
+          filesString += b.xmlString;
+          
+          return [filesString, [...fileObj, b.copy]];
+        }, ['', [] as RequiredFile[]]);
+
+        return {
+            xmlString: xmlFilesString,
+            files: mediaFiles,
+        };
     }
 }

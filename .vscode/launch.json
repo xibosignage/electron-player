@@ -12,10 +12,10 @@
       "name": "Launch via NPM",
       "request": "launch",
       "runtimeArgs": [
-        "run-script",
+        "run",
         "dev"
       ],
-      "runtimeExecutable": "npm",
+      "runtimeExecutable": "C:\\nvm4w\\nodejs\\npm.cmd",
       "skipFiles": [
         "<node_internals>/**"
       ],

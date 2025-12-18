@@ -19,8 +19,8 @@
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
 const fs = require('fs/promises');
-import {join} from 'path';
-import {machineId} from 'node-machine-id';
+import { join } from 'path';
+import { machineId } from 'node-machine-id';
 import { RegisterDisplay } from '../xmds/response/registerDisplay';
 import { State } from '../common/state';
 import { randomUUID } from 'crypto';
@@ -37,6 +37,7 @@ export class Config {
   // Config file
   readonly savePath: string;
   readonly cmsSavePath: string;
+  readonly dbPath: string;
 
   // State
   state: State;
@@ -59,21 +60,22 @@ export class Config {
     this.cmsSavePath = join(savePath, 'cms_config.json');
     this.platform = platform;
     this.library = join(app.getPath('documents'), 'xibo_library');
+    this.dbPath = join(this.library, 'playerDb.db');
     this.settings = {};
     this.state = state;
-    this.state.swVersion = this.versionCode;
+    this.state.appVersionCode = import.meta.env.VITE_APP_VERSION_CODE || this.versionCode;
   };
 
   async load() {
-    console.log(`Loading ${ this.savePath }`);
+    console.log(`Loading ${this.savePath}`);
 
     try {
       let data = await fs.readFile(this.savePath);
       data = JSON.parse(data);
-      this.hardwareKey = data.hardwareKey;
+      this.hardwareKey = data.hardwareKey ?? (await machineId()).substring(0, 40);
       this.cmsUrl = data.cmsUrl;
       this.cmsKey = data.cmsKey;
-      this.xmrChannel = data.xmrChannel;
+      this.xmrChannel = data.xmrChannel ?? randomUUID();
     } catch {
       // Probably the file doesn't exist.
       this.hardwareKey = (await machineId()).substring(0, 40);
@@ -81,7 +83,7 @@ export class Config {
       await this.save();
     }
 
-    console.log(`Loading ${ this.cmsSavePath }`);
+    console.log(`Loading ${this.cmsSavePath}`);
 
     try {
       let data = await fs.readFile(this.cmsSavePath);
@@ -97,7 +99,7 @@ export class Config {
   };
 
   async save() {
-    console.log(`Saving ${ this.savePath }`);
+    console.log(`Saving ${this.savePath}`);
     await fs.writeFile(
       this.savePath,
       JSON.stringify({
@@ -110,7 +112,7 @@ export class Config {
   };
 
   async saveCms() {
-    console.log(`Saving ${ this.cmsSavePath }`);
+    console.log(`Saving ${this.cmsSavePath}`);
     await fs.writeFile(
       this.cmsSavePath,
       JSON.stringify({
@@ -122,7 +124,15 @@ export class Config {
   };
 
   isConfigured() {
-    return this.cmsUrl && this.cmsKey;
+    const isCmsUrlSet = this.cmsUrl !== undefined && this.cmsUrl !== null && this.cmsUrl.trim() !== '';
+    const isCmsKeySet = this.cmsKey !== undefined && this.cmsKey !== null && this.cmsKey.trim() !== '';
+
+    return isCmsUrlSet && isCmsKeySet;
+  }
+
+  isLicensed() {
+    return true;
+    // return this.licence.licensed;
   }
 
   async setConfig(registerDisplay: RegisterDisplay) {
@@ -156,5 +166,27 @@ export class Config {
     return 'chromeOS'
     // We have a different display profile for electron on windows vs electron on linux.
     //return this.platform == 'win32' ? 'electron-win' : 'electron-linux';
+  }
+
+  toJson(): string {
+    return JSON.stringify({
+      platform: this.platform,
+      appType: this.appType,
+      version: this.version,
+      versionCode: this.versionCode,
+      savePath: this.savePath,
+      cmsSavePath: this.cmsSavePath,
+      dbPath: this.dbPath,
+      hardwareKey: this.hardwareKey,
+      xmrChannel: this.xmrChannel,
+      cmsUrl: this.cmsUrl,
+      cmsKey: this.cmsKey,
+      library: this.library,
+      xmdsVersion: this.xmdsVersion,
+      displayName: this.displayName,
+      settings: this.settings,
+      isConfigured: this.isConfigured(),
+      state: this.state.toJson(),
+    });
   }
 }
