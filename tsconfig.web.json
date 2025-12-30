@@ -6,8 +6,8 @@
     "src/preload/*.d.ts",
     "src/shared/**/*",
     "src/types/global.d.ts",
-    "src/renderer/src/ConfigHandler.ts"
-  ],
+    "src/renderer/src/ConfigHandler.ts",
+    "src/vite-env.d.ts"  ],
   "compilerOptions": {
     "types": ["node"],
     "composite": true,

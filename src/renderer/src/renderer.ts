@@ -26,12 +26,9 @@ import $ from 'jquery';
 import XiboLayoutRenderer, { ConsumerPlatform, IXlr, OptionsType } from '@xibosignage/xibo-layout-renderer';
 import DefaultLayout from './layout/defaultLayout';
 
-// import { ConfigHandler } from '@renderer/ConfigHandler';
-// import { loadConfig, registerConfigAdapter } from '@shared/console/ExtendedConsole';
-// import { Config } from 'src/main/config/config';
 import { ConfigHandler } from './ConfigHandler';
 import { ConfigData } from '@shared/types';
-// import { Xmds } from 'src/main/xmds/xmds';
+import logo from './assets/images/logo.png';
 
 let xlr: IXlr;
 
@@ -79,8 +76,8 @@ export const startApp = async () => {
       hardwareKey: config.hardwareKey as string,
     },
     icons: {
-      splashScreen: '/logo.png',
-      logo: '/logo.png',
+      splashScreen: logo,
+      logo: logo,
     },
   };
 
@@ -90,7 +87,7 @@ export const startApp = async () => {
 
   let layoutLoop = [splash];
 
-  xlr = XiboLayoutRenderer(layoutLoop, xlrOptions as any);
+  xlr = XiboLayoutRenderer(layoutLoop, [], xlrOptions as any);
   xlr.init().then((response: any) => {
     console.log('onConfigure: play schedules');
     console.log(response);

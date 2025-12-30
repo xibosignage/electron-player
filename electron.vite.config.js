@@ -24,8 +24,10 @@ import {defineConfig, externalizeDepsPlugin, bytecodePlugin}
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin(), bytecodePlugin()],
+    plugins: [externalizeDepsPlugin()],
     build: {
+      sourcemap: true,
+      minify: false,
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/main/index.ts'),

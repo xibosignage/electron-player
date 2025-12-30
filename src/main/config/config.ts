@@ -63,7 +63,7 @@ export class Config {
     this.dbPath = join(this.library, 'playerDb.db');
     this.settings = {};
     this.state = state;
-    this.state.appVersionCode = import.meta.env.VITE_APP_VERSION_CODE || this.versionCode;
+    this.state.appVersionCode = process.env.APP_VERSION_CODE || this.versionCode;
   };
 
   async load() {

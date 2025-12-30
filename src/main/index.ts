@@ -27,6 +27,7 @@ import { join } from 'path';
 import { optimizer, is, electronApp } from '@electron-toolkit/utils';
 import { Xmr } from '@xibosignage/xibo-communication-framework';
 import axios from 'axios';
+import 'dotenv/config';
 
 import icon from '../../resources/icon.png?asset';
 import { spawn } from 'child_process';
@@ -101,8 +102,6 @@ let schedule: Schedule;
 let manager: ScheduleManager;
 
 const loadConfig = async () => {
-  if (appConfig) return appConfig;
-
   await config.load();
 
   appConfig = JSON.parse(config.toJson());
@@ -171,7 +170,7 @@ const configureExpress = () => {
   const appName = app.getPath('exe');
   const expressPath = is.dev ?
     './dist/main/express.js' :
-    join('./resources/app.asar', './dist/main/express.js');
+    join('./resources/app', './dist/main/express.js');
   const redirectOutput = function (stream) {
     stream.on('data', (data) => {
       data.toString().split('\n').forEach((line) => {
@@ -180,14 +179,28 @@ const configureExpress = () => {
     });
   };
 
-
-  const config = new Config(app, process.platform, state);
+  console.debug('[configureExpress]', {
+    config,
+    expressPath,
+    appName,
+  })
   createFileServer(config);
 
   console.log(expressPath);
 
   const expressAppProcess =
-    spawn(appName, [expressPath], { env: { ELECTRON_RUN_AS_NODE: '1' } });
+    spawn(
+      appName, [
+      '--inspect=8315',
+      expressPath
+    ], {
+      env: {
+        ...process.env,
+        ELECTRON_RUN_AS_NODE: '1'
+      },
+      stdio: ['ignore', 'pipe', 'pipe']
+    }
+    );
   [expressAppProcess.stdout, expressAppProcess.stderr].forEach(redirectOutput);
 };
 
@@ -544,7 +557,7 @@ app.whenReady().then(() => {
       responseHeaders: {
         ...details.responseHeaders,
         'Content-Security-Policy': [
-          "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' http://localhost:9696 https://develop.xibo.co.uk data:; connect-src 'self' http://localhost:9696 https://auth.signlicence.co.uk; frame-src 'self' http://localhost:9696; font-src 'self' http://localhost:9696 http://localhost data:;",
+          "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' http://localhost:9696 https://develop.xibo.co.uk data:; connect-src 'self' http://localhost:9696 https://auth.signlicence.co.uk; media-src 'self' http://localhost:9696; frame-src 'self' http://localhost:9696; font-src 'self' http://localhost:9696 http://localhost data:;",
         ],
         // 'Access-Control-Allow-Origin': ['http://localhost:5173'],  // Allow any domain to access
         'Access-Control-Allow-Methods': ['GET, POST, PUT, DELETE, OPTIONS'],  // Allowed methods

@@ -19,15 +19,18 @@
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
 import express from 'express';
+import corsImport from 'cors';
+import fs from 'fs/promises';
+import fsSync from 'fs';
+
 import { Config } from './config/config';
 
-const fs = require('fs/promises');
-const fsSync = require('fs');
-const cors = require('cors');
-const server = express();
+const cors = (corsImport as any).default ?? corsImport;
 const port = 9696;
+let isListening = false;
 
 export async function createFileServer(config: Config) {
+  const server = express();
   // Use the cors middleware
   server.use(cors());
 
@@ -38,17 +41,15 @@ export async function createFileServer(config: Config) {
 
   // Ensure the library path exists
   if (!fsSync.existsSync(xiboLibDir)) {
-    await fs.mkdir(xiboLibDir, {recursive: true});
+    await fs.mkdir(xiboLibDir, { recursive: true });
   }
 
-  server.get('/', (req, res) => {
+  server.get('/', (_req, res) => {
     res.send('Hello World!');
   });
 
-  server.use('/files', express.static(xiboLibDir));
-
   // Optional: list all files if /files/ is accessed directly
-  server.get('/files', (req, res) => {
+  server.get('/files', (_req, res) => {
     const files = fsSync.readdirSync(xiboLibDir);
     res.json({
       files,
@@ -57,10 +58,12 @@ export async function createFileServer(config: Config) {
     });
   });
 
-  server.listen(port, () => {
-    console.log(`Example app listening on port ${port}`);
-  });
+  server.use('/files', express.static(xiboLibDir));
 
-  server.on('listening', () => console.log(`Listening on: ${port}`));
-  server.on('close', () => console.log('Express server closed.'));
+  if (!isListening) {
+    server.listen(port, () => {
+      isListening = true;
+      console.log(`Xibo File Server listening on port ${port}`);
+    });
+  }
 }

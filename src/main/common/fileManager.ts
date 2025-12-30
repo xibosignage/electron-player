@@ -3,6 +3,7 @@ import fs from 'fs';
 import { join } from 'path';
 import { app } from "electron";
 import * as cheerio from 'cheerio';
+import 'dotenv/config';
 
 import { FileStore } from "./fileStore";
 import { Config } from "../config/config";
@@ -144,9 +145,7 @@ export function getLayoutFile(layoutId: number): LocalFile | undefined {
 }
 
 export function localFileUrlFromFileName(fileName: string) {
-    return import.meta.env.VITE_LOCAL_SERVER_URL +
-        '/files/' +
-        encodeURIComponent(fileName);
+    return encodeURIComponent(fileName);
 }
 
 export function buildLocalFileUrl(url: string) {

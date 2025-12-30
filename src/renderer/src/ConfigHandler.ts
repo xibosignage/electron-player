@@ -191,6 +191,10 @@ export class ConfigHandler {
                     this.config.cmsUrl = response.data.cmsAddress;
                     this.config.displayName = this.config.displayName + ' Linux player';
 
+                    console.debug('ConfigHandler::handleCodeInterval - Got config from code polling', {
+                        cmsKey: this.config.cmsKey,
+                        cmsUrl: this.config.cmsUrl,
+                    });
                     await this.handleRegisterDisplayCallback();
                 });
         }, this.codeChangeInterval * 1000);
