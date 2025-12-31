@@ -60,7 +60,7 @@ export class Config {
     this.cmsSavePath = join(savePath, 'cms_config.json');
     this.platform = platform;
     this.library = join(app.getPath('documents'), 'xibo_library');
-    this.dbPath = join(this.library, 'playerDb.db');
+    this.dbPath = join(savePath, 'playerDb.db');
     this.settings = {};
     this.state = state;
     this.state.appVersionCode = process.env.APP_VERSION_CODE || this.versionCode;

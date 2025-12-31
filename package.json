@@ -8,6 +8,7 @@
     "dev": "electron-vite dev --watch --sourcemap --debug hmr --remote-debugging-port=9222 --outDir=dist --inspect src/main/index.ts",
     "package": "electron-vite build --outDir=dist && electron-forge package",
     "make": "electron-vite build --outDir=dist && electron-forge make",
+    "make:snap": "electron-forge package && mkdir -p out/make/snap/x64/ && snapcraft pack --output out/make/snap/x64/",
     "rebuild": "electron-rebuild -f -w better-sqlite3"
   },
   "author": "Xibo Signage Ltd",
