@@ -125,6 +125,11 @@ ipcMain.handle('xmds-try-register', async (_event, _config) => {
   try {
     const xmds = new Xmds(config);
 
+    const schemaVersion = await xmds.getSchemaVersion();
+    if (schemaVersion <= 0) {
+      return {success: false, error: "Cannot reach that URL"};
+    }
+
     const xmdsRegister = await xmds.registerDisplay();
 
     return { success: true, data: xmdsRegister };
@@ -522,7 +527,7 @@ const init = async (win: BrowserWindow) => {
   // Player API and static file serving
   configureExpress();
 
-  // appConfig = await loadConfig();
+  appConfig = await loadConfig();
 
   // // eslint-disable-next-line max-len
   // console.log(`Version: ${appConfig.version}, hardwareKey: ${appConfig.hardwareKey}`);

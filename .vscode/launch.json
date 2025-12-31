@@ -15,7 +15,10 @@
         "run",
         "dev"
       ],
-      "runtimeExecutable": "C:\\nvm4w\\nodejs\\npm.cmd",
+      "runtimeExecutable": "npm",
+      "windows": {
+        "runtimeExecutable": "nvm4w"
+      },
       "skipFiles": [
         "<node_internals>/**"
       ],
