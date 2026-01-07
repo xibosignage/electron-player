@@ -93,7 +93,7 @@ export class Config {
       this.settings = data.settings || {};
     } catch {
       // Probably the file doesn't exist.
-      this.displayName = this.platform + ' Unknown';
+      this.displayName = this.platform + ' Unknown player';
       await this.saveCms();
     }
   };

@@ -175,7 +175,7 @@ const configureExpress = () => {
   const appName = app.getPath('exe');
   const expressPath = is.dev ?
     './dist/main/express.js' :
-    join('./resources/app', './dist/main/express.js');
+    join(process.resourcesPath, './app', './dist/main/express.js');
   const redirectOutput = function (stream) {
     stream.on('data', (data) => {
       data.toString().split('\n').forEach((line) => {
@@ -464,16 +464,28 @@ const mainFunctions = {
           let scheduleLayouts =
             [...schedule.layouts, schedule.defaultLayout].reduce((arr: InputLayoutType[], item) => {
               const _layout = getLayoutFile(item.file) as LocalFile;
-              return [
-                ...arr,
-                {
-                  layoutId: item.file,
-                  response: item.response,
-                  path: _layout.name,
-                  shortPath: _layout.name,
-                  scheduleId: 'scheduleId' in item ? (item as Layout).scheduleId : -1,
-                }
-              ];
+
+              console.debug('[MAIN] manager.on("layouts") update-unique-layouts', {
+                _layout,
+                item,
+              })
+
+              let _collection = [...arr];
+
+              if (_layout) {
+                _collection = [
+                  ...arr,
+                  {
+                    layoutId: item.file,
+                    response: item.response,
+                    path: _layout.name,
+                    shortPath: _layout.name,
+                    scheduleId: 'scheduleId' in item ? (item as Layout).scheduleId : -1,
+                  }
+                ];
+              }
+
+              return _collection;
             }, []);
 
           win.webContents.send('update-unique-layouts', scheduleLayouts);
@@ -481,17 +493,27 @@ const mainFunctions = {
 
         const _layouts = layouts.reduce((arr: InputLayoutType[], item) => {
           const layoutFile = getLayoutFile(item.file) as LocalFile;
+          let _collection = [...arr];
 
-          return [
-            ...arr,
-            {
-              layoutId: item.file,
-              path: layoutFile?.name || '',
-              shortPath: layoutFile?.name || '',
-              response: item.response,
-              scheduleId: 'scheduleId' in item ? (item as Layout).scheduleId : -1,
-            },
-          ]
+          console.debug('[MAIN] manager.on("layouts") update-loop', {
+            layoutFile,
+            item,
+          })
+
+          if (layoutFile) {
+            _collection = [
+              ...arr,
+              {
+                layoutId: item.file,
+                path: layoutFile?.name || '',
+                shortPath: layoutFile?.name || '',
+                response: item.response,
+                scheduleId: 'scheduleId' in item ? (item as Layout).scheduleId : -1,
+              },
+            ];
+          }
+
+          return _collection;
         }, []);
 
         console.debug('[MAIN::manager.on("layouts")] > Sending updated layout loop to renderer', { layouts: _layouts });
@@ -512,8 +534,15 @@ const mainFunctions = {
     console.debug('[MAIN] mainFunctions.run() > context', context);
     // Start app through renderer
     if (context === 'main') {
+      appConfig = JSON.parse(config.toJson());
       win.webContents.send('configure', appConfig);
     }
+
+    console.debug('[MAIN::mainFunctions::run]', {
+      config,
+      appConfig,
+    });
+
   }
 };
 

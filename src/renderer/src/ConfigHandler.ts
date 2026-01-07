@@ -189,7 +189,7 @@ export class ConfigHandler {
                     // The response should contain the cmsKey.
                     this.config.cmsKey = response.data.cmsKey;
                     this.config.cmsUrl = response.data.cmsAddress;
-                    this.config.displayName = this.config.displayName + ' Linux player';
+                    this.config.displayName = this.config.platform + ' Unknown player';
 
                     console.debug('ConfigHandler::handleCodeInterval - Got config from code polling', {
                         cmsKey: this.config.cmsKey,
