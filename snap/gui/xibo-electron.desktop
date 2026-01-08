@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Xibo Player
+Exec=xibo-electron
+Icon=${SNAP}/meta/gui/xibo-electron.png
+Terminal=false
+Type=Application
+Categories=Video;Utility;
+Comment=Xibo for Linux Digital Signage Player

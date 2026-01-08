@@ -22,7 +22,7 @@ import { DateTime } from "luxon";
 import { Config } from "../config/config";
 
 export class State {
-  appVersionCode: number;
+  appVersionCode: string | number;
   lastXmrMessage: DateTime;
   availableSpace: number;
   totalSpace: number;

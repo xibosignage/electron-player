@@ -27,6 +27,7 @@ import { join } from 'path';
 import { optimizer, is, electronApp } from '@electron-toolkit/utils';
 import { Xmr } from '@xibosignage/xibo-communication-framework';
 import axios from 'axios';
+import 'dotenv/config';
 
 import icon from '../../resources/icon.png?asset';
 import { spawn } from 'child_process';
@@ -101,8 +102,6 @@ let schedule: Schedule;
 let manager: ScheduleManager;
 
 const loadConfig = async () => {
-  if (appConfig) return appConfig;
-
   await config.load();
 
   appConfig = JSON.parse(config.toJson());
@@ -125,6 +124,11 @@ ipcMain.handle('xmds-try-register', async (_event, _config) => {
 
   try {
     const xmds = new Xmds(config);
+
+    const schemaVersion = await xmds.getSchemaVersion();
+    if (schemaVersion <= 0) {
+      return {success: false, error: "Cannot reach that URL"};
+    }
 
     const xmdsRegister = await xmds.registerDisplay();
 
@@ -171,7 +175,7 @@ const configureExpress = () => {
   const appName = app.getPath('exe');
   const expressPath = is.dev ?
     './dist/main/express.js' :
-    join('./resources/app.asar', './dist/main/express.js');
+    join(process.resourcesPath, './app', './dist/main/express.js');
   const redirectOutput = function (stream) {
     stream.on('data', (data) => {
       data.toString().split('\n').forEach((line) => {
@@ -180,14 +184,28 @@ const configureExpress = () => {
     });
   };
 
-
-  const config = new Config(app, process.platform, state);
+  console.debug('[configureExpress]', {
+    config,
+    expressPath,
+    appName,
+  })
   createFileServer(config);
 
   console.log(expressPath);
 
   const expressAppProcess =
-    spawn(appName, [expressPath], { env: { ELECTRON_RUN_AS_NODE: '1' } });
+    spawn(
+      appName, [
+      '--inspect=8315',
+      expressPath
+    ], {
+      env: {
+        ...process.env,
+        ELECTRON_RUN_AS_NODE: '1'
+      },
+      stdio: ['ignore', 'pipe', 'pipe']
+    }
+    );
   [expressAppProcess.stdout, expressAppProcess.stderr].forEach(redirectOutput);
 };
 
@@ -446,16 +464,28 @@ const mainFunctions = {
           let scheduleLayouts =
             [...schedule.layouts, schedule.defaultLayout].reduce((arr: InputLayoutType[], item) => {
               const _layout = getLayoutFile(item.file) as LocalFile;
-              return [
-                ...arr,
-                {
-                  layoutId: item.file,
-                  response: item.response,
-                  path: _layout.name,
-                  shortPath: _layout.name,
-                  scheduleId: 'scheduleId' in item ? (item as Layout).scheduleId : -1,
-                }
-              ];
+
+              console.debug('[MAIN] manager.on("layouts") update-unique-layouts', {
+                _layout,
+                item,
+              })
+
+              let _collection = [...arr];
+
+              if (_layout) {
+                _collection = [
+                  ...arr,
+                  {
+                    layoutId: item.file,
+                    response: item.response,
+                    path: _layout.name,
+                    shortPath: _layout.name,
+                    scheduleId: 'scheduleId' in item ? (item as Layout).scheduleId : -1,
+                  }
+                ];
+              }
+
+              return _collection;
             }, []);
 
           win.webContents.send('update-unique-layouts', scheduleLayouts);
@@ -463,17 +493,27 @@ const mainFunctions = {
 
         const _layouts = layouts.reduce((arr: InputLayoutType[], item) => {
           const layoutFile = getLayoutFile(item.file) as LocalFile;
+          let _collection = [...arr];
 
-          return [
-            ...arr,
-            {
-              layoutId: item.file,
-              path: layoutFile?.name || '',
-              shortPath: layoutFile?.name || '',
-              response: item.response,
-              scheduleId: 'scheduleId' in item ? (item as Layout).scheduleId : -1,
-            },
-          ]
+          console.debug('[MAIN] manager.on("layouts") update-loop', {
+            layoutFile,
+            item,
+          })
+
+          if (layoutFile) {
+            _collection = [
+              ...arr,
+              {
+                layoutId: item.file,
+                path: layoutFile?.name || '',
+                shortPath: layoutFile?.name || '',
+                response: item.response,
+                scheduleId: 'scheduleId' in item ? (item as Layout).scheduleId : -1,
+              },
+            ];
+          }
+
+          return _collection;
         }, []);
 
         console.debug('[MAIN::manager.on("layouts")] > Sending updated layout loop to renderer', { layouts: _layouts });
@@ -494,8 +534,15 @@ const mainFunctions = {
     console.debug('[MAIN] mainFunctions.run() > context', context);
     // Start app through renderer
     if (context === 'main') {
+      appConfig = JSON.parse(config.toJson());
       win.webContents.send('configure', appConfig);
     }
+
+    console.debug('[MAIN::mainFunctions::run]', {
+      config,
+      appConfig,
+    });
+
   }
 };
 
@@ -509,7 +556,7 @@ const init = async (win: BrowserWindow) => {
   // Player API and static file serving
   configureExpress();
 
-  // appConfig = await loadConfig();
+  appConfig = await loadConfig();
 
   // // eslint-disable-next-line max-len
   // console.log(`Version: ${appConfig.version}, hardwareKey: ${appConfig.hardwareKey}`);
@@ -544,7 +591,7 @@ app.whenReady().then(() => {
       responseHeaders: {
         ...details.responseHeaders,
         'Content-Security-Policy': [
-          "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' http://localhost:9696 https://develop.xibo.co.uk data:; connect-src 'self' http://localhost:9696 https://auth.signlicence.co.uk; frame-src 'self' http://localhost:9696; font-src 'self' http://localhost:9696 http://localhost data:;",
+          "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' http://localhost:9696 https://develop.xibo.co.uk data:; connect-src 'self' http://localhost:9696 https://auth.signlicence.co.uk; media-src 'self' http://localhost:9696; frame-src 'self' http://localhost:9696; font-src 'self' http://localhost:9696 http://localhost data:;",
         ],
         // 'Access-Control-Allow-Origin': ['http://localhost:5173'],  // Allow any domain to access
         'Access-Control-Allow-Methods': ['GET, POST, PUT, DELETE, OPTIONS'],  // Allowed methods

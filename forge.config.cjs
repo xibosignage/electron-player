@@ -7,7 +7,7 @@ module.exports = {
       /.idea/,
       /.github/
     ],
-    icon: '/resources/icon',
+    icon: 'resources/icon',
   },
   rebuildConfig: {},
   makers: [
@@ -28,18 +28,6 @@ module.exports = {
           homepage: 'https://xibosignage.com',
         },
       },
-    },
-    {
-      name: '@electron-forge/maker-snap',
-      config: {
-        features: {
-          audio: true,
-          mpris: 'com.xibosignage.mpris',
-          webgl: true
-        },
-        summary: 'Xibo Linux Player',
-        description: 'Xibo for Linux Digital Signage Player'
-      }
     },
   ],
 };

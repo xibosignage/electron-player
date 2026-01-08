@@ -60,10 +60,10 @@ export class Config {
     this.cmsSavePath = join(savePath, 'cms_config.json');
     this.platform = platform;
     this.library = join(app.getPath('documents'), 'xibo_library');
-    this.dbPath = join(this.library, 'playerDb.db');
+    this.dbPath = join(savePath, 'playerDb.db');
     this.settings = {};
     this.state = state;
-    this.state.appVersionCode = import.meta.env.VITE_APP_VERSION_CODE || this.versionCode;
+    this.state.appVersionCode = process.env.APP_VERSION_CODE || this.versionCode;
   };
 
   async load() {
@@ -93,7 +93,7 @@ export class Config {
       this.settings = data.settings || {};
     } catch {
       // Probably the file doesn't exist.
-      this.displayName = this.platform + ' Unknown';
+      this.displayName = this.platform + ' Unknown player';
       await this.saveCms();
     }
   };
