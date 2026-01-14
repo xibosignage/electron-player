@@ -1,4 +1,4 @@
-name: xibo-electron
+name: xibo-player
 base: core24
 version: '4.0.0'
 summary: Xibo Linux Player
