@@ -26,7 +26,8 @@ apps:
 parts:
   app:
     plugin: dump
-    source: out/xibo-electron-linux-x64 
+    source: ./out/xibo-electron-linux-x64
+    source-type: local
     stage-packages:
       - libglib2.0-0
       - libnss3
