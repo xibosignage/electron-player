@@ -1,6 +1,6 @@
 name: xibo-electron
 base: core24
-version: '0.1.0'
+version: '4.0.0'
 summary: Xibo Linux Player
 description: Xibo for Linux Digital Signage Player
 confinement: strict
