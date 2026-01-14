@@ -38,7 +38,7 @@ jobs:
           # --destructive-mode allows building without a VM/Container
           sudo snapcraft pack --destructive-mode
           # Set the snap path as an output for the next steps
-          echo "SNAP_PATH=$(ls *.snap | head -n 1)" >> $GITHUB_ENV
+          echo "SNAP_PATH=$(find ./out/make/snap -name "*.snap" -type f | head -n 1)" >> $GITHUB_ENV
 
       - name: 'Upload .deb to Release'
         run: |
