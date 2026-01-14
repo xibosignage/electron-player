@@ -32,7 +32,7 @@ export class RegisterDisplay {
   date: string | undefined;
   timezone: string | undefined;
   versionInstructions: string | undefined;
-  private settings: ChildNode[] | undefined;
+  private settings: unknown | undefined;
 
   private readonly response: string;
 
@@ -73,21 +73,46 @@ export class RegisterDisplay {
     this.checkRf = doc.display.$.checkRf ?? '';
     this.date = doc.display.$.date ?? '';
     this.timezone = doc.display.$.timezone ?? '';
-    this.versionInstructions = doc.display.$version_instructions ?? '';
+    this.versionInstructions = doc.display.$.version_instructions ?? '';
 
     // Store the settings nodes.
     this.settings = doc.display;
   }
 
-  getSetting(setting: string, defaultValue: any) {
+  getSetting(setting: string, defaultValue: unknown) {
     if (!this.settings) {
       return defaultValue;
     }
 
-    if (setting === 'collectInterval') {
-      return parseInt(this.settings[setting] || defaultValue);
-    } else {
-      return this.settings[setting] || defaultValue;
+    let settingValue = {
+      source: 'default',
+      value: defaultValue,
+    };
+
+    if (Boolean(this.settings[setting])) {
+      if (Boolean(this.settings[setting][0]._)) {
+        settingValue.source = '_';
+        settingValue.value = this.settings[setting][0]._;
+      } else {
+        settingValue.source = '0';
+        settingValue.value = this.settings[setting][0];
+      }
+    } else if (Boolean(this.settings['$'][setting])) {
+      settingValue.source = '$';
+      settingValue.value = this.settings['$'][setting];
     }
+    
+    if (setting === 'collectInterval') {
+      settingValue.value = parseInt(String(settingValue.value));
+    }
+
+    console.debug('[RegisterDisplay::getSetting]', {
+      setting,
+      defaultValue,
+      settingSource: settingValue.source,
+      settingValue: settingValue.value,
+    })
+
+    return settingValue.value;
   }
 }

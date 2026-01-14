@@ -18,52 +18,143 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
+import './assets/fonts.css';
 import './assets/main.css';
+import '@xibosignage/xibo-layout-renderer/dist/styles.css';
+
 import $ from 'jquery';
-import XiboLayoutRenderer, {IXlr, OptionsType} from '@xibosignage/xibo-layout-renderer';
+import XiboLayoutRenderer, { ConsumerPlatform, IXlr, OptionsType } from '@xibosignage/xibo-layout-renderer';
 import DefaultLayout from './layout/defaultLayout';
 
-window.electron.onConfigure((config) => {
+import { ConfigHandler } from './ConfigHandler';
+import { ConfigData } from '@shared/types';
+import logo from './assets/images/logo.png';
+
+let xlr: IXlr;
+
+if (window.__extendedConsole) {
+  (globalThis as any).console = window.__extendedConsole;
+}
+
+console.alert('Loading renderer process . . .');
+
+// Setup broadcast channel listeners
+const bc = new BroadcastChannel('statsBC');
+
+bc.addEventListener('message', (event) => {
+  const eventData = event.data;
+  console.debug('[Renderer::BroadcastChannel:statsBC] Received event', event);
+  window.playerAPI.sendStatsBCMessage(eventData);
+});
+
+const runConfigHandler = async (config: ConfigData) => {
+  const { callbackName } = await window.playerAPI.requestCallback();
+  const mainCallback = async (...args) => {
+    return await window.playerAPI.invokeCallback(callbackName, ...args);
+  };
+
+  // Show the configure view
+  console.log('onConfigure: show configure view');
+  const configHandler = new ConfigHandler(config, mainCallback);
+
+  configHandler.init();
+
+  // Run config
+  await configHandler.run();
+};
+
+export const startApp = async () => {
+  const config = await window.apiHandler.getConfig();
+
+  const xlrOptions: Partial<OptionsType> = {
+    appHost: 'http://localhost:9696/files/',
+    platform: ConsumerPlatform.ELECTRON, // TODO: XLR should support "electron" as a type (as well as webOS, Tizen, etc)
+    config: {
+      cmsUrl: config.cmsUrl ?? window.location.origin,
+      cmsKey: config.cmsKey ?? '',
+      schemaVersion: config.xmdsVersion as number,
+      hardwareKey: config.hardwareKey as string,
+    },
+    icons: {
+      splashScreen: logo,
+      logo: logo,
+    },
+  };
+
+  // Create a splash screen
+  const splash = new DefaultLayout();
+  splash.path = '0.xlf';
+
+  let layoutLoop = [splash];
+
+  xlr = XiboLayoutRenderer(layoutLoop, [], xlrOptions as any);
+  xlr.init().then((response: any) => {
+    console.log('onConfigure: play schedules');
+    console.log(response);
+    xlr.playSchedules(response);
+  });
+
+  // Set global xlr for browser access
+  window.xlr = xlr;
+};
+
+window.playerAPI.onConfigure(async (config: ConfigData) => {
   console.log('onConfigure');
   window.config = config;
-  const $config = $('#config');
 
-  if (config.cmsUrl) {
-    console.log('onConfigure: we have a URL, hide the config.');
-    $config.hide();
-
-    const xlrOptions: Partial<OptionsType> = {
-      platform: 'chromeOS', // TODO: XLR should support "electron" as a type (as well as webOS, Tizen, etc)
-      config: {
-        cmsUrl: window.location.origin,
-        cmsKey: config.cmsKey,
-        schemaVersion: config.schemaVersion,
-        hardwareKey: config.hardwareKey,
-      },
-      icons: {
-        splashScreen: '/logo.png',
-        logo: '/logo.png',
-      },
-    };
-    
-    // Create a splash screen
-    const splash = new DefaultLayout();
-    splash.path = '0.xlf';
-
-    let xlr: IXlr = XiboLayoutRenderer([splash], xlrOptions as any);
-    xlr.init().then((response: any) => {
-      console.log('onConfigure: play schedules');
-      console.log(response);
-      xlr.playSchedules(response);
-    });
+  if (!config.cmsUrl) {
+    runConfigHandler(config);
   } else {
-    // Show the configure view
-    console.log('onConfigure: show configure view');
-    $config.show();
-    $config.find('.code').show();
+    startApp();
   }
 });
 
-window.electron.onStateChange((state) => {
+window.playerAPI.onStateChange((state) => {
   $('#status').html(state);
 });
+
+window.playerAPI.onUpdateLoop((layouts) => {
+  console.debug('[window.playerAPI.onUpdateLoop]', { layouts });
+  if (xlr) {
+    console.debug('[window.playerAPI.onUpdateLoop] > Emitting updateLoop to XLR');
+    xlr.emitter.emit('updateLoop', layouts);
+  }
+});
+
+window.playerAPI.onUpdateUniqueLayouts(async layouts => {
+  if (xlr) {
+    console.debug('[Renderer::onUpdateUniqueLayouts]', { layouts });
+    await xlr.updateScheduleLayouts(layouts);
+  }
+});
+
+window.playerAPI.onShowStatusWindow((timeout) => {
+  console.debug('[Renderer::onShowStatusWindow]', { timeout });
+  $('#status').show();
+  setTimeout(() => {
+    $('#status').hide();
+  }, timeout * 1000);
+});
+
+const init = async () => {
+  const config = await window.apiHandler.loadConfig();
+  console.debug('[RENDERER] init > config', config);
+  window.config = config;
+
+  if (!config.isConfigured) {
+    runConfigHandler(config);
+  } else {
+    const { callbackName } = await window.playerAPI.requestCallback();
+    const mainCallback = async (...args) => {
+      return await window.playerAPI.invokeCallback(callbackName, ...args);
+    };
+
+    // Run mainCallback
+    await mainCallback({ context: 'renderer' });
+
+    console.debug('[RENDERER] > startApp(): Called mainCallback');
+    startApp();
+  }
+};
+
+init();

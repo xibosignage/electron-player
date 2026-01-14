@@ -24,6 +24,13 @@ body {
     overflow: hidden;
     width: 100%;
     min-height: 100vh;
+    -webkit-app-region: drag;
+    background-color: #1D1D1D;
+    font-family: 'Maven Pro', sans-serif;
+}
+
+form, input, button, label, a {
+    -webkit-app-region: no-drag;
 }
 
 #player_container {
@@ -39,4 +46,474 @@ body {
     padding: 25px;
     background: #565656;
     box-shadow: 3px 4px 5px 0 #8885;
+}
+
+.layout {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.active-page {
+    height: fit-content;
+    display: flex;
+    flex-direction: column;
+}
+
+.inactive-layout {
+    height: 100%;
+    display: flex;
+    padding-top: 40px;
+    flex-direction: column;
+    align-items: center;
+    row-gap: 16px;
+    color: white;
+}
+
+.inactive-page img {
+    margin: 0;
+}
+
+.inactive-page h1 {
+    margin: 0;
+}
+
+p {
+    margin: 0;
+}
+
+.top-header {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    padding: 30px 0;
+}
+
+h3 {
+    color: white;
+    margin: 0;
+    padding: 20px 0;
+}
+
+.toggle-config {
+    background-color: #565656;
+    display: flex;
+    width: fit-content;
+    height: auto;
+    border-radius: 15px;
+}
+
+.toggle-config button {
+    color: white;
+    margin: 0;
+    padding: 5px 20px;
+    border-radius: 15px;
+    cursor: pointer;
+    background-color: transparent;
+    border-color: transparent;
+    font-family: 'Maven Pro', sans-serif;
+}
+
+.toggle-config .active {
+    background-color: #0E70F6;
+}
+
+.shared-container {
+    flex-grow: 1;
+    display: grid;
+    grid-template-columns: 50% 50%;
+    padding: 30px 20px;
+    align-items: center;
+}
+
+.shared-container>div {
+    color: white;
+}
+
+.item1 {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding-left: 60px;
+}
+
+.item1 p {
+    margin-top: 0;
+}
+
+.item1 h2 {
+    margin: 0;
+    padding-bottom: 10px
+}
+
+code.code-text {
+    font-size: 100px;
+    font-family: 'Inconsolata', sans-serif;
+    margin: 0;
+}
+
+.activation-code {
+    padding-bottom: 90px;
+}
+
+.details {
+    margin-top: 20px;
+    display: flex;
+    width: 100%;
+    justify-content: space-between;
+}
+
+.hidden-details {
+    font-size: 12px;
+    margin-top: 10px;
+    display: flex;
+    width: 100%;
+    justify-content: space-between;
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+}
+
+
+.hidden-details.show {
+    max-height: 500px;
+    opacity: 1;
+}
+
+
+.details p {
+    font-size: 12px;
+}
+
+.icon {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    background: url('images/arrow.svg') no-repeat center center;
+    background-size: contain;
+    transition: transform 0.3s ease;
+    cursor: pointer;
+}
+
+.icon.rotated {
+    transform: rotate(180deg);
+}
+
+.advanced-details {
+    margin-top: 20px;
+    display: flex;
+    width: 100%;
+    justify-content: space-between;
+    font-size: 12px;
+    border-bottom: 0.01em solid white;
+    padding-bottom: 10px;
+}
+
+#hidden-details {
+    margin-top: 10px;
+}
+
+.slideshow-container {
+    width: 80%;
+    position: relative;
+    margin: auto;
+}
+
+.mySlides {
+    display: none;
+}
+
+.prev,
+.next {
+    cursor: pointer;
+    position: absolute;
+    top: 50%;
+    width: auto;
+    margin-top: -22px;
+    padding: 16px;
+    color: white;
+    font-weight: bold;
+    font-size: 18px;
+    transition: 0.6s ease;
+    border-radius: 0 3px 3px 0;
+    user-select: none;
+}
+
+.next {
+    right: 0;
+    border-radius: 3px 0 0 3px;
+}
+
+.prev:hover,
+.next:hover {
+    background-color: rgba(0, 0, 0, 0.8);
+}
+
+.text {
+    color: #f2f2f2;
+    font-size: 15px;
+    padding: 8px 12px;
+    position: absolute;
+    bottom: 8px;
+    width: 100%;
+    text-align: center;
+}
+
+.numbertext {
+    color: #f2f2f2;
+    font-size: 12px;
+    padding: 8px 12px;
+    position: absolute;
+    top: 0;
+}
+
+.dot {
+    cursor: pointer;
+    height: 15px;
+    width: 15px;
+    margin: 0 2px;
+    background-color: transparent;
+    border-radius: 50%;
+    display: inline-block;
+    transition: background-color 0.6s ease;
+    border: 1px solid white;
+}
+
+img {
+    border-radius: 40px;
+    margin-bottom: 20px;
+}
+
+
+.active,
+.dot:hover {
+    background-color: #0E70F6;
+    border: 1px solid #0E70F6;
+}
+
+.fade {
+    animation-name: fade;
+    animation-duration: 1.5s;
+}
+
+@keyframes fade {
+    from {
+        opacity: .4
+    }
+
+    to {
+        opacity: 1
+    }
+}
+
+.item2 {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+form {
+    width: 100%;
+}
+
+.input-container {
+    margin: 20px 0;
+}
+
+input[type="text"], input[type="password"] {
+    width: 100%;
+    padding: 8px;
+    margin: 4px 0;
+    box-sizing: border-box;
+    border-radius: 8px;
+    border: none;
+}
+
+input[type="text"]:focus, input[type="password"]:focus {
+    outline: none;
+    box-shadow: none;
+}
+
+input[type=submit] {
+    width: 100px;
+    padding: 10px;
+    box-sizing: border-box;
+    border-radius: 30px;
+    background-color: #0E70F6;
+    border: none;
+    color: white;
+    cursor: pointer;
+}
+
+input[type=submit]:disabled {
+    background-color: #565656;
+    user-select: none;
+    cursor: not-allowed;
+}
+
+.btn {
+    width: 100px;
+    padding: 10px;
+    box-sizing: border-box;
+    border-radius: 30px;
+    background-color: #0E70F6;
+    border: none;
+    color: white;
+    cursor: pointer;
+}
+
+.checkbox input[type="checkbox"] {
+    display: none;
+}
+
+.checkbox input[type="checkbox"]+label {
+    width: 18px;
+    height: 18px;
+    display: inline-block;
+    position: relative;
+    cursor: pointer;
+    background-size: contain;
+    background-image: url('images/unchecked.svg');
+}
+.checkbox input[type="checkbox"]#hide-cmsKey+label {
+    position: relative;
+    left: -33px;
+}
+
+.checkbox input[type="checkbox"]:checked+label {
+    background-image: url('images/checked.svg');
+}
+
+.checkbox {
+    display: flex;
+}
+
+label {
+    cursor: pointer;
+}
+.checkbox label {
+    cursor: pointer;
+    text-indent: 23px;
+}
+
+.input-container span {
+    display: flex;
+    flex-grow: 1;
+    justify-content: end;
+}
+
+form label {
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+}
+
+form p {
+    font-size: 10px;
+}
+
+.wifi-name {
+    margin-top: 2px;
+    position: relative;
+    padding-left: 20px;
+}
+
+.wifi-name::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    background-image: url('images/wifi.svg');
+    background-size: cover;
+    background-repeat: no-repeat;
+}
+
+.flex-content-end {
+    display: flex;
+    justify-content: end;
+}
+
+.flex-content-both {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.error {
+    color: #ff4500;
+    font-size: .85rem;
+}
+
+#config {
+    display: none;
+    margin: 0 auto;
+    max-width: 1280px;
+}
+
+#config-loader {
+    width: 24px!important;
+    margin-bottom: 0;
+    margin-right: 10px;
+    display: none;
+}
+
+@media screen and (orientation: portrait) {
+    .shared-container {
+        flex-direction: column-reverse;
+        justify-content: start;
+    }
+
+    .shared-container:not([style*="display: none"]) {
+        display: flex !important;
+        margin: auto 0;
+    }
+
+    .slideshow-container {
+        width: 100% !important;
+    }
+
+    .item1 {
+        padding: 40px 0 !important;
+    }
+
+    .config-container .item1 {
+        width: 80%;
+    }
+
+    .config-container .item2 {
+        width: 70% !important;
+    }
+
+    .configure-manually img{
+        width: 100% !important;
+    }
+
+    .activation-container .item2 {
+        padding-bottom: 0;
+        width: 80% !important;
+    }
+
+    .activation-container .item1 {
+        width: 80% !important;
+    }
+
+    @media screen and (max-width: 768px) {
+        .layout {
+            justify-content: start;
+        }
+    }
+}
+
+@media screen and (orientation: landscape) {
+    @media screen and (max-height: 540px) {
+        .layout {
+            justify-content: start;
+        }
+    }
 }

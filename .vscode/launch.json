@@ -9,6 +9,22 @@
   ],
   "configurations": [
     {
+      "name": "Launch via NPM",
+      "request": "launch",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "runtimeExecutable": "npm",
+      "windows": {
+        "runtimeExecutable": "nvm4w"
+      },
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "type": "node"
+    },    
+    {
       "name": "Renderer",
       "port": 9222,
       "request": "attach",

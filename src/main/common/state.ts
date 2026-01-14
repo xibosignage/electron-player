@@ -18,11 +18,11 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
-import {DateTime} from "luxon";
-import {Config} from "../config/config";
+import { DateTime } from "luxon";
+import { Config } from "../config/config";
 
 export class State {
-  swVersion: number;
+  appVersionCode: string | number;
   lastXmrMessage: DateTime;
   availableSpace: number;
   totalSpace: number;
@@ -40,8 +40,8 @@ export class State {
   displayStatus: number;
 
   constructor() {
-    this.swVersion = -1;
-    this.lastXmrMessage = DateTime.now().minus({year: 1});
+    this.appVersionCode = -1;
+    this.lastXmrMessage = DateTime.now().minus({ year: 1 });
     this.availableSpace = -1;
     this.totalSpace = -1;
     this.lastCommandSuccess = false;
@@ -72,7 +72,7 @@ export class State {
       latitude: this.latitude,
       longitude: this.longitude,
       statusDialog: JSON.stringify({
-        swVersion: this.swVersion,
+        appVersionCode: this.appVersionCode,
         lastXmrMessage: this.lastXmrMessage,
         userAgent: navigator.userAgent,
         scheduleLoop: this.scheduleLoop,
@@ -86,7 +86,8 @@ export class State {
     return '<h1 class="title">Status</h1>'
       + '<p>Date: ' + DateTime.now().toISO() + '</p>'
       + '<p>Version: ' + config.version + '</p>'
-      + '<p>Version Code: ' + this.swVersion + '</p>'
+      + '<p>Version Code: ' + this.appVersionCode + '</p>'
+      + '<p>URL: ' + config.cmsUrl + '</p>'
       + '<p>XMR: ' + this.lastXmrMessage.toISO() + '</p>'
       + '<br />'
       + '<p>SSP: ' + this.ssp + '</p>'

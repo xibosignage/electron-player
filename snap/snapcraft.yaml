@@ -1,0 +1,49 @@
+name: xibo-electron
+base: core24
+version: '4.0.0'
+summary: Xibo Linux Player
+description: Xibo for Linux Digital Signage Player
+confinement: strict
+grade: devel
+
+apps:
+  xibo-electron:
+    extensions: [gnome]
+    command: xibo-electron --no-sandbox
+    plugs:
+      - browser-support
+      - home 
+      - network
+      - network-bind
+      - opengl
+      - audio-playback
+      - screen-inhibit-control
+      - x11
+    environment:
+      TMPDIR: $XDG_RUNTIME_DIR
+      LIBGL_ALWAYS_SOFTWARE: '0' 
+
+parts:
+  app:
+    plugin: dump
+    source: out/xibo-electron-linux-x64 
+    stage-packages:
+      - libglib2.0-0
+      - libnss3
+      - libnspr4
+      - libatk1.0-0
+      - libatk-bridge2.0-0
+      - libcups2
+      - libdrm2
+      - libxkbcommon0
+      - libxcomposite1
+      - libxdamage1
+      - libxfixes3
+      - libxrandr2
+      - libgbm1
+      - libasound2
+      - libpangocairo-1.0-0
+      - libpango-1.0-0
+      - libcairo2
+      - libgtk-3-0
+      - libgl1
