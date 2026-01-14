@@ -5,7 +5,7 @@ module.exports = {
       /(.eslintrc.js)|(.gitignore)|(electron.vite.config.js)|(forge.config.cjs)|(tsconfig.*)/,
       /.vscode/,
       /.idea/,
-      /.github/
+      /.github/,
     ],
     icon: 'resources/icon',
   },
