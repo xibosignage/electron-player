@@ -82,15 +82,19 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: powershell
 
-      - name: 'Upload .msi to Release'
+      - name: 'Upload .exe to Release'
         run: |
-          # The output path for the Wix MSI maker is different
-          $MSI_PATH = (Get-ChildItem -Path ./out/make/wix/x64/*.msi).FullName
-          if (-not $MSI_PATH) {
-            Write-Error ".msi file not found!"
+          # Use a broader search to find EITHER .exe or .msi
+          $PACKAGE_PATH = (Get-ChildItem -Path ./out/make/**/*.exe, ./out/make/**/*.msi -Recurse | Select-Object -First 1).FullName
+          
+          if (-not $PACKAGE_PATH) {
+            Write-Error "No installer file (.exe or .msi) found in ./out/make/"
             exit 1
           }
-          gh release upload ${{ github.event.release.tag_name }} $MSI_PATH
+          
+          Write-Host "Found package at: $PACKAGE_PATH"
+          # Quote the path to handle spaces
+          gh release upload ${{ github.event.release.tag_name }} "$PACKAGE_PATH" --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: powershell
