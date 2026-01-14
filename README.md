@@ -8,17 +8,50 @@ npm run dev
 ```
 
 ## Structure
-Main runs configuration, xmds, scheduling, etc.
-Main runs an express webserver for locally serving files. 
-Renderer runs XLR.
+
+#### Main
+The main process runs the configuration, xmds, scheduling and related business logic for the application to run. This also includes an express web server to locally serve files.
+
+#### Renderer
+The renderer process runs XLR (Xibo Layout Renderer).
 
 
 ## Config
-Configuration via `%APPDATA%/config.json` which is auto created after the first run. You can then edit it manually and add
+There are two configuration files created used for Player and CMS.
+
+For the player it will be in,
+
+**Windows** - `%APPDATA%/config.json` and `%APPDATA%/cms_config.json`
+
+**Linux** - `$HOME/.config/xibo-electron/config.json` and `$HOME/.config/xibo-electron/cms_config.json`
+
+These configuration files are auto-generated on the first run. You can then edit/update the player config manually.
+
 
 ```json
+// config.json
 {
     "cmsUrl": "",
     "cmsKey": ""
 }
+```
+
+## Packaging
+You can build the packages for the following platforms.
+
+### Windows
+```shell
+npm run package
+```
+
+### Linux
+
+#### Debian package
+```shell
+npm run make
+```
+
+#### Snap package
+```shell
+npm run make:snap
 ```
