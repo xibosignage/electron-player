@@ -1,6 +1,6 @@
 {
   "name": "xibo-electron",
-  "version": "0.1.0",
+  "version": "4.0.0",
   "description": "Xibo Digital Signage Player",
   "main": "./dist/main/index.js",
   "scripts": {
