@@ -26,25 +26,21 @@ jobs:
       - name: 'Install Snapcraft & LXD'
         run: |
           sudo snap install snapcraft --classic
-          sudo snap install lxd
-          sudo lxd init --auto
-          sudo usermod -aG lxd $USER
 
       - name: 'Build .deb (Electron Forge)'
         run: npm run make
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 'Build .snap (Snapcraft via LXD)'
+      - name: 'Build .snap (Snapcraft)'
         run: |
           npm run package
           mkdir -p out/make/snap/x64
-          sg lxd -c "snapcraft pack --output out/make/snap/x64"
+          snapcraft remote-build --build-on=amd64 --output-directory=out/make/snap/x64
           SNAP_PATH=$(find out/make/snap -name '*.snap' -type f | head -n 1)
           echo "SNAP_PATH=$SNAP_PATH" >> $GITHUB_ENV
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SNAPCRAFT_BUILD_ENVIRONMENT: lxd
 
       - name: 'Upload .deb to GitHub Release'
         run: |
