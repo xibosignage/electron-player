@@ -33,7 +33,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 'Build .snap (Snapcraft)'
-        run: npm run make:snap
+        run: |
+          npm run make:snap
+          echo "SNAP_PATH=$(find ./out/make/snap -name "*.snap" -type f | head -n 1)" >> $GITHUB_ENV
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -52,8 +54,6 @@ jobs:
 
       - name: 'Upload .snap to Snap Store'
         uses: snapcore/action-publish@v1
-        run: |
-          echo "SNAP_PATH=$(find ./out/make/snap -name "*.snap" -type f | head -n 1)" >> $GITHUB_ENV
         with:
           store_login: ${{ secrets.SNAPCRAFT_LOGIN }}
           file: ${{ env.SNAP_PATH }}
