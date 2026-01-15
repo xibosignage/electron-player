@@ -27,18 +27,15 @@ jobs:
       - name: 'Install Dependencies'
         run: npm ci
 
-      - name: 'Build Application Packages'
+      - name: 'Build .deb (Electron Forge)'
         run: npm run make
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 'Pack Snap'
-        id: snap-build
-        run: |
-          # --destructive-mode allows building without a VM/Container
-          sudo snapcraft pack --destructive-mode
-          # Set the snap path as an output for the next steps
-          echo "SNAP_PATH=$(ls *.snap | head -n 1)" >> $GITHUB_ENV
+      - name: 'Build .snap (Snapcraft)'
+        run: npm run make:snap
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 'Upload .deb to Release'
         run: |
@@ -53,8 +50,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 'Publish to Snap Store'
+      - name: 'Upload .snap to Snap Store'
         uses: snapcore/action-publish@v1
+        run: |
+          echo "SNAP_PATH=$(find ./out/make/snap -name "*.snap" -type f | head -n 1)" >> $GITHUB_ENV
         with:
           store_login: ${{ secrets.SNAPCRAFT_LOGIN }}
           file: ${{ env.SNAP_PATH }}
