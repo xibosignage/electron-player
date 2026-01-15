@@ -25,6 +25,7 @@ jobs:
           sudo snap install snapcraft --classic
           sudo snap install gtk-common-themes --channel=stable
           sudo snap install gnome-46-2404 --channel=stable
+          sudo snap install gnome-46-2404-sdk --channel=stable
 
       - name: 'Install Dependencies'
         run: npm ci
