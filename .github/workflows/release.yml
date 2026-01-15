@@ -35,9 +35,8 @@ jobs:
       - name: 'Build .snap (Snapcraft)'
         run: |
           npm run package
-          mkdir -p out/make/snap/x64
-          snapcraft remote-build --build-on=amd64 --output-directory=out/make/snap/x64
-          SNAP_PATH=$(find out/make/snap -name '*.snap' -type f | head -n 1)
+          snapcraft remote-build --build-for=amd64
+          SNAP_PATH=$(ls *.snap | head -n 1)
           echo "SNAP_PATH=$SNAP_PATH" >> $GITHUB_ENV
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
