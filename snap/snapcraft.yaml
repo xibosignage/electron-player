@@ -26,7 +26,7 @@ apps:
 parts:
   app:
     plugin: dump
-    source: out/make/snap/x64/
+    source: out/xibo-player-linux-x64
     stage-packages:
       - libglib2.0-0
       - libnss3
