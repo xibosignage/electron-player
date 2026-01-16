@@ -75,7 +75,7 @@ jobs:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
         with:
           snap: ${{ env.SNAP_PATH }}
-          release: edge
+          release: stable
 
   build-windows:
     runs-on: windows-latest
