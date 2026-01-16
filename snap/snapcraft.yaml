@@ -7,9 +7,9 @@ confinement: strict
 grade: devel
 
 apps:
-  xibo-electron:
+  xibo-player:
     extensions: [gnome]
-    command: xibo-electron --no-sandbox
+    command: xibo-player --no-sandbox
     plugs:
       - browser-support
       - home 
