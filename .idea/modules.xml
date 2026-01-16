@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/xibo-electron.iml" filepath="$PROJECT_DIR$/.idea/xibo-electron.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/xibo-player.iml" filepath="$PROJECT_DIR$/.idea/xibo-player.iml" />
     </modules>
   </component>
 </project>
