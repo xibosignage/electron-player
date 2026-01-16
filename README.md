@@ -120,7 +120,7 @@ For the player it will be in,
 
 **Windows** - `%APPDATA%/config.json` and `%APPDATA%/cms_config.json`
 
-**Linux** - `$HOME/.config/xibo-electron/config.json` and `$HOME/.config/xibo-electron/cms_config.json`
+**Linux** - `$HOME/.config/xibo-player/config.json` and `$HOME/.config/xibo-player/cms_config.json`
 
 These configuration files are auto-generated on the first run. You can then edit/update the player config manually.
 
