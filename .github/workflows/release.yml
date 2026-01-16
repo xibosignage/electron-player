@@ -70,8 +70,10 @@ jobs:
 
       - name: 'Publish to Snap Store'
         uses: snapcore/action-publish@v1
+        env:
+          # Set the snapcraft credentials env variable
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
         with:
-          store_login: ${{ secrets.SNAPCRAFT_LOGIN }}
           snap: ${{ env.SNAP_PATH }}
           release: edge
 
