@@ -163,7 +163,7 @@ export class Config {
 
   getXmdsPlayerType(): string {
     // Temporary until we get a suitable display profile into the CMS
-    return 'chromeOS'
+    return 'linux'
     // We have a different display profile for electron on windows vs electron on linux.
     //return this.platform == 'win32' ? 'electron-win' : 'electron-linux';
   }
