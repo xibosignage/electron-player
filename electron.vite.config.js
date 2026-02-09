@@ -19,33 +19,48 @@
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
 import {resolve} from 'path';
-import {defineConfig, externalizeDepsPlugin, bytecodePlugin}
+import {defineConfig, externalizeDepsPlugin, bytecodePlugin, loadEnv}
   from 'electron-vite';
 
-export default defineConfig({
-  main: {
-    plugins: [externalizeDepsPlugin()],
-    build: {
-      sourcemap: true,
-      minify: false,
-      rollupOptions: {
-        input: {
-          index: resolve(__dirname, 'src/main/index.ts'),
-          express: resolve(__dirname, 'src/main/express.ts'),
+export default defineConfig(({mode}) => {
+  const env = loadEnv(mode, process.cwd(), '');
+
+  return {
+    main: {
+      plugins: [externalizeDepsPlugin()],
+      build: {
+        sourcemap: true,
+        minify: false,
+        rollupOptions: {
+          input: {
+            index: resolve(__dirname, 'src/main/index.ts'),
+            express: resolve(__dirname, 'src/main/express.ts'),
+          },
+          external: ['better-sqlite3'],
         },
-        external: ['better-sqlite3'],
       },
     },
-  },
-  preload: {
-    plugins: [externalizeDepsPlugin(), bytecodePlugin()],
-  },
-  renderer: {
-    resolve: {
-      alias: {
-        '@renderer': resolve('src/renderer/src'),
-        '@shared': resolve('./src/shared'),
+    preload: {
+      plugins: [externalizeDepsPlugin(), bytecodePlugin()],
+    },
+    renderer: {
+      plugins: [
+        {
+          name: 'html-transform',
+          transformIndexHtml(html) {
+            return html.replace(
+              /%VITE_APP_VERSION%/g,
+              env.VITE_APP_VERSION || '4.0.0',
+            );
+          },
+        },
+      ],
+      resolve: {
+        alias: {
+          '@renderer': resolve('src/renderer/src'),
+          '@shared': resolve('./src/shared'),
+        },
       },
     },
-  },
+  };
 });
