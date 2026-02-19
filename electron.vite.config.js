@@ -25,6 +25,18 @@ import {defineConfig, externalizeDepsPlugin, bytecodePlugin, loadEnv}
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, process.cwd(), '');
 
+  let rollupOptions = {};
+  let alias = {};
+
+  if (mode !== 'production') {
+    rollupOptions = {
+      external: ['@xibosignage/xibo-layout-renderer'],
+    };
+    alias = {
+      '@xibosignage/xibo-layout-renderer': resolve(__dirname, '../xibo-layout-renderer'),
+    };
+  }
+
   return {
     main: {
       plugins: [externalizeDepsPlugin()],
@@ -36,11 +48,26 @@ export default defineConfig(({mode}) => {
             index: resolve(__dirname, 'src/main/index.ts'),
             express: resolve(__dirname, 'src/main/express.ts'),
           },
-          external: ['better-sqlite3'],
+          external: ['better-sqlite3', ...(rollupOptions?.external || [])],
+        },
+      },
+      resolve: {
+        alias: {
+          ...alias,
         },
       },
     },
     preload: {
+      build: {
+        rollupOptions: {
+          external: rollupOptions?.external || [],
+        },
+      },
+      resolve: {
+        alias: {
+          ...alias,
+        },
+      },
       plugins: [externalizeDepsPlugin(), bytecodePlugin()],
     },
     renderer: {
@@ -50,7 +77,7 @@ export default defineConfig(({mode}) => {
           transformIndexHtml(html) {
             return html.replace(
               /%VITE_APP_VERSION%/g,
-              env.VITE_APP_VERSION || '4.0.0',
+              env.VITE_APP_VERSION || '4.0.1',
             );
           },
         },
@@ -59,7 +86,11 @@ export default defineConfig(({mode}) => {
         alias: {
           '@renderer': resolve('src/renderer/src'),
           '@shared': resolve('./src/shared'),
+          ...alias,
         },
+      },
+      optimizeDeps: {
+        exclude: rollupOptions?.external || [],
       },
     },
   };

@@ -153,7 +153,7 @@ const init = async () => {
     await mainCallback({ context: 'renderer' });
 
     console.debug('[RENDERER] > startApp(): Called mainCallback');
-    startApp();
+    await startApp();
   }
 };
 
