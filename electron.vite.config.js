@@ -77,7 +77,7 @@ export default defineConfig(({mode}) => {
           transformIndexHtml(html) {
             return html.replace(
               /%VITE_APP_VERSION%/g,
-              env.VITE_APP_VERSION || '4.0.1',
+              env.VITE_APP_VERSION || '400.1',
             );
           },
         },

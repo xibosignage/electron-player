@@ -1,6 +1,6 @@
 {
   "name": "xibo-player",
-  "version": "4.0.1",
+  "version": "400.1",
   "description": "Xibo Digital Signage Player",
   "main": "./dist/main/index.js",
   "scripts": {
@@ -9,7 +9,7 @@
     "dev": "electron-vite dev --watch --sourcemap --debug hmr --remote-debugging-port=9222 --outDir=dist --inspect src/main/index.ts",
     "package": "npm run build && electron-forge package",
     "make": "npm run build && electron-forge make",
-    "make:snap": "npm run package && mkdir -p out/make/snap/x64/ && snapcraft pack --output out/make/snap/x64/ --destructive-mode",
+    "make:snap": "mkdir -p out/make/snap/x64/ && snapcraft pack --output out/make/snap/x64/",
     "rebuild": "electron-rebuild -f -w better-sqlite3"
   },
   "author": "Xibo Signage Ltd",
