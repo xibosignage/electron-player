@@ -162,7 +162,7 @@ export class Xmds {
       '    <tns:RegisterDisplay>\n' +
       '      <serverKey xsi:type="xsd:string"><![CDATA[' + this.config.cmsKey + ']]></serverKey>\n' +
       '      <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
-      '      <displayName xsi:type="xsd:string">' + this.config.displayName + '</displayName>\n' +
+      '      <displayName xsi:type="xsd:string"><![CDATA[' + this.config.displayName + ']]></displayName>\n' +
       '      <clientType xsi:type="xsd:string">' + this.config.getXmdsPlayerType() + '</clientType>\n' +
       '      <clientVersion xsi:type="xsd:string">' + this.config.version + '</clientVersion>\n' +
       '      <clientCode xsi:type="xsd:int">' + this.config.versionCode + '</clientCode>\n' +
