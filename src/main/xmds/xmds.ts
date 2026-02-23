@@ -160,9 +160,9 @@ export class Xmds {
     const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
       '  <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
       '    <tns:RegisterDisplay>\n' +
-      '      <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
+      '      <serverKey xsi:type="xsd:string"><![CDATA[' + this.config.cmsKey + ']]></serverKey>\n' +
       '      <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
-      '      <displayName xsi:type="xsd:string">' + this.config.displayName + '</displayName>\n' +
+      '      <displayName xsi:type="xsd:string"><![CDATA[' + this.config.displayName + ']]></displayName>\n' +
       '      <clientType xsi:type="xsd:string">' + this.config.getXmdsPlayerType() + '</clientType>\n' +
       '      <clientVersion xsi:type="xsd:string">' + this.config.version + '</clientVersion>\n' +
       '      <clientCode xsi:type="xsd:int">' + this.config.versionCode + '</clientCode>\n' +
@@ -232,7 +232,7 @@ export class Xmds {
       const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
         '  <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
         '    <tns:RequiredFiles>\n' +
-        '      <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
+        '      <serverKey xsi:type="xsd:string"><![CDATA[' + this.config.cmsKey + ']]></serverKey>\n' +
         '      <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
         '    </tns:RequiredFiles>\n' +
         '  </soap:Body>\n' +
@@ -262,7 +262,7 @@ export class Xmds {
     const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
       ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
       '   <tns:MediaInventory>\n' +
-      '     <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
+      '     <serverKey xsi:type="xsd:string"><![CDATA[' + this.config.cmsKey + ']]></serverKey>\n' +
       '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
       '     <mediaInventory xsi:type-="xsd:string">&lt;files&gt;' + files + '&lt;/files&gt;</mediaInventory>\n' +
       '   </tns:MediaInventory>\n' +
@@ -290,7 +290,7 @@ export class Xmds {
       const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
         '  <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
         '    <tns:Schedule>\n' +
-        '      <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
+        '      <serverKey xsi:type="xsd:string"><![CDATA[' + this.config.cmsKey + ']]></serverKey>\n' +
         '      <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
         '    </tns:Schedule>\n' +
         '  </soap:Body>\n' +
@@ -318,7 +318,7 @@ export class Xmds {
     const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
       ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
       '   <tns:SubmitScreenShot>\n' +
-      '     <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
+      '     <serverKey xsi:type="xsd:string"><![CDATA[' + this.config.cmsKey + ']]></serverKey>\n' +
       '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
       '     <screenShot xsi:type-="xsd:base64Binary">iVBORw0KGgoAAAANSUhEUgAAAMgAAADIBAMAAABfdrOtAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAADUExURQAAAKd6PdoAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAArSURBVHja7cExAQAAAMKg9U9tCU8gAAAAAAAAAAAAAAAAAAAAAAAAALipAU7oAAG73DR2AAAAAElFTkSuQmCC</screenShot>\n' +
       '   </tns:SubmitScreenShot>\n' +
@@ -366,7 +366,7 @@ export class Xmds {
     const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
       ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
       '   <tns:SubmitLog>\n' +
-      '     <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
+      '     <serverKey xsi:type="xsd:string"><![CDATA[' + this.config.cmsKey + ']]></serverKey>\n' +
       '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
       '     <logXml xsi:type="xsd:string">&lt;logs&gt;' + logsXmlStr + '&lt;/logs&gt;</logXml>\n' +
       '   </tns:SubmitLog>\n' +
@@ -436,7 +436,7 @@ export class Xmds {
     const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
       '  <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
       '    <tns:SubmitStats>\n' +
-      '      <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
+      '      <serverKey xsi:type="xsd:string"><![CDATA[' + this.config.cmsKey + ']]></serverKey>\n' +
       '      <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
       '      <statXml xsi:type="xsd:string">&lt;records&gt;' + statsXmlString + '&lt;/records&gt;</statXml>\n' +
       '    </tns:SubmitStats>\n' +
@@ -462,7 +462,7 @@ export class Xmds {
     const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
       ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
       '   <tns:NotifyStatus>\n' +
-      '     <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
+      '     <serverKey xsi:type="xsd:string"><![CDATA[' + this.config.cmsKey + ']]></serverKey>\n' +
       '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
       '     <status xsi:type-="xsd:string">' + this.config.state.toJson() + '</status>\n' +
       '   </tns:NotifyStatus>\n' +
@@ -490,7 +490,7 @@ export class Xmds {
     //   const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
     //       ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
     //       '   <tns:ReportFaults>\n' +
-    //       '     <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
+    //       '     <serverKey xsi:type="xsd:string"><![CDATA[' + this.config.cmsKey + ']]></serverKey>\n' +
     //       '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
     //       '     <fault xsi:type-="xsd:string">' + faultsParam + '</fault>\n' +
     //       '   </tns:ReportFaults>\n' +
@@ -511,7 +511,7 @@ export class Xmds {
       const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
         ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
         '   <tns:GetResource>\n' +
-        '     <serverKey xsi:type="xsd:string">' + this.config.cmsKey + '</serverKey>\n' +
+        '     <serverKey xsi:type="xsd:string"><![CDATA[' + this.config.cmsKey + ']]></serverKey>\n' +
         '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
         '     <layoutId xsi:type="xsd:string">' + file.layoutId + '</layoutId>\n' +
         '     <regionId xsi:type="xsd:string">' + file.regionId + '</regionId>\n' +

@@ -19,33 +19,79 @@
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
 import {resolve} from 'path';
-import {defineConfig, externalizeDepsPlugin, bytecodePlugin}
+import {defineConfig, externalizeDepsPlugin, bytecodePlugin, loadEnv}
   from 'electron-vite';
 
-export default defineConfig({
-  main: {
-    plugins: [externalizeDepsPlugin()],
-    build: {
-      sourcemap: true,
-      minify: false,
-      rollupOptions: {
-        input: {
-          index: resolve(__dirname, 'src/main/index.ts'),
-          express: resolve(__dirname, 'src/main/express.ts'),
+export default defineConfig(({mode}) => {
+  const env = loadEnv(mode, process.cwd(), '');
+
+  let rollupOptions = {};
+  let alias = {};
+
+  if (mode !== 'production') {
+    rollupOptions = {
+      external: ['@xibosignage/xibo-layout-renderer'],
+    };
+    alias = {
+      '@xibosignage/xibo-layout-renderer': resolve(__dirname, '../xibo-layout-renderer'),
+    };
+  }
+
+  return {
+    main: {
+      plugins: [externalizeDepsPlugin()],
+      build: {
+        sourcemap: true,
+        minify: false,
+        rollupOptions: {
+          input: {
+            index: resolve(__dirname, 'src/main/index.ts'),
+            express: resolve(__dirname, 'src/main/express.ts'),
+          },
+          external: ['better-sqlite3', ...(rollupOptions?.external || [])],
         },
-        external: ['better-sqlite3'],
+      },
+      resolve: {
+        alias: {
+          ...alias,
+        },
       },
     },
-  },
-  preload: {
-    plugins: [externalizeDepsPlugin(), bytecodePlugin()],
-  },
-  renderer: {
-    resolve: {
-      alias: {
-        '@renderer': resolve('src/renderer/src'),
-        '@shared': resolve('./src/shared'),
+    preload: {
+      build: {
+        rollupOptions: {
+          external: rollupOptions?.external || [],
+        },
+      },
+      resolve: {
+        alias: {
+          ...alias,
+        },
+      },
+      plugins: [externalizeDepsPlugin(), bytecodePlugin()],
+    },
+    renderer: {
+      plugins: [
+        {
+          name: 'html-transform',
+          transformIndexHtml(html) {
+            return html.replace(
+              /%VITE_APP_VERSION%/g,
+              env.VITE_APP_VERSION || '400.1',
+            );
+          },
+        },
+      ],
+      resolve: {
+        alias: {
+          '@renderer': resolve('src/renderer/src'),
+          '@shared': resolve('./src/shared'),
+          ...alias,
+        },
+      },
+      optimizeDeps: {
+        exclude: rollupOptions?.external || [],
       },
     },
-  },
+  };
 });

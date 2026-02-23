@@ -11,13 +11,14 @@
     {
       "name": "Launch via NPM",
       "request": "launch",
+      "cwd": "${workspaceFolder}",
       "runtimeArgs": [
         "run",
         "dev"
       ],
       "runtimeExecutable": "npm",
       "windows": {
-        "runtimeExecutable": "nvm4w"
+        "runtimeExecutable": "npm.cmd"
       },
       "skipFiles": [
         "<node_internals>/**"

@@ -6,6 +6,10 @@ module.exports = {
       /.vscode/,
       /.idea/,
       /.github/,
+      "^/parts($|/)",
+      "^/stage($|/)",
+      "^/prime($|/)",
+      "^/.snapcraft($|/)"
     ],
     icon: 'resources/icon',
   },
