@@ -1,6 +1,6 @@
 name: xibo-player
 base: core24
-version: '400.1'
+version: '4.0.1'
 summary: Xibo Linux Player
 description: Xibo for Linux Digital Signage Player
 confinement: strict
