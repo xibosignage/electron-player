@@ -1,6 +1,6 @@
 {
   "name": "xibo-player",
-  "version": "400.1",
+  "version": "4.0.1",
   "description": "Xibo Digital Signage Player",
   "main": "./dist/main/index.js",
   "scripts": {
