@@ -103,7 +103,6 @@ export default class ScheduleManager {
         const now = new Date();
         let loop: ScheduleLayoutsType[] = [];
         let interruptLayouts: ScheduleLayoutsType[] = [];
-        let maxPriority = 0;
 
         // Do we have SSP
         // if (this.sspShareOfVoice > 0) {
@@ -114,7 +113,7 @@ export default class ScheduleManager {
         //     interruptLayouts.push(sspLayout);
         // }
 
-        const tempLayouts = (await Promise.all(
+        const validLayouts = (await Promise.all(
             this.schedule.layouts.map(async (layout) => {
                 // Reset any state tracking for this assessment.
                 layout.interruptCommittedDuration = 0;
@@ -163,20 +162,19 @@ export default class ScheduleManager {
                     return null;
                 }
 
-                // By this point we know we can include it, but is it superseded by layouts with higher priority?
-                // Is the priority a new highest priority?
-                if (layout.priority > maxPriority) {
-                    // This is a layout with a higher priority
-                    layouts = [];
-                    maxPriority = layout.priority;
-                } else if (layout.priority < maxPriority) {
-                    // Lower priority than the max, so do not include
-                    return null;
-                }
-
                 return layout;
             })
-        )).filter(l => l !== null);
+        )).filter(l => l !== null) as Layout[];
+
+        // Filter layouts to only include those matching the maximum priority found
+        let maxLayoutPriority = 0;
+        validLayouts.forEach(layout => {
+            if (layout.priority > maxLayoutPriority) {
+                maxLayoutPriority = layout.priority;
+            }
+        });
+
+        const tempLayouts = validLayouts.filter(layout => layout.priority === maxLayoutPriority);
 
         let [layouts, interrupts] = tempLayouts.reduce(
             ([normalLayouts, interrupts]: [ScheduleLayoutsType[], ScheduleLayoutsType[]], layout) => {
