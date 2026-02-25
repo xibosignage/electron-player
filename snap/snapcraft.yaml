@@ -22,17 +22,28 @@ apps:
     environment:
       TMPDIR: $XDG_RUNTIME_DIR
       LIBGL_ALWAYS_SOFTWARE: '0'
+      # Force the loader to look in the internal library path first
+      LD_LIBRARY_PATH: $SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET:$SNAP/lib/$SNAPCRAFT_ARCH_TRIPLET:$LD_LIBRARY_PATH
 
 parts:
   app:
     plugin: dump
     source: out/xibo-player-linux-x64
+    # STRATEGY: Move custom libraries into the standard system path
+    # This prevents 'not found' errors because the loader checks here by default.
+    organize:
+      libOSSlib.so: usr/lib/x86_64-linux-gnu/libOSSlib.so
+      libpxbackend-1.0.so: usr/lib/x86_64-linux-gnu/libpxbackend-1.0.so
+    
     stage-packages:
-      - libglib2.0-0
+      # Use the 't64' versions for Core24/Ubuntu 24.04 compatibility
+      - libglib2.0-0t64
+      - libproxy1v5            
+      - glib-networking        
       - libnss3
       - libnspr4
-      - libatk1.0-0
-      - libatk-bridge2.0-0
+      - libatk1.0-0t64
+      - libatk-bridge2.0-0t64
       - libcups2
       - libdrm2
       - libxkbcommon0
@@ -41,9 +52,9 @@ parts:
       - libxfixes3
       - libxrandr2
       - libgbm1
-      - libasound2
+      - libasound2t64
       - libpangocairo-1.0-0
       - libpango-1.0-0
       - libcairo2
-      - libgtk-3-0
+      - libgtk-3-0t64
       - libgl1
