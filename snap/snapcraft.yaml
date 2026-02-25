@@ -1,6 +1,6 @@
 name: xibo-player
 base: core24
-version: '4.0.1'
+adopt-info: app
 summary: Xibo Linux Player
 description: Xibo for Linux Digital Signage Player
 confinement: strict
@@ -28,7 +28,8 @@ apps:
 parts:
   app:
     plugin: dump
-    source: out/xibo-player-linux-x64
+    source: . 
+    source-subdir: out/xibo-player-linux-x64
     # STRATEGY: Move custom libraries into the standard system path
     # This prevents 'not found' errors because the loader checks here by default.
     organize:
@@ -58,3 +59,12 @@ parts:
       - libcairo2
       - libgtk-3-0t64
       - libgl1
+
+    build-packages:
+      - jq
+    override-pull: |
+      craftctl default
+      # We use $SNAPCRAFT_PROJECT_DIR to ensure we find package.json 
+      # regardless of the 'source' setting of this specific part
+      VERSION=$(jq -r .version "$SNAPCRAFT_PROJECT_DIR/package.json")
+      craftctl set version=$VERSION

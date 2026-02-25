@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Xibo Signage Ltd
+ * Copyright (c) 2026 Xibo Signage Ltd
  *
  * Xibo - Digital Signage - https://xibosignage.com
  *
@@ -18,12 +18,17 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
-import {resolve} from 'path';
-import {defineConfig, externalizeDepsPlugin, bytecodePlugin, loadEnv}
+import { resolve } from 'path';
+import { readFileSync } from 'fs';
+import { defineConfig, externalizeDepsPlugin, bytecodePlugin, loadEnv }
   from 'electron-vite';
 
-export default defineConfig(({mode}) => {
+export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
+  const swLastBuildUpdate = new Date().toISOString();
+
+  // Read package.json
+  const packageJson = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
   let rollupOptions = {};
   let alias = {};
@@ -32,9 +37,12 @@ export default defineConfig(({mode}) => {
     rollupOptions = {
       external: ['@xibosignage/xibo-layout-renderer'],
     };
-    alias = {
-      '@xibosignage/xibo-layout-renderer': resolve(__dirname, '../xibo-layout-renderer'),
-    };
+    // Only alias if the environment variable is set to true
+    if (env.VITE_ALIAS_LIBRARIES === 'true') {
+      alias = {
+        '@xibosignage/xibo-layout-renderer': resolve(__dirname, '../xibo-layout-renderer'),
+      };
+    }
   }
 
   return {
@@ -55,6 +63,11 @@ export default defineConfig(({mode}) => {
         alias: {
           ...alias,
         },
+      },
+      define: {
+        __LAST_BUILD_UPDATE__: JSON.stringify(swLastBuildUpdate),
+        __APP_VERSION__: JSON.stringify(packageJson.version),
+        __APP_VERSION_CODE__: packageJson.versionCode || 0,
       },
     },
     preload: {
@@ -77,7 +90,7 @@ export default defineConfig(({mode}) => {
           transformIndexHtml(html) {
             return html.replace(
               /%VITE_APP_VERSION%/g,
-              env.VITE_APP_VERSION || 'v4 R401',
+              packageJson.versionCode || 0,
             );
           },
         },
