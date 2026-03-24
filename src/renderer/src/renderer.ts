@@ -28,6 +28,7 @@ import DefaultLayout from './layout/defaultLayout';
 
 import { ConfigHandler } from './ConfigHandler';
 import { ConfigData } from '@shared/types';
+import { commandManager } from '@shared/command/commandManager';
 import logo from './assets/images/logo.png';
 
 let xlr: IXlr;
@@ -63,6 +64,30 @@ const runConfigHandler = async (config: ConfigData) => {
   await configHandler.run();
 };
 
+const initXlrEventHandlers = function () {
+  // TODO: implement an ad request in XLR.
+  // xlr.on('adRequest', async (sspLayoutIndex: number) => {
+  //   const sspLayout = await ssp.getAd();
+  //   xlr.updateInputLayout(sspLayoutIndex, (sspLayout as unknown) as InputLayoutType);
+  // });
+
+  /**
+   * Handles an incoming command identified by a CMS-provided command code.
+   */
+  xlr.on('commandCodeReceived', async (commandCode) => {
+    console.log('[Xmr::commandCodeReceived] - Received a new command', commandCode);
+    await commandManager.executeCommandByCode(commandCode);
+  });
+
+  /**
+   * Handles an incoming command provided as an encoded command string.
+   */
+  xlr.on('commandStringReceived', async (commandString) => {
+    console.log('[Xmr::commandStringReceived] - Received a new command', commandString);
+    await commandManager.executeCommandByString(commandString);
+  });
+}
+
 export const startApp = async () => {
   const config = await window.apiHandler.getConfig();
 
@@ -88,10 +113,12 @@ export const startApp = async () => {
   let layoutLoop = [splash];
 
   xlr = XiboLayoutRenderer(layoutLoop, [], xlrOptions as any);
-  xlr.init().then((response: any) => {
+  xlr.init().then(async (response: any) => {
     console.log('onConfigure: play schedules');
     console.log(response);
-    xlr.playSchedules(response);
+
+    initXlrEventHandlers();
+    await xlr.playSchedules(response);
   });
 
   // Set global xlr for browser access
@@ -129,17 +156,39 @@ window.playerAPI.onUpdateUniqueLayouts(async layouts => {
 });
 
 window.playerAPI.onShowStatusWindow((timeout) => {
+  showStatusWindowFn(timeout);
+});
+
+const showStatusWindowFn = (timeout: number) => {
   console.debug('[Renderer::onShowStatusWindow]', { timeout });
   $('#status').show();
   setTimeout(() => {
+    console.debug('[Renderer::onShowStatusWindow] Hiding status window after timeout of:', timeout + ' seconds');
     $('#status').hide();
   }, timeout * 1000);
-});
+
+};
 
 const init = async () => {
   const config = await window.apiHandler.loadConfig();
   console.debug('[RENDERER] init > config', config);
   window.config = config;
+
+  const showStatusWindow = (event: KeyboardEvent) => {
+    if (event.key.toLowerCase() === 'i') {
+      // Ignore if the user is typing inside an input field
+      const target = event.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+
+      console.debug('[Renderer] showStatusWindow event triggered by keypress "i"');
+      showStatusWindowFn(60); // Show for 60 seconds
+    }
+  };
+
+  document.removeEventListener('keydown', showStatusWindow); // Ensure we don't add multiple listeners
+  document.addEventListener('keydown', showStatusWindow);
 
   if (!config.isConfigured) {
     runConfigHandler(config);

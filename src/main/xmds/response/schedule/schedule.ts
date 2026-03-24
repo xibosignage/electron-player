@@ -25,6 +25,7 @@ import { OverlayLayout, OverlayLayoutResponseType } from './events/overlayLayout
 import { Action, ActionResponseType } from './events/action';
 import { DataConnector, DataConnectorResponseType } from './events/dataConnector';
 import { getLayoutFile } from '../../../common/fileManager';
+import { Command } from '../../../command/command';
 
 export type DependantsFileType = {
     file: string[];
@@ -45,7 +46,7 @@ export interface ScheduleInterface {
     overlays: OverlayLayout[];
     actions: Action[];
     dataConnectors: DataConnector[];
-    command?: CommandType | undefined;
+    commands?: Command[];
 
     parse(): Promise<void>;
     countLayouts(): number;
@@ -62,7 +63,7 @@ export default class Schedule implements ScheduleInterface {
     overlays: OverlayLayout[] = [];
     actions: Action[] = [];
     dataConnectors: DataConnector[] = [];
-    command?: CommandType | undefined;
+    commands?: Command[] = [];
 
     constructor(response: string) {
         this.response = response;
@@ -141,15 +142,16 @@ export default class Schedule implements ScheduleInterface {
             }, []);
         }
 
+
         // Parse command
         if (doc.schedule && doc.schedule.command &&
-            doc.schedule.command.length === 1
+            doc.schedule.command.length > 0
         ) {
-            this.command = <CommandType>{
-                code: doc.schedule.command[0].$.command,
-                date: doc.schedule.command[0].$.date,
-            };
+            this.commands = doc.schedule.command.map((cmd: any) => new Command(cmd));
         }
+        console.debug('Schedule', {
+            schedule: this,
+        })
     }
 
     countLayouts(): number {
