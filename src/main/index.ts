@@ -590,6 +590,37 @@ const init = async (win: BrowserWindow) => {
 
   appConfig = await loadConfig();
 
+  console.debug('[MAIN] init > config', {
+    config,
+    appConfig,
+  });
+
+  // Set window to fullscreen
+  // If dimension and position settings are all "0"
+  if (appConfig.settings.offsetX === 0 &&
+    appConfig.settings.offsetY === 0 &&
+    appConfig.settings.sizeX === 0 &&
+    appConfig.settings.sizeY === 0) {
+    console.debug('[MAIN] init > No offset or size settings, setting window to fullscreen');
+    // Set window to fullscreen
+    win.setFullScreen(true);
+  } else {
+    // Otherwise, set the window to the specified dimensions and position.
+    const offsetX = appConfig.settings.offsetX;
+    const offsetY = appConfig.settings.offsetY;
+    const sizeX = appConfig.settings.sizeX || config.state.width;
+    const sizeY = appConfig.settings.sizeY || config.state.height;
+
+    console.debug('[MAIN] init > Setting window to custom dimensions and position', {
+      offsetX,
+      offsetY,
+      sizeX,
+      sizeY,
+    });
+    win.setSize(sizeX, sizeY);
+    win.setPosition(offsetX, offsetY);
+  }
+
   // // eslint-disable-next-line max-len
   // console.log(`Version: ${appConfig.version}, hardwareKey: ${appConfig.hardwareKey}`);
 

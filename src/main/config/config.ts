@@ -145,6 +145,10 @@ export class Config {
     this.settings['logLevel'] = registerDisplay.getSetting('logLevel', 'error');
     this.settings['aggregationLevel'] = registerDisplay.getSetting('aggregationLevel', 'Individual');
     this.settings['statsEnabled'] = registerDisplay.getSetting('statsEnabled', false) === '1';
+    this.settings['offsetX'] = registerDisplay.getSetting('offsetX', 0);
+    this.settings['offsetY'] = registerDisplay.getSetting('offsetY', 0);
+    this.settings['sizeX'] = registerDisplay.getSetting('sizeX', 0);
+    this.settings['sizeY'] = registerDisplay.getSetting('sizeY', 0);
     this.state.displayStatus = registerDisplay.status || 0;
 
     this.saveCms();

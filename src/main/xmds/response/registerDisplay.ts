@@ -102,7 +102,12 @@ export class RegisterDisplay {
       settingValue.value = this.settings['$'][setting];
     }
     
-    if (setting === 'collectInterval') {
+    if (setting === 'collectInterval' ||
+      setting === 'offsetX' ||
+      setting === 'offsetY' ||
+      setting === 'sizeX' ||
+      setting === 'sizeY'
+    ) {
       settingValue.value = parseInt(String(settingValue.value));
     }
 
