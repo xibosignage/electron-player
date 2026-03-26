@@ -32,6 +32,7 @@ import { LogsThreshold, RequiredFile } from '../common/types';
 import { ConsoleDB } from '../../shared/console/ConsoleDB';
 import { submitLogsXmlString } from '../common/parser';
 import { AxiosErrorCodes, handleXmdsError } from '../common/error/XmdsError';
+import { commandManager } from '../../shared/command/commandManager';
 
 interface XmdsEvents {
   collecting: () => void;
@@ -192,6 +193,11 @@ export class Xmds {
         await registerDisplay.parse();
         this.checkSchedule = registerDisplay.checkSchedule || null;
         this.checkRf = registerDisplay.checkRf || null;
+
+        // Parse out the list of commands and store them in the command manager.
+        const commands = registerDisplay.getCommands();
+        console.debug('[Xmds::registerDisplay] Commands received from CMS', { commands });
+        commandManager.parseCommands(commands);
 
         // Update the collection interval as necessary
         await this.updateInterval(registerDisplay.getSetting('collectInterval', 300) as number);

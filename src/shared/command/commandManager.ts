@@ -1,4 +1,3 @@
-import he from 'he';
 import { Command } from "../../main/command/command";
 
 type CommandProps = {
@@ -11,6 +10,16 @@ type CommandProps = {
 }
 
 type CommandResult = void | string;
+
+export type CommandCollectionItem = {
+  commandString: string;
+  createAlertOn: string;
+  validationString: string;
+};
+
+export type CommandsCollection = {
+  [commandCode: string]: CommandCollectionItem;
+};
 
 /**
  * Manages command handling and execution for the player.
@@ -47,31 +56,17 @@ export class CommandManager {
    *
    * @param response
    */
-  public parseCommands(response: string) {
-    const parser = new DOMParser();
-    const rootDoc = parser.parseFromString(response, 'text/xml');
+  public parseCommands(collection: CommandsCollection) {
 
-    // Get the encoded XML
-    let xml = rootDoc.getElementsByTagName('ActivationMessage')[0].innerHTML;
-    xml = he.decode(xml);
-
-    // Get the commands
-    const doc = parser.parseFromString(xml,'text/xml');
-    const commandsNode = doc.querySelector('commands');
-
-    if (!commandsNode) {
+    if (!Object.keys(collection).length) {
       console.debug('[CommandManager] No commands found');
       return;
     }
 
     this.commands = {};
 
-    for (const command of Array.from(commandsNode.children)) {
-      const commandCode = command.tagName;
-
-      const commandString = command.querySelector('commandString')?.textContent ?? '';
-      const validationString = command.querySelector('validationString')?.textContent ?? '';
-      const createAlertOn = command.querySelector('createAlertOn')?.textContent ?? 'never';
+    for (const [commandCode, commandData] of Object.entries(collection)) {
+      const { commandString, createAlertOn, validationString } = commandData;
 
       const parts = commandString.split('|');
       const commandType = parts[0] ?? '';

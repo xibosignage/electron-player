@@ -19,6 +19,7 @@
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
 import xml2js from 'xml2js';
+import { CommandsCollection } from '../../../shared/command/commandManager';
 
 /**
  * Register Display Response.
@@ -75,6 +76,10 @@ export class RegisterDisplay {
     this.timezone = doc.display.$.timezone ?? '';
     this.versionInstructions = doc.display.$.version_instructions ?? '';
 
+    console.debug('[RegisterDisplay::parse]', {
+      doc,
+    });
+
     // Store the settings nodes.
     this.settings = doc.display;
   }
@@ -119,5 +124,29 @@ export class RegisterDisplay {
     })
 
     return settingValue.value;
+  }
+
+  getCommands(): CommandsCollection {
+    const commandsNode = this.settings && this.settings['commands'];
+    if (!commandsNode || !commandsNode.length) {
+      return {};
+    }
+
+    const collection: CommandsCollection = {};
+
+    for (const [commandCode, commandObject] of Object.entries(commandsNode[0])) {
+      const cmd = (commandObject as any[])[0] as any;
+      const commandString = cmd.commandString?.[0] ?? '';
+      const validationString = cmd.validationString?.[0] ?? '';
+      const createAlertOn = cmd.createAlertOn?.[0] ?? 'never';
+
+      collection[commandCode] = {
+        commandString,
+        validationString,
+        createAlertOn,
+      };
+    }
+
+    return collection;
   }
 }
