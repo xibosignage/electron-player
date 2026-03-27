@@ -35,7 +35,7 @@ import { Config } from './config/config';
 import { Xmds } from './xmds/xmds';
 import { State } from './common/state';
 import { createFileServer } from './express';
-import { downloadFile, downloadResourceFile, getDownloadedFiles, getLayoutFile, FileManagerFileType } from './common/fileManager';
+import { downloadFile, downloadResourceFile, getDownloadedFiles, getLayoutFile, FileManagerFileType, downloadWidgetDataFile } from './common/fileManager';
 import Schedule from './xmds/response/schedule/schedule';
 import ScheduleManager from './common/scheduleManager';
 import { InputLayoutType, LocalFile } from './common/types';
@@ -377,6 +377,17 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr) {
       } else if (file.type === 'resource') {
         const resourceHtml = await xmds.getResource(file);
         return await downloadResourceFile((file as unknown) as FileManagerFileType, resourceHtml);
+      } else if (file.type === 'widget') {
+        const widgetData = await xmds.getData(file);
+
+        if (!widgetData) {
+          console.debug('[Xmds::on("requiredFiles")] > No widget data received for widget ' + file.id);
+          return null;
+        }
+
+        console.debug('[Xmds::on("requiredFiles")] > Received widget data for widget ' + file.id, { widgetData });
+
+        return await downloadWidgetDataFile((file as unknown) as FileManagerFileType, widgetData);
       } else {
         return null;
       }

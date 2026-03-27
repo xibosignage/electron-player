@@ -554,4 +554,49 @@ export class Xmds {
       handleError(e);
     }
   }
+  
+  async getData(file: RequiredFile) {
+    try {
+      const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
+        ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
+        '   <tns:GetData>\n' +
+        '     <serverKey xsi:type="xsd:string"><![CDATA[' + this.config.cmsKey + ']]></serverKey>\n' +
+        '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
+        '     <widgetId xsi:type="xsd:string">' + file.id + '</widgetId>\n' +
+        '   </tns:GetData>\n' +
+        ' </soap:Body>\n' +
+        '</soap:Envelope>';
+
+      return await axios.post(
+        this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=getData',
+        soapXml
+      )
+        .then(async (response) => {
+          const parser = new xml2js.Parser();
+          const rootDoc = await parser.parseStringPromise(response.data);
+
+          // Get the encoded XML
+          const xml = rootDoc["SOAP-ENV:Envelope"]["SOAP-ENV:Body"][0]["ns1:GetDataResponse"][0].data[0]._;
+
+          return xml;
+        })
+        .catch((error) => {
+          console.error('[Xmds::getData] > Error fetching data XML: ', {
+            error,
+          });
+
+          handleError(error, 'Unable to fetch data for widget with id ' + file.id);
+
+          return false;
+        });
+    } catch (e) {
+      console.error('[Xmds::getData] > Error fetching data XML: ', {
+        e,
+      });
+
+      handleError(e, 'Unable to fetch data for widget with id ' + file.id);
+
+      return false;
+    }
+  }
 }

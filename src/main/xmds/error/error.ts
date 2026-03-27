@@ -51,29 +51,40 @@ export class Error {
     this.code = code;
   }
 
-  async parse() {
-    const isValidXml = await isValidXmlString(this.response);
+  parse() {
+    validateXml(this.response, async (isValid, err) => {
+      if (!isValid) {
+        console.error('Error::parse - Invalid XML response', {
+          response: this.response,
+          error: err,
+        });
+        this.message = this.response;
+        return;
+      } else {
+        console.debug('Error::parse - Valid XML response', {
+          response: this.response,
+        });
 
-    if (isValidXml) {
-      const parser = new xml2js.Parser();
-      const rootDoc = await parser.parseStringPromise(this.response);
+        const parser = new xml2js.Parser();
+        const rootDoc = await parser.parseStringPromise(this.response);
 
-      console.debug('[MAIN] Error > rootDoc', {
-        response: this.response,
-        rootDoc,
-      });
-      const fault = rootDoc['SOAP-ENV:Envelope']['SOAP-ENV:Body'][0]['SOAP-ENV:Fault'][0];
-      console.debug('Error::parse', {
-        fault,
-      })
+        console.debug('[MAIN] Error > rootDoc', {
+          response: this.response,
+          rootDoc,
+        });
 
-      if (Boolean(fault)) {
-        this.code = fault['faultcode'][0];
-        this.message = fault['faultstring'][0];
+        const fault = rootDoc['SOAP-ENV:Envelope']['SOAP-ENV:Body'][0]['SOAP-ENV:Fault'][0];
+
+        if (Boolean(fault)) {
+          this.code = fault['faultcode'][0];
+          this.message = fault['faultstring'][0];
+        }
+
+        console.debug('[MAIN] Error > parse', {
+          fault,
+        });
       }
-    } else {
-      this.message = this.response;
-    }
+    });
 
     // let expiryDuration: DurationLike = { days: 1 };
     // // Check if we have a valid XML doc
@@ -95,20 +106,17 @@ export class Error {
   }
 }
 
-export function isValidXmlString(xmlString: string) {
+export function validateXml(xmlString: string, callback: (isValid: boolean, error: any) => void) {
   const parser = new xml2js.Parser();
-
-  return new Promise(resolve => {
-    parser.parseString(xmlString, (err, _result) => {
-      if (err) {
-        // If an error occurs, the XML string is not valid
-        resolve(false);
-      } else {
-        // If no error, the XML string is considered valid
-        resolve(true);
-      }
-    })
-  })
+  parser.parseString(xmlString, (err, _result) => {
+    if (err) {
+      // If an error occurs, the XML string is not valid
+      callback(false, err);
+    } else {
+      // If no error, the XML string is considered valid
+      callback(true, null);
+    }
+  });
 }
 
 export function handleError(error: any, message?: string) {
@@ -126,24 +134,7 @@ export function handleError(error: any, message?: string) {
   })
 
   if (response) {
-    let errorMsg: string[] = [];
-
-    if (String(response.data).length > 0) {
-      errorMsg.push('response.data=' + response.data);
-    }
-
-    if (String(message).length > 0) {
-      errorMsg.push(message as string);
-    }
-
-    if (String(errMessage).length > 0) {
-      errorMsg.push(errMessage);
-    }
-
-    errorObject.message = errorMsg.join(' - ');
-    errorObject.status = response.status;
-
-    let errResponse: Error = new Error(errorObject.message);
+    let errResponse: Error = new Error(response.data, response.status);
     errResponse.parse();
 
     if (errResponse.message === ErrorCodes.NotAuthorisedMsg) {

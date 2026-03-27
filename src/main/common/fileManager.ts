@@ -220,3 +220,36 @@ export async function downloadResourceFile(file: FileManagerFileType, resourceHt
 
     return file;
 }
+
+export async function downloadWidgetDataFile(file: FileManagerFileType, widgetData: string) {
+    const saveAs = `${file.id}.json`;
+    const localPath = join(xiboLibDir, saveAs);
+    let status: FileManagerFileType['status'] = 'success';
+    let size = 0;
+
+    try {
+        fs.writeFileSync(localPath, widgetData);
+        size = fs.statSync(localPath).size;
+
+        store.db.prepare(`
+            INSERT INTO files (name, url, localPath, size, status, fileId, type, fileType, md5)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(name) DO UPDATE SET
+                url = excluded.url,
+                localPath = excluded.localPath,
+                size = excluded.size,
+                status = excluded.status,
+                type = excluded.type,
+                fileType = excluded.fileType,
+                md5 = excluded.md5,
+                lastDownloaded = CURRENT_TIMESTAMP
+        `).run(saveAs, localPath, localPath, size, status, file.id, file.type, 'json', '');
+
+        console.log(`[FileManager] Download successful: ${saveAs}`);
+    } catch (err) {
+        console.error(`[FileManager] Error downloading widget data ${saveAs}:`, err);
+        status = 'failed';
+    }
+
+    return file;
+}
