@@ -49,6 +49,7 @@ import { commandManager } from '../shared/command/commandManager';
 import { registerLocalCommands } from './command/localCommands';
 import { scheduleCriteriaManager } from '../shared/scheduleCriteria/scheduleCriteriaManager';
 import { captureDesktop } from '../shared/utils/desktopCapture';
+import { xmdsMakeScreenshot } from '../shared/utils/xmdsUtil';
 
 // Axios interceptors
 axios.interceptors.request.use(req => {
@@ -282,11 +283,8 @@ const initXmrEventHandlers = async function () {
     xmds.collectNow();
   });
   xmr.on('screenShot', async () => {
-    console.debug('Requesting a screenshot', { method: 'Xmr::screenShot' });
-    const stream = await captureDesktop();
-    console.debug('Desktop captured', { stream });
-    // await xmds.screenshot();
-    // await xmds.notifyStatus();
+    await xmdsMakeScreenshot(xmds);
+    await xmds.notifyStatus();
   });
   
   /**
@@ -320,6 +318,7 @@ const initXmrEventHandlers = async function () {
   // });
 }
 
+let screenshotIntervalId: NodeJS.Timeout | null = null;
 const initXmdsEventHandlers = async function (config: Config, xmr: Xmr) {
   // Bind to some events
   xmds.on('collecting', () => {
@@ -352,19 +351,48 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr) {
     );
     xmr.start(xmrWebSocketAddress, config.getSetting('xmrCmsKey', 'n/a'));
     
-    const screenshotRequested = data.getSetting('screenShotRequested', '0');
+    const makeScreenshot = async () => {
+      await xmdsMakeScreenshot(xmds);
+      await xmds.notifyStatus();
+    };
+    const screenshotRequested = data.getSetting('screenShotRequested', 0);
     console.debug('[Xmds::on("registered")] > screenShotRequested', screenshotRequested);
     // Is there a screenshot request pending which we may have missed via XMR?
-    if (data.getSetting('screenShotRequested', '0') == '1') {
+    if (screenshotRequested === 1) {
       console.debug('[Xmds::on("registered")] > Pending screenshot request found, capturing desktop and taking screenshot');
 
       // Wait a bit and process it
       setTimeout(async () => {
-        console.debug('[Xmds::on("registered")] > Requesting a screenshot', { method: 'Xmds::screenShot' });
-        const stream = await captureDesktop();
-        console.debug('[Xmds::on("registered")] > Desktop captured screenshot', { stream });
-        await xmds.screenshot(stream);
+        await makeScreenshot();
       }, 1000);
+    }
+
+    const screenshotInterval = data.getSetting('screenShotRequestInterval', 0) as number;
+    console.debug('[Xmds::on("registered")] > screenShotRequestInterval', {
+      screenshotInterval,
+      screenshotIntervalId,
+    });
+
+    if (screenshotInterval === 0 && screenshotIntervalId !== null) {
+      console.debug('[Xmds::on("registered")] > Clearing existing screenshot interval before applying new one', {
+        screenshotIntervalId,
+      });
+      clearInterval(screenshotIntervalId);
+    }
+
+    const handleIntervalScreenshot = () => {
+      const screenshotIntervalInMinutes = (screenshotInterval * 60);
+      screenshotIntervalId = setInterval(async () => {
+        console.debug('[Xmds::on("registered")] > Regular screenshot request interval triggered, capturing desktop and taking screenshot', {
+          screenshotIntervalInMinutes: screenshotInterval,
+        });
+
+        await makeScreenshot();
+      }, screenshotIntervalInMinutes * 1000)
+    };
+
+    if (screenshotInterval > 0) {
+      handleIntervalScreenshot();
     }
   });
 
