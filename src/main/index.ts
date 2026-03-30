@@ -48,6 +48,7 @@ import { ConfigData, MainCallbackType } from '../shared/types';
 import { commandManager } from '../shared/command/commandManager';
 import { registerLocalCommands } from './command/localCommands';
 import { scheduleCriteriaManager } from '../shared/scheduleCriteria/scheduleCriteriaManager';
+import { captureDesktop } from '../shared/utils/desktopCapture';
 
 // Axios interceptors
 axios.interceptors.request.use(req => {
@@ -282,8 +283,10 @@ const initXmrEventHandlers = async function () {
   });
   xmr.on('screenShot', async () => {
     console.debug('Requesting a screenshot', { method: 'Xmr::screenShot' });
-    await xmds.screenshot();
-    await xmds.notifyStatus();
+    const stream = await captureDesktop();
+    console.debug('Desktop captured', { stream });
+    // await xmds.screenshot();
+    // await xmds.notifyStatus();
   });
   
   /**
@@ -348,6 +351,21 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr) {
       config.cmsUrl?.replace(url.protocol, protocol) + '/xmr'
     );
     xmr.start(xmrWebSocketAddress, config.getSetting('xmrCmsKey', 'n/a'));
+    
+    const screenshotRequested = data.getSetting('screenShotRequested', '0');
+    console.debug('[Xmds::on("registered")] > screenShotRequested', screenshotRequested);
+    // Is there a screenshot request pending which we may have missed via XMR?
+    if (data.getSetting('screenShotRequested', '0') == '1') {
+      console.debug('[Xmds::on("registered")] > Pending screenshot request found, capturing desktop and taking screenshot');
+
+      // Wait a bit and process it
+      setTimeout(async () => {
+        console.debug('[Xmds::on("registered")] > Requesting a screenshot', { method: 'Xmds::screenShot' });
+        const stream = await captureDesktop();
+        console.debug('[Xmds::on("registered")] > Desktop captured screenshot', { stream });
+        await xmds.screenshot(stream);
+      }, 1000);
+    }
   });
 
   xmds.on('requiredFiles', async (data) => {
