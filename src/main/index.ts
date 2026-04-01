@@ -49,6 +49,7 @@ import { commandManager } from '../shared/command/commandManager';
 import { registerLocalCommands } from './command/localCommands';
 import { scheduleCriteriaManager } from '../shared/scheduleCriteria/scheduleCriteriaManager';
 import { xmdsMakeScreenshot } from '../shared/utils/xmdsUtil';
+import { IXlrEvents } from '@xibosignage/xibo-layout-renderer';
 
 // Axios interceptors
 axios.interceptors.request.use(req => {
@@ -149,18 +150,30 @@ ipcMain.handle('xmds-try-register', async (_event, _config) => {
   }
 });
 
-// Register main process callbacks that can be invoked from the renderer
-ipcMain.handle('send-current-layout-as-status-update', async (_event, layoutId: number) => {
-  state.currentLayoutId = layoutId;
+ipcMain.handle('execute-xlr-event', async (_event, { eventName, payload }: { eventName: keyof IXlrEvents, payload: any }) => {
+  console.debug(`[MAIN] [execute-xlr-event] > Executing XLR event from renderer`, {
+    eventName,
+    payload
+  });
 
-  if (Object.hasOwn(config.settings, 'sendCurrentLayoutAsStatusUpdate') &&
-    config.settings.sendCurrentLayoutAsStatusUpdate === true
-  ) {
-    console.debug('[MAIN] [Electron|XLR::on("layoutStart")] > Sending current layout as status update to CMS', {
-      layoutId: layoutId,
-    });
+  if (eventName === 'layoutStart') {
+    state.currentLayoutId = payload.layoutId;
 
-    await xmds.notifyStatus();
+    if (Object.hasOwn(config.settings, 'sendCurrentLayoutAsStatusUpdate') &&
+      config.settings.sendCurrentLayoutAsStatusUpdate === true
+    ) {
+      console.debug('[MAIN] [XLR::on("layoutStart")] > Sending current layout as status update to CMS', {
+        layoutId: state.currentLayoutId,
+      });
+
+      await xmds.notifyStatus(['currentLayoutId']);
+    }
+  } else if (eventName === 'commandCodeReceived') {
+    // Handle command code received event
+    await commandManager.executeCommandByCode(payload.commandCode);
+  } else if (eventName === 'commandStringReceived') {
+    // Handle command string received event
+    await commandManager.executeCommandByString(payload.commandString);
   }
 });
 

@@ -33,6 +33,7 @@ import { ConsoleDB } from '../../shared/console/ConsoleDB';
 import { submitLogsXmlString } from '../common/parser';
 import { AxiosErrorCodes, handleXmdsError } from '../common/error/XmdsError';
 import { commandManager } from '../../shared/command/commandManager';
+import { StateData } from '../common/state';
 
 interface XmdsEvents {
   collecting: () => void;
@@ -469,13 +470,13 @@ export class Xmds {
       .catch((error) => handleError(error));
   }
 
-  async notifyStatus() {
+  async notifyStatus(keys?: Partial<(keyof StateData)[]>) {
     const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
       ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
       '   <tns:NotifyStatus>\n' +
       '     <serverKey xsi:type="xsd:string"><![CDATA[' + this.config.cmsKey + ']]></serverKey>\n' +
       '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
-      '     <status xsi:type-="xsd:string">' + this.config.state.toJson() + '</status>\n' +
+      '     <status xsi:type-="xsd:string">' + this.config.state.toJson(keys) + '</status>\n' +
       '   </tns:NotifyStatus>\n' +
       ' </soap:Body>\n' +
       '</soap:Envelope>';

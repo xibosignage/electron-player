@@ -22,6 +22,7 @@
 import { contextBridge, ipcRenderer } from 'electron/renderer';
 import { createExtendedConsole, serializeArgs } from '../shared/console/ExtendedConsole';
 import { ApiHandler, ConfigData, PlayerAPI } from '../shared/types';
+import { IXlrEvents } from '@xibosignage/xibo-layout-renderer';
 
 // Create renderer console that forwards logs to main via IPC
 const extendedConsole = createExtendedConsole({
@@ -52,7 +53,7 @@ const apiHandler: ApiHandler = {
     return response.data;
   },
   getConfig: () => ipcRenderer.invoke('get-config'),
-  sendCurrentLayoutAsStatusUpdate: (layoutId: number) => ipcRenderer.invoke('send-current-layout-as-status-update', layoutId),
+  executeXlrEvent: (eventName: keyof IXlrEvents, payload: any) => ipcRenderer.invoke('execute-xlr-event', { eventName, payload }),
 }
 
 contextBridge.exposeInMainWorld('apiHandler', apiHandler);

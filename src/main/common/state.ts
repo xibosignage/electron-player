@@ -80,8 +80,8 @@ export class State {
     this.displayStatus = 2;
   }
 
-  toJson() {
-    return JSON.stringify({
+  toJson(keys?: Partial<(keyof StateData)[]>): string {
+    const stateData: any = {
       availableSpace: this.availableSpace,
       totalSpace: this.totalSpace,
       lastCommandSuccess: this.lastCommandSuccess,
@@ -93,15 +93,40 @@ export class State {
       height: this.height,
       latitude: this.latitude,
       longitude: this.longitude,
-      statusDialog: JSON.stringify({
-        appVersionCode: this.appVersionCode,
-        lastXmrMessage: this.lastXmrMessage,
-        userAgent: navigator.userAgent,
-        scheduleLoop: this.scheduleLoop,
-        ssp: this.ssp,
-      }),
       displayStatus: this.displayStatus,
-    });
+    };
+    const statusDialogData = {
+      appVersionCode: this.appVersionCode,
+      lastXmrMessage: this.lastXmrMessage,
+      userAgent: navigator.userAgent,
+      scheduleLoop: this.scheduleLoop,
+      ssp: this.ssp,
+    };
+
+    if (!keys) {
+      stateData.statusDialog = JSON.stringify(statusDialogData);
+      return JSON.stringify(stateData);
+    }
+
+    const filteredData: Partial<StateData> = {};
+    for (const key of Object.keys(stateData) as (keyof StateData)[]) {
+      console.debug('[State::toJson] Checking key for status update', {
+        key,
+        included: keys.includes(key),
+      });
+
+      if (keys?.includes(key)) {
+        if (key === 'statusDialog') {
+          (filteredData[key] as any) = JSON.stringify(statusDialogData);
+        } else {
+          (filteredData[key] as any) = stateData[key];
+        }
+      }
+    }
+
+    console.debug('[State::toJson] Filtered state data for status update', filteredData);
+
+    return JSON.stringify(filteredData);
   }
 
   toHtml(config: Config) {

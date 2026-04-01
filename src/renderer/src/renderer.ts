@@ -28,7 +28,6 @@ import DefaultLayout from './layout/defaultLayout';
 
 import { ConfigHandler } from './ConfigHandler';
 import { ConfigData } from '@shared/types';
-import { commandManager } from '@shared/command/commandManager';
 import logo from './assets/images/logo.png';
 
 let xlr: IXlr;
@@ -75,27 +74,28 @@ const initXlrEventHandlers = function () {
    * Handles an incoming command identified by a CMS-provided command code.
    */
   xlr.on('commandCodeReceived', async (commandCode) => {
-    console.log('[Xmr::commandCodeReceived] - Received a new command', commandCode);
-    await commandManager.executeCommandByCode(commandCode);
+    console.log('[RENDERER] > [Xlr::commandCodeReceived] - Received a new command', commandCode);
+    await window.apiHandler.executeXlrEvent('commandCodeReceived', { commandCode });
   });
 
   /**
    * Handles an incoming command provided as an encoded command string.
    */
   xlr.on('commandStringReceived', async (commandString) => {
-    console.log('[Xmr::commandStringReceived] - Received a new command', commandString);
-    await commandManager.executeCommandByString(commandString);
+    console.log('[RENDERER] > [Xlr::commandStringReceived] - Received a new command', commandString);
+    await window.apiHandler.executeXlrEvent('commandStringReceived', { commandString });
   });
 
 
   xlr.on('layoutStart', async (layout) => {
     // When a layout starts playing, update CMS with the current layout
     // if "Notify current layout" is enabled.
-    console.debug('[RENDERER] [Electron|XLR::on("layoutStart")] > Layout started', {
+    console.debug('[RENDERER] [XLR::on("layoutStart")] > Layout started', {
       layoutId: layout.layoutId,
     });
 
-    await window.apiHandler.sendCurrentLayoutAsStatusUpdate(layout.layoutId);
+    // await window.apiHandler.sendCurrentLayoutAsStatusUpdate(layout.layoutId);
+    await window.apiHandler.executeXlrEvent('layoutStart', { layoutId: layout.layoutId });
   });
 }
 
