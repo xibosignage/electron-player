@@ -19,6 +19,7 @@
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
 import { InputLayoutType } from "@xibosignage/xibo-layout-renderer";
+import { StateData } from "../main/common/state";
 
 export interface ConfigData {
   platform: string;
@@ -37,6 +38,7 @@ export interface ConfigData {
   displayName?: string;
   settings: any;
   isConfigured: boolean;
+  state: StateData;
 }
 
 export type MainCallbackType = {
@@ -47,6 +49,7 @@ export interface ApiHandler {
   loadConfig: () => Promise<ConfigData>;
   xmdsTryRegister: (config: ConfigData) => Promise<void>;
   getConfig: () => Promise<ConfigData>;
+  sendCurrentLayoutAsStatusUpdate: (layoutId: number) => Promise<void>;
 }
 
 export interface PlayerAPI {

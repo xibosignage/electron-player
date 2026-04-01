@@ -2,6 +2,7 @@ import { ExtendedConsole } from "@shared/console/ExtendedConsole";
 import { CustomConsole } from "@shared/console/CustomConsole";
 import { ApiHandler, ConfigData, PlayerAPI } from "@shared/types";
 import { IXlr } from "@xibosignage/xibo-layout-renderer";
+import { type StateData } from "../main/common/state";
 
 export { };
 
@@ -19,7 +20,8 @@ declare global {
 
     interface Window {
         __extendedConsole: CustomConsole;
-        config: ConfigData
+        config: ConfigData;
+        state: StateData;
         electron: ElectronApi;
         apiHandler: ApiHandler;
         playerAPI: PlayerAPI;

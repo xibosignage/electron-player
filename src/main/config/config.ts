@@ -149,6 +149,7 @@ export class Config {
     this.settings['offsetY'] = registerDisplay.getSetting('offsetY', 0);
     this.settings['sizeX'] = registerDisplay.getSetting('sizeX', 0);
     this.settings['sizeY'] = registerDisplay.getSetting('sizeY', 0);
+    this.settings['sendCurrentLayoutAsStatusUpdate'] = registerDisplay.getSetting('sendCurrentLayoutAsStatusUpdate', false);
     this.state.displayStatus = registerDisplay.status || 0;
 
     this.saveCms();

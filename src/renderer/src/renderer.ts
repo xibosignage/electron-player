@@ -86,6 +86,17 @@ const initXlrEventHandlers = function () {
     console.log('[Xmr::commandStringReceived] - Received a new command', commandString);
     await commandManager.executeCommandByString(commandString);
   });
+
+
+  xlr.on('layoutStart', async (layout) => {
+    // When a layout starts playing, update CMS with the current layout
+    // if "Notify current layout" is enabled.
+    console.debug('[RENDERER] [Electron|XLR::on("layoutStart")] > Layout started', {
+      layoutId: layout.layoutId,
+    });
+
+    await window.apiHandler.sendCurrentLayoutAsStatusUpdate(layout.layoutId);
+  });
 }
 
 export const startApp = async () => {

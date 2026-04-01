@@ -48,7 +48,6 @@ import { ConfigData, MainCallbackType } from '../shared/types';
 import { commandManager } from '../shared/command/commandManager';
 import { registerLocalCommands } from './command/localCommands';
 import { scheduleCriteriaManager } from '../shared/scheduleCriteria/scheduleCriteriaManager';
-import { captureDesktop } from '../shared/utils/desktopCapture';
 import { xmdsMakeScreenshot } from '../shared/utils/xmdsUtil';
 
 // Axios interceptors
@@ -111,6 +110,10 @@ const loadConfig = async () => {
 
   appConfig = JSON.parse(config.toJson());
 
+  if (appConfig && typeof appConfig.state === 'string') {
+    appConfig.state = JSON.parse(appConfig.state);
+  }
+
   return appConfig;
 };
 
@@ -143,6 +146,21 @@ ipcMain.handle('xmds-try-register', async (_event, _config) => {
       success: false,
       error: err,
     }
+  }
+});
+
+// Register main process callbacks that can be invoked from the renderer
+ipcMain.handle('send-current-layout-as-status-update', async (_event, layoutId: number) => {
+  state.currentLayoutId = layoutId;
+
+  if (Object.hasOwn(config.settings, 'sendCurrentLayoutAsStatusUpdate') &&
+    config.settings.sendCurrentLayoutAsStatusUpdate === true
+  ) {
+    console.debug('[MAIN] [Electron|XLR::on("layoutStart")] > Sending current layout as status update to CMS', {
+      layoutId: layoutId,
+    });
+
+    await xmds.notifyStatus();
   }
 });
 
@@ -228,8 +246,7 @@ const configureFileManager = () => {
 let mainWindow: BrowserWindow;
 const createWindow = () => {
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 720,
+    fullscreen: true,
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#000',

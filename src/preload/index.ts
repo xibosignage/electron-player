@@ -52,6 +52,7 @@ const apiHandler: ApiHandler = {
     return response.data;
   },
   getConfig: () => ipcRenderer.invoke('get-config'),
+  sendCurrentLayoutAsStatusUpdate: (layoutId: number) => ipcRenderer.invoke('send-current-layout-as-status-update', layoutId),
 }
 
 contextBridge.exposeInMainWorld('apiHandler', apiHandler);

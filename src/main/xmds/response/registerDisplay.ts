@@ -118,6 +118,10 @@ export class RegisterDisplay {
       settingValue.value = parseInt(String(settingValue.value));
     }
 
+    if (setting === 'sendCurrentLayoutAsStatusUpdate') {
+      settingValue.value = Boolean(parseInt(String(settingValue.value)));
+    }
+
     console.debug('[RegisterDisplay::getSetting]', {
       setting,
       defaultValue,

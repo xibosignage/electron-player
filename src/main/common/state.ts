@@ -21,6 +21,28 @@
 import { DateTime } from "luxon";
 import { Config } from "../config/config";
 
+export interface StateData {
+  availableSpace: number;
+  totalSpace: number;
+  lastCommandSuccess: boolean;
+  deviceName: string;
+  lanIpAddress: string;
+  timeZone: string;
+  currentLayoutId: number;
+  width: number;
+  height: number;
+  latitude: number;
+  longitude: number;
+  statusDialog: {
+    appVersionCode: string | number;
+    lastXmrMessage: DateTime;
+    userAgent: string;
+    scheduleLoop: string;
+    ssp: string;
+  };
+  displayStatus: number;
+}
+
 export class State {
   appVersionCode: string | number;
   lastXmrMessage: DateTime;
