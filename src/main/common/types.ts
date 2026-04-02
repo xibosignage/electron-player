@@ -42,7 +42,6 @@ export interface RequiredFile {
     layoutId?: number;
     regionId?: number;
     mediaId?: number;
-    updated?: string;
     code?: string;
     updateInterval?: number;
     width?: number;

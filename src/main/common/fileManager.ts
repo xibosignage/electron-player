@@ -221,29 +221,53 @@ export async function downloadResourceFile(file: FileManagerFileType, resourceHt
     return file;
 }
 
-export async function downloadWidgetDataFile(file: FileManagerFileType, widgetData: string) {
+export async function downloadWidgetDataFile(file: FileManagerFileType, widgetData: string, _status?: FileManagerFileType['status']) {
     const saveAs = `${file.id}.json`;
     const localPath = join(xiboLibDir, saveAs);
-    let status: FileManagerFileType['status'] = 'success';
+    let status: FileManagerFileType['status'] = _status ?? 'success';
     let size = 0;
 
     try {
         fs.writeFileSync(localPath, widgetData);
         size = fs.statSync(localPath).size;
 
-        store.db.prepare(`
-            INSERT INTO files (name, url, localPath, size, status, fileId, type, fileType, md5)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(name) DO UPDATE SET
-                url = excluded.url,
-                localPath = excluded.localPath,
-                size = excluded.size,
-                status = excluded.status,
-                type = excluded.type,
-                fileType = excluded.fileType,
-                md5 = excluded.md5,
-                lastDownloaded = CURRENT_TIMESTAMP
-        `).run(saveAs, localPath, localPath, size, status, file.id, file.type, 'json', '');
+        if (status === 'updated') {
+            const fileUpdated = store.update({
+                ...file,
+                size,
+                status,
+                saveAs,
+                path: localPath,
+                md5: '',
+            });
+
+            console.log(`[FileManager] Updated widget data file: ${saveAs}`, {
+                fileId: file.id,
+                fileType: file.type,
+                fileUpdateStatus: fileUpdated.changes === 1 ? 'success' : 'failed',
+            });
+        } else {
+            const fileInsert = store.db.prepare(`
+                INSERT INTO files (name, url, localPath, size, status, fileId, type, fileType, md5)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(name) DO UPDATE SET
+                    url = excluded.url,
+                    localPath = excluded.localPath,
+                    size = excluded.size,
+                    status = excluded.status,
+                    type = excluded.type,
+                    fileType = excluded.fileType,
+                    md5 = excluded.md5,
+                    lastDownloaded = CURRENT_TIMESTAMP
+            `).run(saveAs, localPath, localPath, size, status, file.id, file.type, 'json', '');
+
+            console.log(`[FileManager] Saved widget data file to DB: ${saveAs}`, {
+                fileId: file.id,
+                fileType: file.type,
+                fileInsertStatus: fileInsert.changes === 1 ? 'success' : 'failed',
+                fileRowId: fileInsert.lastInsertRowid,
+            });
+        }
 
         console.log(`[FileManager] Download successful: ${saveAs}`);
     } catch (err) {
@@ -252,4 +276,16 @@ export async function downloadWidgetDataFile(file: FileManagerFileType, widgetDa
     }
 
     return file;
+}
+
+export function getWidgetFile(fileId: number) {
+    const localFile = store.getByFileId(fileId);
+    console.debug(`[FileManager] getWidgetFile for fileId ${fileId}:`, { localFile });
+
+    if (!localFile) {
+        console.warn(`[FileManager] No local file found for widget fileId: ${fileId}`);
+        return null;
+    }
+
+    return localFile;
 }

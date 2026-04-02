@@ -1,6 +1,6 @@
 import { DateTime, DurationLike } from "luxon";
 
-import { MediaInventoryFileType } from "./types";
+import { MediaInventoryFileType, RequiredFile } from "./types";
 import { ScheduleLayoutsType } from "./scheduleManager";
 import { LogEntry } from "../../shared/console/ConsoleDB";
 import { StatEntry } from "./stats/StatsDB";
@@ -330,4 +330,8 @@ export function submitStatXmlString(statObj: StatEntry) {
   statXml += '/&gt;';
   
   return statXml;
+}
+
+export function getWidgetsFromRequiredFiles(files: RequiredFile[]): RequiredFile[] {
+  return files.filter(file => file.type === 'widget');
 }

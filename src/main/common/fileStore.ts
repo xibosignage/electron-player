@@ -52,7 +52,7 @@ export class FileStore {
     }
 
     insert(file: FileManagerFileType) {
-        this.insertStmt.run({
+        return this.insertStmt.run({
             name: file.saveAs,
             url: file.path,
             localPath: file.localPath,
@@ -66,12 +66,18 @@ export class FileStore {
     }
 
     update(file: FileManagerFileType) {
-        this.updateStmt.run({
+        return this.updateStmt.run({
             name: file.saveAs,
             url: file.path,
             size: file.size,
             status: file.status,
             md5: file.md5,
         });
+    }
+
+    getByFileId(fileId: number): FileManagerFileType | undefined {
+        return this.db.prepare(`
+            SELECT * FROM files where type = 'widget' AND fileId = ?
+        `).get(`${fileId}`) as FileManagerFileType | undefined;
     }
 }

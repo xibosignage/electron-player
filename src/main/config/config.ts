@@ -31,8 +31,8 @@ export class Config {
   readonly appType: string = 'electron';
 
   // App information
-  readonly version: string = "v4 R401";
-  readonly versionCode: number = 401;
+  readonly version: string = "v4 R402";
+  readonly versionCode: number = 402;
 
   // Config file
   readonly savePath: string;

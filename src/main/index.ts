@@ -35,10 +35,10 @@ import { Config } from './config/config';
 import { Xmds } from './xmds/xmds';
 import { State } from './common/state';
 import { createFileServer } from './express';
-import { downloadFile, downloadResourceFile, getDownloadedFiles, getLayoutFile, FileManagerFileType, downloadWidgetDataFile } from './common/fileManager';
+import { downloadFile, downloadResourceFile, getDownloadedFiles, getLayoutFile, FileManagerFileType, downloadWidgetDataFile, getWidgetFile } from './common/fileManager';
 import Schedule from './xmds/response/schedule/schedule';
 import ScheduleManager from './common/scheduleManager';
-import { InputLayoutType, LocalFile } from './common/types';
+import { InputLayoutType, LocalFile, RequiredFile } from './common/types';
 import { ConsoleDB } from '../shared/console/ConsoleDB';
 import { createExtendedConsole } from '../shared/console/ExtendedConsole';
 import { PoPStats } from './common/stats/PoPStats';
@@ -342,10 +342,44 @@ const initXmrEventHandlers = async function () {
    * 
    * Handles `dataUpdate` messages and forces the widget data to be downloaded and cached.
    */
-  // xmr.on('dataUpdate', async (widgetId) => {
-  //   console.debug('[XMR::dataUpdate] Updating widget data cache', widgetId);
-  //   await requiredFileUpdate(widgetId, xmds);
-  // });
+  xmr.on('dataUpdate', async (widgetId) => {
+    console.debug('[XMR::dataUpdate] Updating widget data file', widgetId);
+
+    const widgetData = await xmds.getData(`${widgetId}`);
+
+    if (!widgetData) {
+      console.debug('[XMR::dataUpdate] No widget data received for widget ' + widgetId);
+      return;
+    }
+
+    const widgetLocalFile = getWidgetFile(widgetId);
+
+    if (widgetLocalFile === null) {
+      console.debug('[XMR::dataUpdate] No local file found for widget ' + widgetId);
+      return;
+    }
+
+    console.debug('[XMR::dataUpdate] Received widget data for widget ' + widgetId, { widgetData });
+
+    await downloadWidgetDataFile({
+      id: `${widgetId}`,
+      type: 'widget',
+    } as FileManagerFileType, widgetData, 'updated');
+  });
+}
+
+async function dataWidgetUpdate(file: RequiredFile) {
+  console.debug('[MAIN] [dataWidgetUpdate] > Updating widget data file for widget ' + file.id);
+  const widgetData = await xmds.getData(file.id);
+
+  if (!widgetData) {
+    console.debug('[MAIN] [dataWidgetUpdate] > No widget data received for widget ' + file.id);
+    return;
+  }
+
+  console.debug('[MAIN] [dataWidgetUpdate] > Received updated widget data for widget ' + file.id, { widgetData });
+
+  return await downloadWidgetDataFile((file as unknown) as FileManagerFileType, widgetData, 'updated');
 }
 
 let screenshotIntervalId: NodeJS.Timeout | null = null;
@@ -454,20 +488,16 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr) {
         const resourceHtml = await xmds.getResource(file);
         return await downloadResourceFile((file as unknown) as FileManagerFileType, resourceHtml);
       } else if (file.type === 'widget') {
-        const widgetData = await xmds.getData(file);
-
-        if (!widgetData) {
-          console.debug('[Xmds::on("requiredFiles")] > No widget data received for widget ' + file.id);
-          return null;
-        }
-
-        console.debug('[Xmds::on("requiredFiles")] > Received widget data for widget ' + file.id, { widgetData });
-
-        return await downloadWidgetDataFile((file as unknown) as FileManagerFileType, widgetData);
+        return dataWidgetUpdate(file);
       } else {
         return null;
       }
     }));
+
+    // After all files have been processed, keep track of widget files and set up regular updates for them if required based on the updateInterval property.
+    data.updateDataWidgets(async (file) => {
+      await dataWidgetUpdate(file);
+    });
 
     // Update media inventory as files are downloaded
     await xmds.submitMediaInventory(

@@ -37,6 +37,7 @@ export default class RequiredFiles {
     filterTo: string | undefined;
     purge?: PurgeItemType[];
     files: RequiredFile[] = [];
+    widgetUpdateIntervalIds = new Map<string, NodeJS.Timeout>();
 
     constructor(response: string) {
         this.response = response;
@@ -124,5 +125,45 @@ export default class RequiredFiles {
             xmlString: xmlFilesString,
             files: mediaFiles,
         };
+    }
+
+    updateDataWidgets(updateWidgetDataFn: (file: RequiredFile) => Promise<void>) {
+        const widgetFiles = this.files.filter(file => file.type === 'widget');
+
+        console.debug(`[RequiredFiles] Updating data widgets. Found ${widgetFiles.length} widget files.`, {
+            intervalIds: Array.from(this.widgetUpdateIntervalIds.entries()),
+        });
+
+        if (widgetFiles.length === 0) {
+            console.debug('[RequiredFiles] No widget files found in required files. Clearing all widget update intervals.');
+            this.widgetUpdateIntervalIds.forEach((intervalId, fileId) => {
+                clearInterval(intervalId);
+                console.debug(`[RequiredFiles] Cleared update interval for widget ${fileId}.`);
+            });
+            this.widgetUpdateIntervalIds.clear();
+            return;
+        }
+
+        if (this.widgetUpdateIntervalIds.size > 0) {
+            this.widgetUpdateIntervalIds.forEach((intervalId, fileId) => {
+                if (!widgetFiles.some(file => file.id === fileId)) {
+                    console.debug(`[RequiredFiles] Clearing update interval for widget ${fileId} as it is no longer in the required files.`);
+                    clearInterval(intervalId);
+                    this.widgetUpdateIntervalIds.delete(fileId);
+                }
+            });
+        }
+
+        widgetFiles.forEach((file) => {
+            if (file.updateInterval && file.id) {
+                const intervalId = setInterval(() => {
+                    console.debug(`[RequiredFiles] Updating widget data file: ${file.id}`);
+                    if (updateWidgetDataFn) {
+                        updateWidgetDataFn(file);
+                    }
+                }, (file.updateInterval * 60 * 1000)); // Convert minutes to milliseconds
+                this.widgetUpdateIntervalIds.set(file.id, intervalId);
+            }
+        });
     }
 }

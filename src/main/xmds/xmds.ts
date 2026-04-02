@@ -561,14 +561,14 @@ export class Xmds {
     }
   }
   
-  async getData(file: RequiredFile) {
+  async getData(widgetId: RequiredFile['id']) {
     try {
       const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
         ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
         '   <tns:GetData>\n' +
         '     <serverKey xsi:type="xsd:string"><![CDATA[' + this.config.cmsKey + ']]></serverKey>\n' +
         '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
-        '     <widgetId xsi:type="xsd:string">' + file.id + '</widgetId>\n' +
+        '     <widgetId xsi:type="xsd:string">' + widgetId + '</widgetId>\n' +
         '   </tns:GetData>\n' +
         ' </soap:Body>\n' +
         '</soap:Envelope>';
@@ -591,7 +591,7 @@ export class Xmds {
             error,
           });
 
-          handleError(error, 'Unable to fetch data for widget with id ' + file.id);
+          handleError(error, 'Unable to fetch data for widget with id ' + widgetId);
 
           return false;
         });
@@ -600,7 +600,7 @@ export class Xmds {
         e,
       });
 
-      handleError(e, 'Unable to fetch data for widget with id ' + file.id);
+      handleError(e, 'Unable to fetch data for widget with id ' + widgetId);
 
       return false;
     }
