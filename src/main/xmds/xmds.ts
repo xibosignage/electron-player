@@ -168,7 +168,7 @@ export class Xmds {
       '      <clientType xsi:type="xsd:string">' + this.config.getXmdsPlayerType() + '</clientType>\n' +
       '      <clientVersion xsi:type="xsd:string">' + this.config.version + '</clientVersion>\n' +
       '      <clientCode xsi:type="xsd:int">' + this.config.versionCode + '</clientCode>\n' +
-      '      <macAddress xsi:type="xsd:string">n/a</macAddress>\n' +
+      '      <macAddress xsi:type="xsd:string">' + this.config.macAddress + '</macAddress>\n' +
       '      <xmrChannel xsi:type="xsd:string">' + this.config.xmrChannel + '</xmrChannel>\n' +
       '      <operatingSystem xsi:type="xsd:string">' + JSON.stringify(this.config.platform) + '</operatingSystem>\n' +
       '      <licenceResult xsi:type="xsd:string"></licenceResult>\n' +

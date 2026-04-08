@@ -123,7 +123,7 @@ export class Layout implements LayoutInterface {
     }
 
     isInterruptDurationSatisfied(): boolean {
-        return true;
+        return this.interruptCommittedDuration >= this.shareOfVoice;
     }
 
     addCommittedInterruptDuration(): number {

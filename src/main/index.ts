@@ -48,6 +48,7 @@ import { ConfigData, MainCallbackType } from '../shared/types';
 import { commandManager } from '../shared/command/commandManager';
 import { registerLocalCommands } from './command/localCommands';
 import { scheduleCriteriaManager } from '../shared/scheduleCriteria/scheduleCriteriaManager';
+import { geoLocationManager } from './common/geoLocationManager';
 import { xmdsMakeScreenshot } from '../shared/utils/xmdsUtil';
 import { IXlrEvents } from '@xibosignage/xibo-layout-renderer';
 
@@ -100,6 +101,17 @@ const state = new State();
 export const config = new Config(app, process.platform, state);
 state.width = 1280;
 state.height = 720;
+
+// Keep state in sync whenever the geolocation manager accepts a new location
+geoLocationManager.on('geoLocationUpdated', () => {
+  const { latitude, longitude } = geoLocationManager.getCurrentLocation();
+  console.debug('[MAIN] geoLocationUpdated event received', {
+    latitude,
+    longitude,
+  });
+  if (latitude !== null) state.latitude = latitude;
+  if (longitude !== null) state.longitude = longitude;
+});
 
 let xmds: Xmds;
 let xmr: Xmr;
@@ -707,6 +719,9 @@ const init = async (win: BrowserWindow) => {
 
   appConfig = await loadConfig();
 
+  // Start resolving the device's location via IP geolocation
+  geoLocationManager.start();
+
   console.debug('[MAIN] init > config', {
     config,
     appConfig,
@@ -778,6 +793,13 @@ app.whenReady().then(() => {
         'Access-Control-Allow-Headers': ['Content-Type, Authorization', 'x-preview-jwt']  // Allowed headers
       }
     });
+  });
+  session.defaultSession.setPermissionRequestHandler((_, permission, callback) => {
+    if (permission === 'geolocation') {
+      callback(true); // Approve geolocation permission requests
+    } else {
+      callback(false); // Deny all other permission requests
+    }
   });
 
   // Install dev tools extension.

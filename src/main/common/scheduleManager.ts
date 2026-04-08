@@ -191,6 +191,12 @@ export default class ScheduleManager {
             [[], []]
         );
 
+        console.debug('[Schedule Manager] Layouts after filtering by date, criteria, geofence, and validity', {
+            method: 'Schedule: Manager: Assess',
+            layouts,
+            interrupts,
+        });
+
         if (interrupts.length > 0) {
             interruptLayouts = [...interruptLayouts, ...interrupts];
         }
@@ -319,6 +325,12 @@ export default class ScheduleManager {
             // No interrupts, just take the entire normal schedule loop.
             loop = layouts;
         }
+
+        console.debug('[Schedule Manager] Layouts after assessing interrupts and share of voice', {
+            method: 'Schedule: Manager: Assess',
+            interruptLayouts,
+            loop,
+        });
 
         // Is this layout loop different to the current one?
         // can we store a count and hash or similar?

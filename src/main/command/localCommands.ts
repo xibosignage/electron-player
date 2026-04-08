@@ -95,7 +95,7 @@ export async function registerLocalCommands({
    */
   commandManager.registerCommand('currentGeoLocation', async () => {
     console.log('[CommandManager::currentGeoLocation] - Sending current geolocation status');
-    await xmds.notifyStatus();
+    await xmds.notifyStatus(['latitude', 'longitude']);
   });
 
   /**

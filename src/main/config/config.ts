@@ -21,9 +21,11 @@
 const fs = require('fs/promises');
 import { join } from 'path';
 import { machineId } from 'node-machine-id';
+import { randomUUID } from 'crypto';
+import os from 'os';
+
 import { RegisterDisplay } from '../xmds/response/registerDisplay';
 import { State } from '../common/state';
-import { randomUUID } from 'crypto';
 
 export class Config {
   // Environment
@@ -54,6 +56,9 @@ export class Config {
   displayName: string | undefined;
   settings: any;
 
+  // Device info
+  macAddress: string = '';
+
   constructor(app: Electron.App, platform: string, state: State) {
     const savePath = app.getPath('userData');
     this.savePath = join(savePath, 'config.json');
@@ -76,10 +81,12 @@ export class Config {
       this.cmsUrl = data.cmsUrl;
       this.cmsKey = data.cmsKey;
       this.xmrChannel = data.xmrChannel ?? randomUUID();
+      this.macAddress = data.macAddress || this.getMacAddress();
     } catch {
       // Probably the file doesn't exist.
       this.hardwareKey = (await machineId()).substring(0, 40);
       this.xmrChannel = randomUUID();
+      this.macAddress = this.getMacAddress();
       await this.save();
     }
 
@@ -107,6 +114,7 @@ export class Config {
         xmrChannel: this.xmrChannel,
         cmsUrl: this.cmsUrl,
         cmsKey: this.cmsKey,
+        macAddress: this.macAddress,
       }, null, 2),
     );
   };
@@ -171,6 +179,23 @@ export class Config {
     return 'linux'
     // We have a different display profile for electron on windows vs electron on linux.
     //return this.platform == 'win32' ? 'electron-win' : 'electron-linux';
+  }
+
+  getMacAddress(): string {
+    const interfaces = os.networkInterfaces();
+    for (const name in interfaces) {
+      const networkInterface = interfaces[name];
+      if (networkInterface === undefined) continue;
+
+      for (const details of networkInterface) {
+        // Skip internal (loopback) and virtual addresses
+        if (details.mac && details.mac !== '00:00:00:00:00:00' && !details.internal) {
+          return details.mac;
+        }
+      }
+    }
+
+    return 'n/a';
   }
 
   toJson(): string {
