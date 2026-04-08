@@ -75,13 +75,13 @@ export class Layout implements LayoutInterface {
         this.file = parseInt(response.$.file);
         this.fromDt = response.$.fromdt;
         this.geoLocation = response.$.geoLocation;
-        this.groupKey = parseInt(response.$.groupKey);
+        this.groupKey = parseInt(response.$.groupKey ?? 0);
         this.isGeoAware = response.$.isGeoAware === '1';
         this.maxPlaysPerHour = parseInt(response.$.maxPlaysPerHour);
-        this.playCount = parseInt(response.$.playCount);
+        this.playCount = parseInt(response.$.playCount ?? 0);
         this.priority = parseInt(response.$.priority);
         this.scheduleId = parseInt(response.$.scheduleid);
-        this.shareOfVoice = parseInt(response.$.shareOfVoice);
+        this.shareOfVoice = parseInt(response.$.shareOfVoice ?? 0);
         this.syncEvent = response.$.syncEvent === '1';
         this.toDt = response.$.todt;
         this.index = 0;

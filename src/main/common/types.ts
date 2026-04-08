@@ -4,6 +4,8 @@ export type InputLayoutType = {
     path?: string;
     shortPath?: string;
     scheduleId?: number;
+    isOverlay?: boolean;
+    shareOfVoice?: number;
 };
 
 export type MediaInventoryFileType = {

@@ -166,6 +166,13 @@ window.playerAPI.onUpdateUniqueLayouts(async layouts => {
   }
 });
 
+window.playerAPI.onUpdateOverlays(async overlays => {
+  if (xlr) {
+    console.debug('[Renderer::onUpdateOverlays]', { overlays });
+    xlr.emitter.emit('updateOverlays', overlays);
+  }
+});
+
 window.playerAPI.onShowStatusWindow((timeout) => {
   showStatusWindowFn(timeout);
 });

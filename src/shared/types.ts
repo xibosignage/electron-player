@@ -58,6 +58,7 @@ export interface PlayerAPI {
   onStateChange: (callback: (state: string) => void) => void;
   onUpdateLoop: (callback: (layouts: InputLayoutType[]) => void) => void;
   onUpdateUniqueLayouts: (callback: (layouts: InputLayoutType[]) => void) => void;
+  onUpdateOverlays: (callback: (overlays: InputLayoutType[]) => void) => void;
   onShowStatusWindow: (callback: (timeout: number) => void) => void;
 
   // Render to main

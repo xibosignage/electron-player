@@ -4,8 +4,9 @@ import { MediaInventoryFileType, RequiredFile } from "./types";
 import { ScheduleLayoutsType } from "./scheduleManager";
 import { LogEntry } from "../../shared/console/ConsoleDB";
 import { StatEntry } from "./stats/StatsDB";
+import { OverlayLayout } from "../xmds/response/schedule/events/overlayLayout";
 
-export function getLayoutIds(layouts: ScheduleLayoutsType[]): number[] {
+export function getLayoutIds(layouts: ScheduleLayoutsType[] | OverlayLayout[]): number[] {
     return layouts.reduce((a: number[], b) => {
         return [...a, b.file];
     }, []);

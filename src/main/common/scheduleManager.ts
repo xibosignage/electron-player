@@ -6,11 +6,16 @@ import { Config } from "../config/config";
 import { getLayoutIds } from "./parser";
 import { InputLayoutType } from "./types";
 import { getLayoutFile } from "./fileManager";
+import { OverlayLayout } from "../xmds/response/schedule/events/overlayLayout";
+import SspLayout from "../xmds/response/schedule/events/sspLayout";
+import { geoLocationManager } from "./geoLocationManager";
+import { scheduleCriteriaManager } from "../../shared/scheduleCriteria/scheduleCriteriaManager";
 
-export type ScheduleLayoutsType = Layout | DefaultLayout; // Add SspLayout
+export type ScheduleLayoutsType = Layout | DefaultLayout | SspLayout;
 
 interface ScheduleEvents {
     layouts: (object: ScheduleLayoutsType[]) => void;
+    overlays: (object: OverlayLayout[]) => void;
 }
 
 export default class ScheduleManager {
@@ -18,6 +23,8 @@ export default class ScheduleManager {
 
     interval: number = -1;
     isAssessing: boolean = false;
+    isAssessingLayouts: boolean = false;
+    isAssessingOverlays: boolean = false;
 
     schedule: Schedule;
 
@@ -25,6 +32,7 @@ export default class ScheduleManager {
     sspAverageDuration: number = 0;
 
     layouts: ScheduleLayoutsType[];
+    overlays: OverlayLayout[];
 
     lastPlayedAt: Date | null = null;
     playStats: { [scheduleId: number]: number } = {};
@@ -36,6 +44,7 @@ export default class ScheduleManager {
         this.emitter = createNanoEvents<ScheduleEvents>();
         this.schedule = schedule;
         this.layouts = [];
+        this.overlays = [];
         this.layouts.push(this.getSplash());
         this.config = config;
     }
@@ -53,10 +62,12 @@ export default class ScheduleManager {
         // @ts-ignore
         this.interval = setInterval(async () => {
             // Regular collection.
-            await this.assess();
+            await this.assessLayouts();
+            await this.assessOverlays();
         }, interval * 1000);
-
-        await this.assess();
+        
+        await this.assessLayouts();
+        await this.assessOverlays();
     }
 
     async update(schedule: Schedule) {
@@ -74,16 +85,24 @@ export default class ScheduleManager {
     }
 
     /**
-     * Assess the current schedule
+     * Assess normal layouts from the current schedule
      */
-    async assess() {
-        if (this.isAssessing) {
+    async assessLayouts() {
+        if (this.isAssessingLayouts) {
             console.info('Still active, skipping.', {
                 method: 'Schedule: Manager: Assess'
             });
             return;
         }
-        this.isAssessing = true;
+
+        // if (!await this.isGlobalDependenciesValid()) {
+        //     console.debug('Global dependencies not ready, skipping.', {
+        //         method: 'Schedule: Manager: Assess'
+        //     });
+        //     return;
+        // }
+
+        this.isAssessingLayouts = true;
 
         // If we don't have anything to assess, drop out straight away.
         let hasChanged = false;
@@ -95,7 +114,7 @@ export default class ScheduleManager {
             this.config.state.scheduleLoop = 'Splash only';
             this.layouts = [this.getSplash()];
             this.emitter.emit('layouts', [this.getSplash()]);
-            this.isAssessing = false;
+            this.isAssessingLayouts = false;
             return;
         }
 
@@ -103,87 +122,44 @@ export default class ScheduleManager {
         const now = new Date();
         let loop: ScheduleLayoutsType[] = [];
         let interruptLayouts: ScheduleLayoutsType[] = [];
-        let maxPriority = 0;
 
         // Do we have SSP
-        // if (this.sspShareOfVoice > 0) {
-        //     const sspLayout = new SspLayout();
-        //     sspLayout.duration = this.sspAverageDuration;
-        //     sspLayout.shareOfVoice = this.sspShareOfVoice;
+        if (this.sspShareOfVoice > 0) {
+            const sspLayout = new SspLayout();
+            sspLayout.duration = this.sspAverageDuration;
+            sspLayout.shareOfVoice = this.sspShareOfVoice;
 
-        //     interruptLayouts.push(sspLayout);
-        // }
+            interruptLayouts.push(sspLayout);
+        }
 
-        const tempLayouts = (await Promise.all(
-            this.schedule.layouts.map(async (layout) => {
-                // Reset any state tracking for this assessment.
-                layout.interruptCommittedDuration = 0;
+        // Reset playStats if the last recorded play time is from a different hour.
+        // This ensures layouts with max play limits can start playing again after the reset.
+        if (this.lastPlayedAt && this.lastPlayedAt.getHours() !== now.getHours()) {
+            this.playStats = {};
+        }
 
-                // Is this schedule in date.
-                if (!(now > layout.getFromDt() && now < layout.getToDt())) {
-                    // Outside schedule window.
-                    return null;
-                }
-
-                // Is it valid?
-                const isLayoutValid = await layout.isValid();
-                if (!isLayoutValid) {
-                    return null;
-                }
-
-                // Is any schedule criteria active?
-                if (layout.hasCriteria()) {
-                    // If we don't match, return.
-                    // TODO: matching criteria
-                    return null;
-                }
-
-                // Is it inside the geofence (if applicable)
-                if (layout.isGeoAware) {
-                    // If we don't have a valid location, return
-                    // TODO: Load the GeoJSON
-                    //  If we aren't inside the location, return
-                    return null;
-                }
-
-                // Keep track of the layouts that might be affected by play counts
-                if (layout.maxPlaysPerHour > 0 && layout.scheduleId != null) {
-                    if (!this.scheduleIdsThatHaveMaxPlays.includes(layout.scheduleId)) {
-                        this.scheduleIdsThatHaveMaxPlays.push(layout.scheduleId);
-                    }
-                }
-
-                // Does it have a max plays per hour and have it reached?
-                if (layout.maxPlaysPerHour > 0 &&
-                    layout.scheduleId !== null &&
-                    this.playStats[layout.scheduleId] &&
-                    this.playStats[layout.scheduleId] >= layout.maxPlaysPerHour
-                ) {
-                    // We already hit the max plays in the current hour, so do not include
-                    return null;
-                }
-
-                // By this point we know we can include it, but is it superseded by layouts with higher priority?
-                // Is the priority a new highest priority?
-                if (layout.priority > maxPriority) {
-                    // This is a layout with a higher priority
-                    layouts = [];
-                    maxPriority = layout.priority;
-                } else if (layout.priority < maxPriority) {
-                    // Lower priority than the max, so do not include
-                    return null;
-                }
-
-                return layout;
-            })
+        // Start evaluating layouts
+        const evaluatedLayouts  = (await Promise.all(
+            this.schedule.layouts.map(layout => this.evaluateLayout(layout, now))
         )).filter(l => l !== null);
+
+        // Find the highest priority
+        const maxPriority = Math.max(...evaluatedLayouts.map(l => l?.priority ?? 0));
+
+        // Keep only layouts with the highest priority
+        // If all layouts share the same priority value, then they are all included
+        const tempLayouts = evaluatedLayouts.filter(l => l?.priority === maxPriority);
 
         let [layouts, interrupts] = tempLayouts.reduce(
             ([normalLayouts, interrupts]: [ScheduleLayoutsType[], ScheduleLayoutsType[]], layout) => {
+                if (layout === null) {
+                    return [normalLayouts, interrupts];
+                }
+
                 if (layout.isInterrupt()) {
-                    interrupts.push(layout);
+                    interrupts.push(layout as ScheduleLayoutsType);
                 } else {
-                    normalLayouts.push(layout);
+                    normalLayouts.push(layout as ScheduleLayoutsType);
                 }
 
                 return [normalLayouts, interrupts];
@@ -191,22 +167,16 @@ export default class ScheduleManager {
             [[], []]
         );
 
-        console.debug('[Schedule Manager] Layouts after filtering by date, criteria, geofence, and validity', {
-            method: 'Schedule: Manager: Assess',
-            layouts,
-            interrupts,
-        });
-
         if (interrupts.length > 0) {
             interruptLayouts = [...interruptLayouts, ...interrupts];
         }
 
         // We must have at least 1 normal schedule before we assess interrupts.
         if (layouts.length <= 0 &&
-            this.schedule &&
-            this.schedule.defaultLayout && await this.schedule.defaultLayout.isValid()
+          this.schedule &&
+          this.schedule.defaultLayout && await this.schedule.defaultLayout.isValid()
         ) {
-            console.debug('>>>> XLR.debug No layouts, showing default layout.', {
+            console.debug('[ScheduleManager::assessLayouts] > No layouts, showing default layout.', {
                 method: 'Schedule: Manager: Assess'
             });
             layouts.push(this.schedule.defaultLayout);
@@ -326,11 +296,14 @@ export default class ScheduleManager {
             loop = layouts;
         }
 
-        console.debug('[Schedule Manager] Layouts after assessing interrupts and share of voice', {
-            method: 'Schedule: Manager: Assess',
-            interruptLayouts,
-            loop,
-        });
+        // Ensure loop is never empty, fallback to default layout or splash screen
+        if (loop.length === 0) {
+            if (this.schedule?.defaultLayout && await this.schedule.defaultLayout.isValid()) {
+                loop = [this.schedule.defaultLayout];
+            } else {
+                loop = [this.getSplash()];
+            }
+        }
 
         // Is this layout loop different to the current one?
         // can we store a count and hash or similar?
@@ -349,15 +322,9 @@ export default class ScheduleManager {
             hasChanged = existingLayoutIds.join(',') !== newLayoutIds.join(',');
         }
 
-        console.debug('>>>>> XLR.debug Assess complete, hasChanged = ' + hasChanged, {
-            loop: { length: loop.length, ids: getLayoutIds(loop), },
-            layouts: { length: layouts.length, ids: getLayoutIds(layouts), },
-            thisLayouts: { length: this.layouts.length, ids: getLayoutIds(this.layouts), },
-            method: 'Schedule: Manager: Assess'
-        });
-
         if (hasChanged) {
-            console.debug('>>>> XLR.debug Assessment finished, schedule loop changed', {
+            console.debug('[ScheduleManager::assessLayouts] > Assessment finished, schedule loop changed', {
+                loop,
                 method: 'Schedule: Manager: Assess'
             });
 
@@ -379,7 +346,7 @@ export default class ScheduleManager {
 
             this.emitter.emit('layouts', this.layouts);
         } else {
-            console.debug('>>>> XLR.debug Assessment finished, no change', {
+            console.debug('[ScheduleManager::assessLayouts] > Assessment finished, no change', {
                 method: 'Schedule: Manager: Assess'
             });
         }
@@ -391,7 +358,163 @@ export default class ScheduleManager {
             }).join(', ');
         }
 
-        this.isAssessing = false;
+        this.isAssessingLayouts = false;
+    }
+
+    /**
+     * Assess overlay layouts from the current schedule
+     */
+    async assessOverlays() {
+        if (this.isAssessingOverlays) {
+            console.debug('[ScheduleManager::assessOverlays] > Still assessing overlays, skipping', {
+                method: 'Schedule: Manager: Assess Overlays',
+            });
+
+            return;
+        }
+        this.isAssessingOverlays = true;
+
+        // If we don't have anything to assess, drop out straight away.
+        let hasChanged = false;
+        if (!this.schedule || (this.schedule && this.schedule.overlays.length === 0)) {
+            this.overlays = [];
+            this.isAssessingOverlays = false;
+            this.emitter.emit('overlays', this.overlays);
+            return;
+        }
+
+        // Run through the schedule and pull out the new overlay layout loop.
+        const now = new Date();
+        let loop: OverlayLayout[] = [];
+
+        // Reset playStats if the last recorded play time is from a different hour.
+        // This ensures layouts with max play limits can start playing again after the reset.
+        if (this.lastPlayedAt && this.lastPlayedAt.getHours() !== now.getHours()) {
+            this.playStats = {};
+        }
+
+        // Update overlays to be played in the player
+        const evaluatedOverlays = (await Promise.all(
+            this.schedule.overlays.map(overlay => this.evaluateLayout(overlay, now))
+        )).filter((o): o is OverlayLayout => o !== null);
+
+        // Find the highest priority
+        const maxPriority = Math.max(...evaluatedOverlays.map(l => l.priority));
+
+        // Keep only overlays with the highest priority
+        // If all overlays share the same priority value, then they are all included
+        loop = evaluatedOverlays.filter(l => l.priority === maxPriority);
+
+        if (loop.length === 0) {
+            console.debug('[ScheduleManager::assessOverlays] > No overlays', {
+                method: 'Schedule: Manager: Assess Overlays',
+            });
+            this.overlays = [];
+            this.isAssessingOverlays = false;
+            this.emitter.emit('overlays', this.overlays);
+            return;
+        } else {
+            if (this.overlays.length !== loop.length) {
+                hasChanged = true;
+            } else if (this.overlays.length === loop.length) {
+                const existingOverlays = getLayoutIds(this.overlays);
+                const newOverlays = getLayoutIds(loop);
+                hasChanged = existingOverlays.join(',') !== newOverlays.join(',');
+            }
+        }
+
+        if (hasChanged) {
+            console.debug('[ScheduleManager::assessOverlays] > Assessment finished, overlays loop changed', {
+                loop,
+                method: 'Schedule: Manager: Assess',
+                shouldParse: false,
+            });
+            this.overlays = loop;
+            this.emitter.emit('overlays', this.overlays);
+        }
+
+        console.debug('[ScheduleManager::assessOverlays] > Assessment of overlays finished', {
+            method: 'Schedule: Manager: Assess Overlays',
+        });
+
+        this.isAssessingOverlays = false;
+    }
+
+    /**
+     * Evaluates whether a layout is eligible for playback at the given time.
+     * Resets interrupt tracking and checks date range, file availability, and
+     * schedule criteria before allowing it into the playback loop.
+     *
+     * @param layout - The layout instance to evaluate.
+     * @param now - The current timestamp used for validation.
+     * @private
+     */
+    private async evaluateLayout<T extends (Layout | OverlayLayout)>(layout: T, now: Date) {
+        // Reset interrupt tracking
+        layout.interruptCommittedDuration = 0;
+
+        // Check if it's within the active date range
+        if (!(now > layout.getFromDt() && now < layout.getToDt())) {
+            return null;
+        }
+
+        // Validate file existence
+        const isLayoutValid = await layout.isValid();
+        if (!isLayoutValid) {
+            console.debug('[ScheduleManager::evaluateLayout] > Layout invalid, skipping.', {
+                layoutId: layout.file,
+                method: 'Schedule: Manager: Assess'
+            });
+            return null;
+        }
+
+        // Evaluate criteria (if any)
+        if (layout.hasCriteria()) {
+            for (const { metric, condition, value } of layout.criteria ?? []) {
+                const matched = scheduleCriteriaManager.evaluateCriteria(metric, condition, value);
+                if (!matched) {
+                    return null;
+                }
+            }
+        }
+
+        // Handle geofence logic if applicable
+        if (layout.isGeoAware) {
+            // Extract the polygon from the layout's geoLocation
+            const geo = JSON.parse(layout.geoLocation);
+            const polygon = geo.geometry.coordinates[0];
+
+            // Check if the device's current location falls inside the polygon
+            const insidePolygon = geoLocationManager.isCurrentLocationInsidePolygon(polygon);
+
+            // If the device is outside the polygon, skip this layout
+            if (!insidePolygon) {
+                console.debug('[ScheduleManager::evaluateLayout] > Layout outside geofence, skipping.', {
+                    layoutId: layout.file,
+                    method: 'Schedule: Manager: Assess'
+                });
+                return null;
+            }
+        }
+
+        // Keep track of layouts that might be affected by play counts
+        if (layout.maxPlaysPerHour > 0 && layout.scheduleId != null) {
+            if (!this.scheduleIdsThatHaveMaxPlays.includes(layout.scheduleId)) {
+                this.scheduleIdsThatHaveMaxPlays.push(layout.scheduleId);
+            }
+        }
+
+        // Skip layouts that already reached the max plays per hour limit
+        if (
+            layout.maxPlaysPerHour > 0 &&
+            layout.scheduleId !== null &&
+            this.playStats[layout.scheduleId] &&
+            this.playStats[layout.scheduleId] >= layout.maxPlaysPerHour
+        ) {
+            return null;
+        }
+
+        return layout;
     }
 
     /**
@@ -413,6 +536,13 @@ export default class ScheduleManager {
         }, []);
     }
 
+    /**
+     * Get overlays
+     */
+    getOverlays() {
+        return this.overlays;
+    }
+
     getSplash() {
         const splash = new DefaultLayout();
         splash.path = '0.xlf';
@@ -429,19 +559,13 @@ export default class ScheduleManager {
 
     /**
      * Increment play count for a schedule.
-     * Resets counts on hour change and triggers assess() if the schedule has a max plays per hour limit.
+     * Resets counts on hour change and triggers assessLayouts() if the schedule has a max plays per hour limit.
      *
      * @param scheduleId
      */
     async incrementPlayCount(scheduleId: number | undefined) {
         if (scheduleId == null) {
             return;
-        }
-
-        // If the last play date is old, reset everything
-        const now = new Date();
-        if (this.lastPlayedAt && this.lastPlayedAt.getHours() !== now.getHours()) {
-            this.playStats = {};
         }
 
         // Record the last play date
@@ -456,7 +580,7 @@ export default class ScheduleManager {
         // Do we need to assess immediately?
         // if scheduleIdsThatHaveMaxPlays has this scheduleId inside it, make an assessment immediately
         if (this.scheduleIdsThatHaveMaxPlays.includes(<number>scheduleId)) {
-            await this.assess();
+            await this.assessLayouts();
         }
     }
 

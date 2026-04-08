@@ -21,7 +21,7 @@
 import xml2js from 'xml2js';
 import { Layout, LayoutResponseType } from './events/layout';
 import { DefaultLayout } from './events/defaultLayout';
-import { OverlayLayout, OverlayLayoutResponseType } from './events/overlayLayout';
+import { OverlayLayout } from './events/overlayLayout';
 import { Action, ActionResponseType } from './events/action';
 import { DataConnector, DataConnectorResponseType } from './events/dataConnector';
 import { getLayoutFile } from '../../../common/fileManager';
@@ -117,7 +117,7 @@ export default class Schedule implements ScheduleInterface {
             doc.schedule.overlays.length === 1 &&
             doc.schedule.overlays[0].overlay
         ) {
-            this.overlays = doc.schedule.overlays[0].overlay.reduce((a: OverlayLayout[], b: OverlayLayoutResponseType) => {
+            this.overlays = doc.schedule.overlays[0].overlay.reduce((a: OverlayLayout[], b: LayoutResponseType) => {
                 return [...a, new OverlayLayout(b)];
             }, []);
         }

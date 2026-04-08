@@ -64,6 +64,7 @@ const playerApi: PlayerAPI = {
   onStateChange: (callback) => ipcRenderer.on('state-change', (_event, value) => callback(value)),
   onUpdateLoop: (callback) => ipcRenderer.on('update-loop', (_event, value) => callback(value)),
   onUpdateUniqueLayouts: (callback) => ipcRenderer.on('update-unique-layouts', (_event, value) => callback(value)),
+  onUpdateOverlays: (callback) => ipcRenderer.on('update-overlays', (_event, value) => callback(value)),
   onShowStatusWindow: (callback) => ipcRenderer.on('showStatusWindow', (_event, timeout) => callback(timeout)),
 
   // Render to main
