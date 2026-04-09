@@ -45,7 +45,7 @@
     "@types/luxon": "^3.7.1",
     "@types/xml2js": "^0.4.14",
     "@xibosignage/xibo-communication-framework": "^0.0.7",
-    "@xibosignage/xibo-layout-renderer": "^1.0.24",
+    "@xibosignage/xibo-layout-renderer": "^1.0.25",
     "axios": "^1.8.4",
     "better-sqlite3": "^12.4.1",
     "cheerio": "^1.1.2",
