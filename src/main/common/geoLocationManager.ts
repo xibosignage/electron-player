@@ -1,4 +1,3 @@
-import axios from 'axios';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { createNanoEvents, Emitter } from 'nanoevents';
@@ -14,18 +13,12 @@ interface LocationResult {
   longitude: number;
 }
 
-interface IpGeoApiResponse {
-  latitude: number;
-  longitude: number;
-}
-
 /**
  * Handles retrieving and keeping the device's location updated in the main process.
  *
- * Platform strategy (tried in order, falls back on failure):
+ * Platform strategy:
  *   Windows  → PowerShell + System.Device.Location (GPS / WiFi / cell)
- *   Linux    → GeoClue2 via Python3 subprocess
- *   Fallback → IP geolocation via axios (least accurate, always available)
+ *   Other    → Returns { latitude: 0, longitude: 0 }
  *
  * The manager filters incoming updates using a minimum distance and minimum
  * interval so the player only accepts meaningful location changes.
@@ -47,25 +40,21 @@ export class GeoLocationManager {
   private readonly minimumDistance: number;
   private readonly minimumInterval: number;
   private readonly pollInterval: number;
-  private readonly ipFallbackEndpoint: string;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
 
   /**
-   * @param minimumDistance    - Minimum movement in meters before an update is accepted.
-   * @param minimumInterval    - Minimum time in seconds between accepted updates.
-   * @param pollInterval       - How often in milliseconds to poll for a new location. Defaults to 5 minutes.
-   * @param ipFallbackEndpoint - IP geolocation endpoint used when OS location is unavailable.
+   * @param minimumDistance - Minimum movement in meters before an update is accepted.
+   * @param minimumInterval - Minimum time in seconds between accepted updates.
+   * @param pollInterval    - How often in milliseconds to poll for a new location. Defaults to 5 minutes.
    */
   constructor(
     minimumDistance = 200,
     minimumInterval = 120,
     pollInterval = 5 * 60 * 1000,
-    ipFallbackEndpoint = 'https://ipapi.co/json/'
   ) {
     this.minimumDistance = minimumDistance;
     this.minimumInterval = minimumInterval;
     this.pollInterval = pollInterval;
-    this.ipFallbackEndpoint = ipFallbackEndpoint;
     this.emitter = createNanoEvents<GeoLocationEvents>();
   }
 
@@ -104,24 +93,17 @@ export class GeoLocationManager {
   }
 
   /**
-   * Resolves the current location using the best available provider for the platform,
-   * falling back to IP geolocation if the OS-level method fails or is unavailable.
+   * Resolves the current location using the best available provider for the platform.
+   *
+   *   Windows → PowerShell + System.Device.Location
+   *   Other   → { latitude: 0, longitude: 0 }
    */
-  private async fetchLocation(): Promise<LocationResult | null> {
-    let result: LocationResult | null = null;
-
+  private async fetchLocation(): Promise<LocationResult> {
     if (process.platform === 'win32') {
-      result = await this.fetchWindowsLocation();
-    } else if (process.platform === 'linux') {
-      result = await this.fetchLinuxLocation();
+      return await this.fetchWindowsLocation() ?? { latitude: 0, longitude: 0 };
     }
 
-    if (!result) {
-      console.debug('[GeoLocationManager] OS location unavailable, falling back to IP geolocation');
-      result = await this.fetchIpLocation();
-    }
-
-    return result;
+    return { latitude: 0, longitude: 0 };
   }
 
   /**
@@ -172,89 +154,6 @@ $watcher.Dispose()
   }
 
   /**
-   * Linux: resolves location via GeoClue2 using a Python3 subprocess.
-   * GeoClue2 is the standard Linux location daemon and is available on
-   * Ubuntu, Fedora, Debian, and most modern distros. It uses GPS, WiFi,
-   * and MLS (Mozilla Location Service) depending on available hardware.
-   *
-   * Requires: python3, python3-gi, gir1.2-geoclue-2.0
-   */
-  private async fetchLinuxLocation(): Promise<LocationResult | null> {
-    const script = `
-import gi, sys
-gi.require_version('Geoclue', '2.0')
-from gi.repository import Geoclue, GLib
-
-loop = GLib.MainLoop()
-found = {}
-
-def on_location(simple, _pspec):
-    loc = simple.get_location()
-    if loc:
-        found['lat'] = loc.get_property('latitude')
-        found['lon'] = loc.get_property('longitude')
-    loop.quit()
-
-try:
-    simple = Geoclue.Simple.new_sync('xibo-player', Geoclue.AccuracyLevel.EXACT, None)
-    loc = simple.get_location()
-    if loc:
-        print(str(loc.get_property('latitude')) + ',' + str(loc.get_property('longitude')))
-        sys.exit(0)
-    simple.connect('notify::location', on_location)
-    GLib.timeout_add_seconds(10, loop.quit)
-    loop.run()
-    if found:
-        print(str(found['lat']) + ',' + str(found['lon']))
-    else:
-        sys.exit(1)
-except Exception as e:
-    print('ERROR: ' + str(e), file=sys.stderr)
-    sys.exit(1)
-    `.trim();
-
-    try {
-      const { stdout } = await execFileAsync(
-        'python3',
-        ['-c', script],
-        { timeout: 15_000 }
-      );
-
-      const output = stdout.trim();
-      if (!output) return null;
-
-      return this.parseCoordinates(output);
-    } catch (err) {
-      console.debug('[GeoLocationManager] Linux GeoClue2 location failed', { err });
-      return null;
-    }
-  }
-
-  /**
-   * Fallback: resolves location from the device's public IP address.
-   * Accuracy varies — typically city-level. Used when OS location is unavailable.
-   */
-  private async fetchIpLocation(): Promise<LocationResult | null> {
-    try {
-      const response = await axios.get<IpGeoApiResponse>(this.ipFallbackEndpoint, {
-        timeout: 10_000,
-      });
-
-      const { latitude, longitude } = response.data;
-
-      if (typeof latitude !== 'number' || typeof longitude !== 'number') {
-        console.debug('[GeoLocationManager] IP API response missing latitude/longitude', response.data);
-        return null;
-      }
-
-      return { latitude, longitude };
-    } catch (err) {
-      console.debug('[GeoLocationManager] IP geolocation failed', { err });
-      return null;
-    }
-  }
-
-  /**
    * Parses a "lat,lon" string into a LocationResult.
    * Returns null if either value is not a finite number.
    */
@@ -275,14 +174,7 @@ except Exception as e:
    */
   private async fetchAndUpdate() {
     console.debug('[GeoLocationManager] Fetching location');
-
     const result = await this.fetchLocation();
-
-    if (!result) {
-      console.debug('[GeoLocationManager] All location providers failed');
-      return;
-    }
-
     this.onUpdate(result.latitude, result.longitude);
   }
 

@@ -783,8 +783,8 @@ const init = async (win: BrowserWindow) => {
     win.setFullScreen(true);
   } else {
     // Otherwise, set the window to the specified dimensions and position.
-    const offsetX = appConfig.settings.offsetX;
-    const offsetY = appConfig.settings.offsetY;
+    const offsetX = appConfig.settings.offsetX ?? 0;
+    const offsetY = appConfig.settings.offsetY ?? 0;
     const sizeX = appConfig.settings.sizeX || config.state.width;
     const sizeY = appConfig.settings.sizeY || config.state.height;
 
