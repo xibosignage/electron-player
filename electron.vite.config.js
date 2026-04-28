@@ -44,6 +44,9 @@ export default defineConfig(({mode}) => {
 
   return {
     main: {
+      server: {
+        hmr: false,
+      },
       plugins: [externalizeDepsPlugin()],
       define: versionDefine,
       build: {
@@ -77,6 +80,9 @@ export default defineConfig(({mode}) => {
       plugins: [externalizeDepsPlugin(), bytecodePlugin()],
     },
     renderer: {
+      server: {
+        hmr: false,
+      },
       define: versionDefine,
       plugins: [
         {

@@ -45,11 +45,24 @@ export type MainCallbackType = {
   context: 'main' | 'renderer';
 }
 
+export type SspAdData = {
+  url: string;
+  xiboType: string;
+  duration: number;
+  width: number;
+  height: number;
+  impressionUrls: string[];
+  errorUrls: string[];
+};
+
 export interface ApiHandler {
   loadConfig: () => Promise<ConfigData>;
   xmdsTryRegister: (config: ConfigData) => Promise<void>;
   getConfig: () => Promise<ConfigData>;
   executeXlrEvent: (eventName: keyof IXlrEvents, payload: any) => Promise<void>;
+  sspGetAd: () => Promise<SspAdData | null>;
+  sspReportImpression: (urls: string[], duration: number, lat: number | null, lng: number | null) => Promise<void>;
+  sspReportError: (urls: string[], code: number) => Promise<void>;
 }
 
 export interface PlayerAPI {

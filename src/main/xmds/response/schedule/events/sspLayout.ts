@@ -47,6 +47,22 @@ export default class SspLayout {
         return this.interruptCommittedDuration >= this.shareOfVoice;
     }
 
+    getXlf(): string {
+        if (!this.ad) return '';
+        return '<?xml version="1.0"?>\n' +
+          '<layout schemaVersion="1" width="' + this.width + '" height="' + this.height + '" bgcolor="#000000" background="">\n' +
+          '\t<region id="axe" width="' + this.width + '" height="' + this.height + '" top="0" left="0">\n' +
+          '\t\t<media id="axe" type="' + this.ad.xiboType + '" duration="' + this.duration + '" lkid="1" schemaVersion="1">\n' +
+          '\t\t\t<options>\n' +
+          '\t\t\t\t<uri>' + this.ad.url + '</uri>\n' +
+          '\t\t\t</options>\n' +
+          '\t\t\t<raw/>\n' +
+          '\t\t</media>\n' +
+          '\t\t<options/>\n' +
+          '\t</region>\n' +
+          '</layout>\n';
+    }
+
     clone() {
         const _sspLayout = new SspLayout();
 

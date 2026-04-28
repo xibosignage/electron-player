@@ -28,6 +28,8 @@ import { optimizer, is, electronApp } from '@electron-toolkit/utils';
 import { Xmr } from '@xibosignage/xibo-communication-framework';
 import axios from 'axios';
 import 'dotenv/config';
+import { DateTime } from 'luxon';
+import { IXlrEvents } from '@xibosignage/xibo-layout-renderer';
 
 import icon from '../../resources/icon.png?asset';
 import { spawn } from 'child_process';
@@ -50,10 +52,11 @@ import { registerLocalCommands } from './command/localCommands';
 import { scheduleCriteriaManager } from '../shared/scheduleCriteria/scheduleCriteriaManager';
 import { geoLocationManager } from './common/geoLocationManager';
 import { xmdsMakeScreenshot } from '../shared/utils/xmdsUtil';
-import { IXlrEvents } from '@xibosignage/xibo-layout-renderer';
 import { DefaultLayout } from './xmds/response/schedule/events/defaultLayout';
 import { OverlayLayout } from './xmds/response/schedule/events/overlayLayout';
 import { Faults } from '../shared/faults/Faults';
+import Ssp from './common/ssp';
+import SspLayout from './xmds/response/schedule/events/sspLayout';
 
 // Axios interceptors
 axios.interceptors.request.use(req => {
@@ -126,6 +129,7 @@ let xmds: Xmds;
 let xmr: Xmr;
 let schedule: Schedule;
 let manager: ScheduleManager;
+let ssp: Ssp;
 
 const loadConfig = async () => {
   console._log('[MAIN] > Loading config started');
@@ -173,6 +177,29 @@ ipcMain.handle('xmds-try-register', async (_event, _config) => {
       error: err,
     }
   }
+});
+
+ipcMain.handle('ssp-get-ad', async () => {
+  console.debug('[MAIN][ssp-get-ad] SSP ad requested from renderer', {
+    ssp,
+  });
+  if (!ssp) return null;
+  const sspAd = await ssp.getAd();
+  console._log('[MAIN][ssp-get-ad] SSP ad generated', { sspAd });
+  if (!sspAd) return null;
+  return sspAd;
+});
+
+ipcMain.handle('ssp-report-impression', async (_event, { urls, duration, lat, lng }: { urls: string[], duration: number, lat: number | null, lng: number | null }) => {
+  console.debug('[MAIN][ssp-report-impression] Reporting SSP impression', { urls, duration, lat, lng });
+  if (!ssp) return;
+  await ssp.reportImpression(urls, duration, DateTime.now(), lat, lng);
+});
+
+ipcMain.handle('ssp-report-error', async (_event, { urls, code }: { urls: string[], code: number }) => {
+  console.debug('[MAIN][ssp-report-error] Reporting SSP error', { urls, code });
+  if (!ssp) return;
+  await ssp.reportError(urls, code);
 });
 
 ipcMain.handle('execute-xlr-event', async (_event, { eventName, payload }: { eventName: keyof IXlrEvents, payload: any }) => {
@@ -438,6 +465,15 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr) {
 
     await config.setConfig(data);
 
+    // Configure SSP now that we have the updated settings (isSspEnabled, hardwareKey)
+    if (ssp) {
+      ssp.configure(
+        config.getSetting('isSspEnabled', false),
+        config.cmsUrl || '',
+        config.hardwareKey || null,
+      );
+    }
+
     // XMDS register was a success, so we should create an XMR instance
     // TODO: Web Sockets are only supported by the CMS if the XMDS version is 7, otherwise ZeroMQ web sockets should be used.
     // Use ws not http 
@@ -552,6 +588,44 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr) {
     });
 
     // Update schedule of ScheduleManager
+    let scheduleLayouts =
+      [...schedule.layouts, schedule.defaultLayout, ...schedule.overlays]
+        .reduce((arr: InputLayoutType[], item: Layout | DefaultLayout | OverlayLayout | SspLayout) => {
+          // SSP layout: no file on disk, send a placeholder so XLR can fire adRequest
+          if (item instanceof SspLayout) {
+            const sspLayoutItem = item as SspLayout;
+
+            return [...arr, sspLayoutItem];
+          }
+
+          const _layout = getLayoutFile(item.file) as LocalFile;
+
+          let _collection = [...arr];
+
+          if (_layout) {
+            const layoutItem: InputLayoutType = {
+              layoutId: item.file,
+              response: item.response,
+              path: _layout.name,
+              shortPath: _layout.name,
+              scheduleId: 'scheduleId' in item ? (item as Layout).scheduleId : -1,
+              shareOfVoice: 'shareOfVoice' in item ? (item as (Layout | OverlayLayout | SspLayout)).shareOfVoice : 0,
+            };
+
+            if (item instanceof OverlayLayout || 'isOverlay' in item) {
+              layoutItem.isOverlay = item.isOverlay as boolean;
+            }
+
+            _collection = [
+              ...arr,
+              layoutItem,
+            ];
+          }
+
+          return _collection;
+        }, []);
+
+    mainWindow.webContents.send('update-unique-layouts', scheduleLayouts);
 
     // New schedule from XMDS, update the schedule manager
     manager.update(schedule).then(() => {
@@ -613,6 +687,16 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr) {
   });
 };
 
+const initSspEventHandlers = async function () {
+  if (ssp) {
+    ssp.on('shareOfVoiceChanged', async (shareOfVoice, averageDuration) => {
+      if (manager) {
+        await manager.updateSspSov(shareOfVoice, averageDuration);
+      }
+    });
+  }
+}
+
 const mainFunctions = {
   run: async ({ context }: MainCallbackType) => {
     const win = mainWindow;
@@ -635,22 +719,10 @@ const mainFunctions = {
       await xmr.init();
     }
 
-    // Register local commands
-    
-    await registerLocalCommands({
-      xmds,
-      win,
-    });
-
-    // Bind event handlers
-    await initXmrEventHandlers();
-    await initXmdsEventHandlers(config, xmr);
-
-    // Delete faults on app start/reboot
-    faults.clearDB('MAIN');
-
-    // Periodically check for expired faults and delete it
-    faults.clear();
+    // Initialize SSP if enabled in settings
+    if (!ssp) {
+      ssp = new Ssp(config);
+    }
 
     if (!manager) {
       manager = new ScheduleManager(schedule, config);
@@ -661,40 +733,14 @@ const mainFunctions = {
           message: 'updated layout loop received with ' + layouts.length + ' layouts'
         });
 
-        if (schedule) {
-          let scheduleLayouts =
-            [...schedule.layouts, schedule.defaultLayout, ...schedule.overlays].reduce((arr: InputLayoutType[], item: Layout | DefaultLayout | OverlayLayout) => {
-              const _layout = getLayoutFile(item.file) as LocalFile;
-
-              let _collection = [...arr];
-
-              if (_layout) {
-                const layoutItem: InputLayoutType = {
-                  layoutId: item.file,
-                  response: item.response,
-                  path: _layout.name,
-                  shortPath: _layout.name,
-                  scheduleId: 'scheduleId' in item ? (item as Layout).scheduleId : -1,
-                  shareOfVoice: 'shareOfVoice' in item ? (item as (Layout | OverlayLayout)).shareOfVoice : 0,
-                };
-
-                if (item instanceof OverlayLayout || 'isOverlay' in item) {
-                  layoutItem.isOverlay = item.isOverlay as boolean;
-                }
-
-                _collection = [
-                  ...arr,
-                  layoutItem,
-                ];
-              }
-
-              return _collection;
-            }, []);
-
-          win.webContents.send('update-unique-layouts', scheduleLayouts);
-        }
-
         const _layouts = layouts.reduce((arr: InputLayoutType[], item) => {
+          // SSP layout: no file on disk, send a placeholder so XLR can fire adRequest
+          if (item instanceof SspLayout) {
+            const sspLayoutItem = item as SspLayout;
+
+            return [...arr, sspLayoutItem];
+          }
+
           const layoutFile = getLayoutFile(item.file) as LocalFile;
           let _collection = [...arr];
 
@@ -757,6 +803,23 @@ const mainFunctions = {
 
       await manager.start(10);
     }
+
+    // Register local commands
+    await registerLocalCommands({
+      xmds,
+      win,
+    });
+
+    // Bind event handlers
+    await initXmrEventHandlers();
+    await initXmdsEventHandlers(config, xmr);
+    await initSspEventHandlers();
+
+    // Delete faults on app start/reboot
+    faults.clearDB('MAIN');
+
+    // Periodically check for expired faults and delete it
+    faults.clear();
 
     // Set up a regular status update push
     setInterval(() => {
@@ -859,7 +922,7 @@ app.whenReady().then(() => {
       responseHeaders: {
         ...details.responseHeaders,
         'Content-Security-Policy': [
-          "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' http://localhost:9696 https://develop.xibo.co.uk data:; connect-src 'self' http://localhost:9696 https://auth.signlicence.co.uk; media-src 'self' http://localhost:9696; frame-src 'self' http://localhost:9696; font-src 'self' http://localhost:9696 http://localhost data:;",
+          "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' http://localhost:9696 https://develop.xibo.co.uk data: https:; connect-src 'self' http://localhost:9696 https://auth.signlicence.co.uk; media-src 'self' http://localhost:9696 https:; frame-src 'self' http://localhost:9696; font-src 'self' http://localhost:9696 http://localhost data:;",
         ],
         // 'Access-Control-Allow-Origin': ['http://localhost:5173'],  // Allow any domain to access
         'Access-Control-Allow-Methods': ['GET, POST, PUT, DELETE, OPTIONS'],  // Allowed methods
