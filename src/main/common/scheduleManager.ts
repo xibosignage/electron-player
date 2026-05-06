@@ -360,9 +360,7 @@ export default class ScheduleManager {
 
         console.debug('[ScheduleManager::assessLayouts] > Assessment of layouts finished', {
             method: 'Schedule: Manager: Assess Layouts',
-            loop: this.layouts,
-            schedule: this.schedule,
-            shouldParse: false,
+            scheduleLoop: this.config.state.scheduleLoop,
         });
 
         this.isAssessingLayouts = false;
