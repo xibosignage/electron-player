@@ -358,6 +358,13 @@ export default class ScheduleManager {
             }).join(', ');
         }
 
+        console.debug('[ScheduleManager::assessLayouts] > Assessment of layouts finished', {
+            method: 'Schedule: Manager: Assess Layouts',
+            loop: this.layouts,
+            schedule: this.schedule,
+            shouldParse: false,
+        });
+
         this.isAssessingLayouts = false;
     }
 

@@ -63,6 +63,8 @@ export interface ApiHandler {
   sspGetAd: () => Promise<SspAdData | null>;
   sspReportImpression: (urls: string[], duration: number, lat: number | null, lng: number | null) => Promise<void>;
   sspReportError: (urls: string[], code: number) => Promise<void>;
+  sspGetWidgetAd: (partnerId: string) => Promise<SspAdData | null>;
+  sspReportWidgetImpression: (urls: string[], duration: number) => Promise<void>;
 }
 
 export interface PlayerAPI {

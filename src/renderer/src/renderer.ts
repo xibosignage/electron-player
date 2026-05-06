@@ -88,6 +88,32 @@ const runConfigHandler = async (config: ConfigData) => {
 };
 
 const initXlrEventHandlers = function () {
+  xlr.on('sspWidgetRequest', async (media) => {
+    console.debug('[XLR::on("sspWidgetRequest")] > Requesting SSP widget ad', {
+      mediaId: media.id,
+      partnerId: media.options.partnerid,
+    });
+    const adData = await window.apiHandler.sspGetWidgetAd(media.options.partnerid);
+    if (adData) {
+      media.setSspAdUrl(
+        adData.url,
+        adData.xiboType as 'image' | 'video',
+        adData.impressionUrls,
+        adData.errorUrls,
+      );
+    }
+    // If null → no ad available; XLR will auto-skip via sspWidgetEnd([], [], 0)
+  });
+
+  xlr.on('sspWidgetEnd', async (impressionUrls, _errorUrls, duration) => {
+    if (impressionUrls.length === 0) return;
+    console.debug('[XLR::on("sspWidgetEnd")] > SSP widget played, reporting impression', {
+      impressionUrls,
+      duration,
+    });
+    await window.apiHandler.sspReportWidgetImpression(impressionUrls, duration);
+  });
+
   xlr.on('adRequest', async (sspLayoutIndex: number) => {
     console.debug('[XLR::on("adRequest")] > Requesting SSP ad for slot', sspLayoutIndex);
     const adData = await window.apiHandler.sspGetAd();

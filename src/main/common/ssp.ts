@@ -486,6 +486,56 @@ export default class Ssp {
     });
   }
 
+  async getWidgetAd(partnerId: string): Promise<SspAdData | null> {
+    console.debug('[Ssp::getWidgetAd] Requesting widget ad for partnerId: ' + partnerId, {
+      method: 'Ssp: getWidgetAd',
+    });
+
+    const url = this.exchangeUrl + '/request/' + this.hardwareKey + '?ownerKey=' + this.ownerKey;
+    const adSpots = await this.request(url);
+
+    console.debug('[Ssp::getWidgetAd] Received ' + adSpots.length + ' ad spots', {
+      method: 'Ssp: getWidgetAd',
+      adSpots,
+      exchangeUrl: url,
+    });
+
+    const match = adSpots.find((ad) => ad.wrapperPartner === partnerId);
+    if (!match) {
+      console.info('[Ssp::getWidgetAd] No ad spot found for partnerId: ' + partnerId, {
+        method: 'Ssp: getWidgetAd',
+      });
+      return null;
+    }
+
+    const resolved = await this.request(match.url, match);
+    if (resolved.length === 0) {
+      await this.reportError(match.errorUrls, 303);
+      return null;
+    }
+
+    const ad = resolved[0];
+    return {
+      url: ad.url,
+      xiboType: ad.xiboType,
+      duration: ad.getDurationInSeconds(),
+      width: ad.width,
+      height: ad.height,
+      impressionUrls: ad.impressionUrls,
+      errorUrls: ad.errorUrls,
+    };
+  }
+
+  async reportWidgetImpression(urls: string[], duration: number) {
+    await this.reportImpression(
+      urls,
+      duration,
+      DateTime.now(),
+      this.config.state.latitude,
+      this.config.state.longitude,
+    );
+  }
+
   async getAd(): Promise<SspAdData | null> {
     console.debug('[Ssp::getAd] Get Ad', {
       method: 'Ssp: getAd',

@@ -202,6 +202,18 @@ ipcMain.handle('ssp-report-error', async (_event, { urls, code }: { urls: string
   await ssp.reportError(urls, code);
 });
 
+ipcMain.handle('ssp-get-widget-ad', async (_event, partnerId: string) => {
+  console.debug('[MAIN][ssp-get-widget-ad] SSP widget ad requested', { partnerId });
+  if (!ssp) return null;
+  return ssp.getWidgetAd(partnerId);
+});
+
+ipcMain.handle('ssp-report-widget-impression', async (_event, urls: string[], duration: number) => {
+  console.debug('[MAIN][ssp-report-widget-impression] Reporting SSP widget impression', { urls, duration });
+  if (!ssp) return;
+  await ssp.reportWidgetImpression(urls, duration);
+});
+
 ipcMain.handle('execute-xlr-event', async (_event, { eventName, payload }: { eventName: keyof IXlrEvents, payload: any }) => {
   console.debug(`[MAIN] [execute-xlr-event] > Executing XLR event from renderer`, {
     eventName,
@@ -865,19 +877,19 @@ const init = async (win: BrowserWindow) => {
 
   // Set window to fullscreen
   // If dimension and position settings are all "0"
-  if (appConfig.settings.offsetX === 0 &&
-    appConfig.settings.offsetY === 0 &&
-    appConfig.settings.sizeX === 0 &&
-    appConfig.settings.sizeY === 0) {
+  if (config.settings.offsetX === 0 &&
+    config.settings.offsetY === 0 &&
+    config.settings.sizeX === 0 &&
+    config.settings.sizeY === 0) {
     console.debug('[MAIN] init > No offset or size settings, setting window to fullscreen');
     // Set window to fullscreen
     win.setFullScreen(true);
   } else {
     // Otherwise, set the window to the specified dimensions and position.
-    const offsetX = appConfig.settings.offsetX ?? 0;
-    const offsetY = appConfig.settings.offsetY ?? 0;
-    const sizeX = appConfig.settings.sizeX || config.state.width;
-    const sizeY = appConfig.settings.sizeY || config.state.height;
+    const offsetX = config.settings.offsetX ?? 0;
+    const offsetY = config.settings.offsetY ?? 0;
+    const sizeX = config.settings.sizeX || config.state.width;
+    const sizeY = config.settings.sizeY || config.state.height;
 
     console.debug('[MAIN] init > Setting window to custom dimensions and position', {
       offsetX,

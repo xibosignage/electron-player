@@ -61,6 +61,10 @@ const apiHandler: ApiHandler = {
     ipcRenderer.invoke('ssp-report-impression', { urls, duration, lat, lng }),
   sspReportError: (urls: string[], code: number) =>
     ipcRenderer.invoke('ssp-report-error', { urls, code }),
+  sspGetWidgetAd: (partnerId: string) =>
+    ipcRenderer.invoke('ssp-get-widget-ad', partnerId),
+  sspReportWidgetImpression: (urls: string[], duration: number) =>
+    ipcRenderer.invoke('ssp-report-widget-impression', urls, duration),
 }
 
 contextBridge.exposeInMainWorld('apiHandler', apiHandler);
