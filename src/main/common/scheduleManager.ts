@@ -461,6 +461,71 @@ export default class ScheduleManager {
     }
 
     /**
+     * Assess commands from the current schedule
+     * 
+     * @returns An array of eligible commands that can be scheduled for execution
+     */
+    async assessCommands() {
+        if (!this.schedule || !Array.isArray(this.schedule.commands)) {
+            return [];
+        }
+
+        const now = new Date();
+
+        const evaluatedCommands =  this.schedule.commands.filter(command => {
+            const executeAt = new Date(command.date).getTime();
+
+            // Skip commands that are already in the past
+            if (executeAt < now.getTime()) {
+                return false;
+            }
+
+            // If there is criteria, then evaluate all criteria attached to the command
+            if (command.hasCriteria()) {
+                for (const {metric, condition, value} of command.criteria ?? []) {
+                    const matched = scheduleCriteriaManager.evaluateCriteria(
+                        metric,
+                        condition,
+                        value
+                    );
+
+                    if (!matched) {
+                        return false;
+                    }
+                }
+            }
+
+            // Handle geofence logic if applicable
+            if (command.isGeoAware) {
+                // Extract the polygon from the command's geoLocation
+                const geo = JSON.parse(command.geoLocation);
+                const polygon = geo.geometry.coordinates[0];
+
+                // Check if the device's current location falls inside the polygon
+                const insidePolygon = geoLocationManager.isCurrentLocationInsidePolygon(polygon);
+
+                // If the device is outside the polygon, skip this command
+                if (!insidePolygon) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+
+        if (evaluatedCommands.length === 0) {
+            return [];
+        }
+
+        // Find the highest priority
+        const maxPriority = Math.max(...evaluatedCommands.map(c => c.priority));
+
+        // Keep only command/s with the highest priority
+        // If all commands share the same priority value, then they are all included
+        return evaluatedCommands.filter(c => c.priority === maxPriority);
+    }
+
+    /**
      * Evaluates whether a layout is eligible for playback at the given time.
      * Resets interrupt tracking and checks date range, file availability, and
      * schedule criteria before allowing it into the playback loop.

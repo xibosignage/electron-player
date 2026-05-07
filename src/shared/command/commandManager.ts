@@ -48,7 +48,7 @@ export class CommandManager {
     [commandType: string]: (...params: string[]) => Promise<CommandResult>
   } = {};
 
-  private scheduledTimeouts: number[] = [];
+  private scheduledTimeouts: ReturnType<typeof setTimeout>[] = [];
 
   /**
    * Parses a display registration response, extracts available commands from the XML,
@@ -224,7 +224,7 @@ export class CommandManager {
       }
 
       // Schedule the command to execute once at the exact provided time
-      const timeoutId = window.setTimeout(async () => {
+      const timeoutId = setTimeout(async () => {
         console.debug('[CommandManager] Executing scheduled command', command.code);
         await this.executeCommandByCode(command.code);
       }, delay);

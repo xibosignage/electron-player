@@ -34,6 +34,7 @@ import { escapeStringForXml, submitLogsXmlString } from '../common/parser';
 import { AxiosErrorCodes, handleXmdsError } from '../common/error/XmdsError';
 import { commandManager } from '../../shared/command/commandManager';
 import { StateData } from '../common/state';
+import { GetWeather } from './response/getWeather';
 
 interface XmdsEvents {
   collecting: () => void;
@@ -44,6 +45,7 @@ interface XmdsEvents {
   submitLogs: () => void;
   reportFaults: () => void;
   submitStats: () => void;
+  weatherCriteriaUpdates: (object: Record<string, any>) => void;
 }
 
 export class Xmds {
@@ -53,6 +55,7 @@ export class Xmds {
   interval: NodeJS.Timeout | undefined;
   logsInterval: NodeJS.Timeout | undefined;
   hasSubmittedLogs: boolean | null = null;
+  getWeatherData: boolean = false;
 
   // CRC32
   checkRf: string | null = null;
@@ -153,6 +156,11 @@ export class Xmds {
       await this.notifyStatus();
 
       this.emitter.emit('reportFaults');
+    }
+
+    // Fetch weather criteria update if enabled
+    if (this.getWeatherData) {
+      await this.getWeather();
     }
 
     this.emitter.emit('collected');
@@ -496,6 +504,36 @@ export class Xmds {
     }
   }
 
+  /**
+   * Requests the latest weather criteria from the CMS.
+   * Triggers a `weatherCriteriaUpdates` event once new data is received.
+   */
+  async getWeather() {
+    const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
+      ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
+      '   <tns:GetWeather>\n' +
+      '     <serverKey xsi:type="xsd:string"><![CDATA[' + this.config.cmsKey + ']]></serverKey>\n' +
+      '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
+      '   </tns:GetWeather>\n' +
+      ' </soap:Body>\n' +
+      '</soap:Envelope>';
+
+    try {
+      const response = await axios.post(this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion, soapXml);
+
+      // Parse response into the GetWeather object
+      const weatherCriteria = new GetWeather(response.data);
+      await weatherCriteria.parse();
+
+      // Emit the weatherCriteriaUpdates event and pass the parsed weather data
+      this.emitter.emit('weatherCriteriaUpdates', weatherCriteria.data);
+      return weatherCriteria;
+    } catch (e) {
+      console.log('yyyy Line 535 - error', e);
+      return handleError(e);
+    }
+  }
+
   async reportFaults(faults: string) {
     console.debug('[Xmds::reportFaults] Reporting Faults to CMS');
     try {
@@ -605,5 +643,14 @@ export class Xmds {
 
       return false;
     }
+  }
+  
+  /**
+   * Enables or disables automatic weather criteria fetching.
+   *
+   * @param value boolean
+   */
+  setGetWeatherData(value: boolean) {
+    this.getWeatherData = value;
   }
 }
