@@ -76,6 +76,12 @@ export class StatsDB {
     return stmt.get(query) as StatEntry | undefined;
   }
 
+  // Returns the total number of stat entries pending submission.
+  count(): number {
+    const result = this.db.prepare('SELECT COUNT(*) as count FROM stats').get() as { count: number };
+    return result.count;
+  }
+
   getAll(limit = 50) : StatEntry[] {
     const rowLimit = limit > 0 ? limit : 50;
     const stmt = this.db.prepare(`SELECT * FROM stats WHERE duration > 0 ORDER BY timestamp DESC LIMIT ?`);

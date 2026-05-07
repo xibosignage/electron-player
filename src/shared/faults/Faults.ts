@@ -128,6 +128,23 @@ export class Faults {
         }
     }
 
+    /**
+     * Returns all non-expired faults from the database.
+     * @returns Active faults with their code and reason
+     */
+    getActiveFaults(): Array<{code: number, reason: string, layoutId: number | null, scheduleId: number | null}> {
+        const faults = this.db.getLogsByCategory('Fault');
+        return faults
+            .filter(f => f.message !== null && String(f.message).trim() !== '')
+            .map(f => ({
+                code: parseInt(f.code ?? FaultCodes.FaultGeneralError.toString()),
+                reason: f.message ?? '',
+                mediaId: f.mediaId ?? null,
+                layoutId: f.layoutId ?? null,
+                scheduleId: f.scheduleId ?? null,
+            }));
+    }
+
     toJson() {
         const faults = this.db.getLogsByCategory('Fault');
 

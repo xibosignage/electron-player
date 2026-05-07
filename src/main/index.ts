@@ -22,13 +22,14 @@ if (require('electron-squirrel-startup')) app.quit();
 
 const fs = require('fs/promises');
 import { installExtension, JQUERY_DEBUGGER } from 'electron-devtools-installer';
-import { app, shell, WebContentsView, BrowserWindow, ipcMain, session } from 'electron';
+import { app, shell, WebContentsView, BrowserWindow, ipcMain, session, screen } from 'electron';
 import { join } from 'path';
 import { optimizer, is, electronApp } from '@electron-toolkit/utils';
 import { Xmr } from '@xibosignage/xibo-communication-framework';
 import axios from 'axios';
 import 'dotenv/config';
 import { DateTime } from 'luxon';
+import os from 'os';
 import { IXlrEvents } from '@xibosignage/xibo-layout-renderer';
 
 import icon from '../../resources/icon.png?asset';
@@ -113,6 +114,12 @@ export const config = new Config(app, process.platform, state);
 registerConfigAdapter({ getConfig: () => JSON.parse(config.toJson()) });
 state.width = 1280;
 state.height = 720;
+
+// Populate LAN IP from the device's network interfaces
+const lanIp = Object.values(os.networkInterfaces())
+  .flat()
+  .find(iface => iface?.family === 'IPv4' && !iface.internal);
+state.lanIpAddress = lanIp?.address ?? '';
 
 // Keep state in sync whenever the geolocation manager accepts a new location
 geoLocationManager.on('geoLocationUpdated', () => {
@@ -590,6 +597,29 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr) {
     await xmds.submitMediaInventory(
       await data.composeMediaInventory(true),
     );
+
+    // Count how many of the required files are present in local storage
+    const inventory = getDownloadedFiles();
+    const inventoryNames = new Set(inventory.map(f => (f as { name: string }).name));
+    config.state.requiredFilesCount = data.files.length;
+
+    // Each file type is stored under a different name in the DB — find which ones are not yet present
+    const missingFiles = data.files.filter(file => {
+      if (file.type === 'resource') {
+        return !inventoryNames.has(`layout_${file.layoutId}_region_${file.regionId}_media_${file.mediaId}.html`);
+      }
+      if (file.type === 'widget') return !inventoryNames.has(`${file.id}.json`);
+      return !inventoryNames.has(file.saveAs ?? '');
+    });
+    
+    config.state.downloadedFilesCount = data.files.length - missingFiles.length;
+
+    // Use the same filename that was looked up in the inventory so the name is meaningful
+    config.state.missingFiles = missingFiles.map(file => {
+      if (file.type === 'resource') return `layout_${file.layoutId}_region_${file.regionId}_media_${file.mediaId}.html`;
+      if (file.type === 'widget') return `${file.id}.json`;
+      return file.saveAs ?? `${file.type}:${file.id}`;
+    });
   });
 
   xmds.on('schedule', (data) => {
@@ -696,6 +726,10 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr) {
     } finally {
       isReportingFaults = false;
     }
+  });
+
+  xmds.on('collected', () => {
+    config.state.nextScheduleUpdate = DateTime.now().plus({ seconds: xmds.collectIntervalTime });
   });
 };
 
@@ -835,7 +869,37 @@ const mainFunctions = {
 
     // Set up a regular status update push
     setInterval(() => {
-      win.webContents.send('state-change', config.state.toHtml(config));
+      config.state.activeFaults = faults.getActiveFaults();
+      config.state.pendingStatsCount = popStats.getCount();
+      config.state.pendingLogsCount = db.count();
+      
+      // Current active criteria updates
+      const rawCriteria = scheduleCriteriaManager.getActiveCriteria();
+      config.state.activeCriteria = Object.fromEntries(
+        Object.entries(rawCriteria).map(([key, entry]) => [key, {
+          metric: entry.metric,
+          value: entry.value,
+          ttl: entry.ttl,
+        }])
+      );
+
+      // Last 5 non-fault log entries for the status window
+      config.state.recentLogs = db.getRecentLogs(5).map(l => ({
+        level: l.level ?? '',
+        message: l.message ?? '',
+        timestamp: l.timestamp ?? 0,
+      }));
+      
+      // Read disk usage for the library directory
+      try {
+        const diskStats = require('fs').statfsSync(config.getSetting('library'));
+        config.state.totalSpace = diskStats.bsize * diskStats.blocks;
+        config.state.availableSpace = diskStats.bsize * diskStats.bavail;
+      } catch (err) {
+        console.warn('[MAIN] Could not read disk stats:', err);
+      }
+      
+      win.webContents.send('state-change', config.state.toHtml());
     }, 5000);
 
     xmds.start(config.getSetting('collectionInterval', 60));
@@ -866,6 +930,9 @@ const init = async (win: BrowserWindow) => {
   configureExpress();
 
   appConfig = await loadConfig();
+  state.version = config.version ?? '';
+  state.cmsUrl = config.cmsUrl ?? '';
+  state.deviceName = config.displayName ?? '';
 
   // Start resolving the device's location via IP geolocation
   geoLocationManager.start();
@@ -884,6 +951,9 @@ const init = async (win: BrowserWindow) => {
     console.debug('[MAIN] init > No offset or size settings, setting window to fullscreen');
     // Set window to fullscreen
     win.setFullScreen(true);
+    const { width, height } = screen.getPrimaryDisplay().size;
+    state.width = width;
+    state.height = height;
   } else {
     // Otherwise, set the window to the specified dimensions and position.
     const offsetX = config.settings.offsetX ?? 0;
@@ -899,6 +969,8 @@ const init = async (win: BrowserWindow) => {
     });
     win.setSize(sizeX, sizeY);
     win.setPosition(offsetX, offsetY);
+    state.width = sizeX;
+    state.height = sizeY;
   }
 
   // // eslint-disable-next-line max-len

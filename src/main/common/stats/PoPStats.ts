@@ -141,6 +141,11 @@ export class PoPStats {
         return this.db.getAll(size);
     }
 
+    // Returns the number of stat entries currently pending submission.
+    getCount(): number {
+        return this.db.count();
+    }
+
     clearSubmitted(stats: Array<StatEntry>) {
         const statIDs = stats.map(stat => stat.id) as number[];
         this.db.bulkDeleteByIds(statIDs);

@@ -27,6 +27,8 @@ export declare class State {
   totalSpace: number;
   lastCommandSuccess: boolean;
   deviceName: string;
+  cmsUrl: string;
+  version: string;
   lanIpAddress: string;
   licenceResult: string;
   timeZone: string;
@@ -37,6 +39,18 @@ export declare class State {
   longitude: number;
   statusDialog: any;
   logLevel: string;
+  allLayoutIds: string;
+  invalidLayoutIds: number[];
+  validLayoutIds: number[];
+  activeFaults: Array<{code: number, reason: string, layoutId: number | null, scheduleId: number | null}>;
+  requiredFilesCount: number;
+  downloadedFilesCount: number;
+  missingFiles: string[];
+  nextScheduleUpdate: DateTime;
+  pendingStatsCount: number;
+  pendingLogsCount: number;
+  recentLogs: Array<{level: string, message: string, timestamp: number}>;
+  activeCriteria: Record<string, {metric: string, value: any, ttl: number}>;
 
   toJson(): string;
   toHtml(): string;

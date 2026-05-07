@@ -166,6 +166,15 @@ export class ConsoleDB {
     }
   }
 
+  /**
+   * Returns the most recent log entries across all categories except Fault.
+   * @param limit Number of entries to return
+   */
+  getRecentLogs(limit = 5): LogEntry[] {
+    const stmt = this.db.prepare(`SELECT * FROM logs WHERE category != 'Fault' ORDER BY timestamp DESC LIMIT ?`);
+    return stmt.all(limit) as LogEntry[];
+  }
+
   deleteLogs(logs: LogEntry[]) {
     const idsToDelete = logs.reduce((ids: number[], log) => [...ids, log.id as number], []);
 
