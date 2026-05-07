@@ -32,6 +32,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: 'Set Snap Version'
+        run: node scripts/set-snap-version.cjs
+
       - name: 'Pack Snap'
         id: snap-build
         run: |
