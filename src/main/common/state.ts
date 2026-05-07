@@ -43,7 +43,7 @@ export interface StateData {
   displayStatus: number;
   invalidLayoutIds: number[];
   validLayoutIds: number[];
-  activeFaults: Array<{code: number, reason: string, layoutId: number | null, scheduleId: number | null}>;
+  activeFaults: Array<{code: number, reason: string, mediaId: number | null, layoutId: number | null, scheduleId: number | null}>;
   requiredFilesCount: number;
   downloadedFilesCount: number;
 }
@@ -68,7 +68,7 @@ export class State {
   displayStatus: number;
   invalidLayoutIds: number[];
   validLayoutIds: number[];
-  activeFaults: Array<{code: number, reason: string, layoutId: number | null, scheduleId: number | null}>;
+  activeFaults: Array<{code: number, reason: string, mediaId: number | null, layoutId: number | null, scheduleId: number | null}>;
   requiredFilesCount: number;
   downloadedFilesCount: number;
   missingFiles: string[];
