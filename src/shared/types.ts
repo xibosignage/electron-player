@@ -79,6 +79,7 @@ export interface PlayerAPI {
   // Render to main
   openChildWindow: (url: string) => void;
   initFaults: (faults: any[]) => void;
+  notifyStatusWindowVisibility: (visible: boolean) => void;
 
   // Broadcast channel for stats
   sendStatsBCMessage: (payload: any) => void;

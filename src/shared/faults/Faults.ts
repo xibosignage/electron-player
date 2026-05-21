@@ -47,6 +47,14 @@ export class Faults {
     emitter: Emitter<FaultsEvents> = createNanoEvents<FaultsEvents>();
     clearIntervalId: NodeJS.Timeout | null = null;
 
+    // Cached result of getActiveFaults(). null means the cache needs rebuilding.
+    // Invalidated whenever faults are raised or removed; rebuilt lazily on next read.
+    private _activeFaultsCache: ReturnType<Faults['getActiveFaults']> | null = null;
+
+    private _invalidateCache() {
+        this._activeFaultsCache = null;
+    }
+
     constructor(db: ConsoleDB) {
         this.db = db;
 
@@ -80,6 +88,8 @@ export class Faults {
                 ...faultEntry,
                 shouldParse: false,
             });
+
+            this._invalidateCache();
         });
     }
 
@@ -95,6 +105,7 @@ export class Faults {
         console.debug(`[Faults::clearDB] - Clearing faults from database. Caller: ${caller}`);
         try {
             this.db.deleteLogsByCategory('Fault');
+            this._invalidateCache();
         } catch (err) {
             console.warn(`[Faults::clearDB] - Failed to clear faults DB (caller: ${caller})`, err);
         }
@@ -123,6 +134,7 @@ export class Faults {
     clearExpired() {
         try {
             this.db.deleteExpiredByCategory('Fault');
+            this._invalidateCache();
         } catch (err) {
             console.warn('[Faults::clearExpired] - Failed to delete expired faults', err);
         }
@@ -132,17 +144,20 @@ export class Faults {
      * Returns all non-expired faults from the database.
      * @returns Active faults with their code and reason
      */
-    getActiveFaults(): Array<{code: number, reason: string, mediaId: number | null, layoutId: number | null, scheduleId: number | null}> {
-        const faults = this.db.getLogsByCategory('Fault');
-        return faults
-            .filter(f => f.message !== null && String(f.message).trim() !== '')
-            .map(f => ({
-                code: parseInt(f.code ?? FaultCodes.FaultGeneralError.toString()),
-                reason: f.message ?? '',
-                mediaId: f.mediaId ?? null,
-                layoutId: f.layoutId ?? null,
-                scheduleId: f.scheduleId ?? null,
-            }));
+    getActiveFaults(): Array<{code: number, reason: string, layoutId: number | null, scheduleId: number | null}> {
+        if (this._activeFaultsCache === null) {
+            const faults = this.db.getLogsByCategory('Fault');
+            this._activeFaultsCache = faults
+                .filter(f => f.message !== null && String(f.message).trim() !== '')
+                .map(f => ({
+                    code: parseInt(f.code ?? FaultCodes.FaultGeneralError.toString()),
+                    reason: f.message ?? '',
+                    mediaId: f.mediaId ?? null,
+                    layoutId: f.layoutId ?? null,
+                    scheduleId: f.scheduleId ?? null,
+                }));
+        }
+        return this._activeFaultsCache;
     }
 
     toJson() {

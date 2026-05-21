@@ -81,6 +81,7 @@ const playerApi: PlayerAPI = {
   // Render to main
   openChildWindow: (url) => ipcRenderer.send('open-child-window', url),
   initFaults: (faults) => ipcRenderer.send('initFaults', faults),
+  notifyStatusWindowVisibility: (visible: boolean) => ipcRenderer.send('status-window-visibility', visible),
 
   // Broadcast channel for stats
   sendStatsBCMessage: (payload: any) => ipcRenderer.send('stats-bc-message', payload),
