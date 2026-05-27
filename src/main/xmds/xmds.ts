@@ -57,6 +57,9 @@ export class Xmds {
   hasSubmittedLogs: boolean | null = null;
   getWeatherData: boolean = false;
 
+  private static rateLimitTracker: Map<string, number> = new Map();
+  private static pendingRetries: Set<string> = new Set();
+
   // CRC32
   checkRf: string | null = null;
   checkSchedule: string | null = null;
@@ -166,7 +169,80 @@ export class Xmds {
     this.emitter.emit('collected');
   }
 
-  async registerDisplay() {
+  /**
+   * Returns true if the given method is still rate limited.
+   *
+   * @param method
+   * @private
+   */
+  private isRateLimited(method: string): boolean {
+    const retryAt = Xmds.rateLimitTracker.get(method);
+    if (!retryAt) return false;
+
+    if (Date.now() >= retryAt) {
+      // expired, cleanup
+      Xmds.rateLimitTracker.delete(method);
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Sets a rate limit cooldown for a method using the Retry-After header if available,
+   * otherwise falls back to a default value. Optionally retries the method after the delay.
+   *
+   * @param method The XMDS method name (e.g. 'registerDisplay')
+   * @param retryAfterHeader
+   * @param retryFn Optional function to retry once the cooldown expires
+   * @private
+   */
+  private setRateLimit(
+      method: string,
+      retryAfterHeader?: string,
+      retryFn?: () => void
+  ) {
+    // Default to 5 minutes delay
+    let retryAfterSeconds = 300;
+
+    if (retryAfterHeader) {
+      const parsed = parseInt(retryAfterHeader);
+
+      // Use server-provided delay if present
+      if (!isNaN(parsed)) {
+        retryAfterSeconds = parsed;
+      }
+    }
+
+    const retry = retryAfterSeconds * 1000;
+    const retryAt = Date.now() + retry;
+
+    console.debug(`[Xmds::setRateLimit] ${method} blocked until`, new Date(retryAt).toISOString());
+
+    // Store when the method is allowed to run again
+    Xmds.rateLimitTracker.set(method, retryAt);
+
+    if (retryFn && !Xmds.pendingRetries.has(method)) {
+      Xmds.pendingRetries.add(method);
+      setTimeout(() => {
+        Xmds.pendingRetries.delete(method);
+        console.debug(`[Xmds::setRateLimit] retrying ${method}`);
+
+        // Run the method after cooldown
+        retryFn();
+      }, retry);
+    }
+  }
+
+  async registerDisplay(forceScheduleUpdate: boolean = false) {
+    const method = 'registerDisplay';
+
+    // Skip request if method was recently rate limited (429)
+    if (this.isRateLimited(method)) {
+      console.debug('[Xmds::registerDisplay] skipped due to rate limit');
+      return;
+    }
+
     const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
       '  <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
       '    <tns:RegisterDisplay>\n' +
@@ -195,13 +271,15 @@ export class Xmds {
         transformResponse: r => r,
         validateStatus: () => true,
       }
-    ).then(async ({ data, status }) => {
+    ).then(async ({ data, status, headers }) => {
       if (status === 200) {
         // Parse out the checkRf/checkSchedule values and store them.
         const registerDisplay = new RegisterDisplay(data);
         await registerDisplay.parse();
-        this.checkSchedule = registerDisplay.checkSchedule || null;
-        this.checkRf = registerDisplay.checkRf || null;
+        if (!forceScheduleUpdate) {
+          this.checkSchedule = registerDisplay.checkSchedule || null;
+          this.checkRf = registerDisplay.checkRf || null;
+        }
 
         // Parse out the list of commands and store them in the command manager.
         const commands = registerDisplay.getCommands();
@@ -222,6 +300,8 @@ export class Xmds {
         });
         // Emit
         this.emitter.emit('registered', registerDisplay);
+      } else if (status === 429) {
+        this.setRateLimit(method, headers['retry-after'] as string | undefined, () => this.registerDisplay(true));
       } else if (status >= 400) {
         throw await handleXmdsError(data);
       }
@@ -242,7 +322,14 @@ export class Xmds {
   }
 
   async requiredFiles(crc32: string) {
-    if (crc32 == null || crc32 != this.checkRf) {
+      if (crc32 == null || crc32 != this.checkRf) {
+      const method = 'requiredFiles';
+
+      if (this.isRateLimited(method)) {
+        console.debug('[Xmds::requiredFiles] skipped due to rate limit');
+        return;
+      }
+
       // Make a new request.
       const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
         '  <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
@@ -265,15 +352,30 @@ export class Xmds {
 
           this.emitter.emit('requiredFiles', requiredFiles);
         })
-        .catch((error) => {
-          // const err = handleError(error);
-          // console.error(err.message);
-          console.error(error);
+        .catch((error: AxiosError) => {
+          if (error.response?.status === 429) {
+            // Handle 429 by setting cooldown and retrying this method later
+            this.setRateLimit(
+                method,
+                error.response.headers?.['retry-after'],
+                () => this.requiredFiles(crc32)
+            );
+          }
+
+          return handleError(error);
         });
     }
   }
 
   async mediaInventory(files: string) {
+    const method = 'mediaInventory';
+
+    // Skip request if method was recently rate limited (429)
+    if (this.isRateLimited(method)) {
+        console.debug('[Xmds::mediaInventory] skipped due to rate limit');
+      return;
+    }
+
     const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
       ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
       '   <tns:MediaInventory>\n' +
@@ -287,7 +389,19 @@ export class Xmds {
     return await axios.post(
       this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=mediaInventory',
       soapXml
-    );
+    )
+    .catch((error: AxiosError) => {
+      if (error.response?.status === 429) {
+        // Handle 429 by setting cooldown and retrying this method later
+        this.setRateLimit(
+            method,
+            error.response.headers?.['retry-after'],
+            () => this.mediaInventory(files)
+        );
+      }
+
+      return handleError(error);
+    });
   }
 
   async submitMediaInventory(mediaInventory: { xmlString: string; files: RequiredFile[] }) {
@@ -300,6 +414,14 @@ export class Xmds {
   }
 
   async schedule(crc32: string) {
+    const method = 'schedule';
+
+    // Skip request if method was recently rate limited (429)
+    if (this.isRateLimited(method)) {
+      console.debug('[Xmds::schedule] skipped due to rate limit');
+      return;
+    }
+
     if (crc32 == null || crc32 != this.checkSchedule) {
       // Make a new request.
       const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
@@ -323,11 +445,30 @@ export class Xmds {
 
           this.emitter.emit('schedule', playerSchedule);
         })
-        .catch((error) => handleError(error));
+        .catch((error: AxiosError) => {
+          if (error.response?.status === 429) {
+            // Handle 429 by setting cooldown and retrying this method later
+            this.setRateLimit(
+                method,
+                error.response.headers?.['retry-after'],
+                () => this.schedule(crc32)
+            );
+          }
+
+          return handleError(error);
+        });
     }
   }
 
   async screenshot(screenshot: string | null) {
+    const method = 'screenshot';
+
+    // Skip request if method was recently rate limited (429)
+    if (this.isRateLimited(method)) {
+      console.debug('[Xmds::screenshot] skipped due to rate limit');
+      return;
+    }
+    
     if (screenshot === null) {
       console.debug('[Xmds::screenshot] No screenshot to submit');
       return;
@@ -345,17 +486,33 @@ export class Xmds {
       ' </soap:Body>\n' +
       '</soap:Envelope>';
 
-    try {
-      return await axios.post(
-        this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=',
-        soapXml
-      );
-    } catch (e) {
-      return handleError(e);
-    }
+    return await axios.post(
+      this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=',
+      soapXml
+    )
+    .catch((error: AxiosError) => {
+      if (error.response?.status === 429) {
+        // Handle 429 by setting cooldown and retrying this method later
+        this.setRateLimit(
+            method,
+            error.response.headers?.['retry-after'],
+            () => this.screenshot(screenshot)
+        );
+      }
+
+      return handleError(error);
+    });
   }
 
   async handleSubmitLogs(db: ConsoleDB) {
+    const method = 'handleSubmitLogs';
+
+    // Skip request if method was recently rate limited (429)
+    if (this.isRateLimited(method)) {
+      console.debug('[Xmds::handleSubmitLogs] skipped due to rate limit');
+      return;
+    }
+
     const logLevel = this.config.getSetting('logLevel', 'error');
     const logLevelCategory = logLevel.charAt(0).toUpperCase() + logLevel.slice(1);
     const logs = db.getLogsByCategory(logLevelCategory, LogsThreshold);
@@ -422,8 +579,17 @@ export class Xmds {
           this.hasSubmittedLogs = true;
         }
       })
-      .catch((error) => {
-        handleError(error, 'Unable to submit logs');
+      .catch((error: AxiosError) => {
+        if (error.response?.status === 429) {
+          // Handle 429 by setting cooldown and retrying this method later
+          this.setRateLimit(
+              method,
+              error.response.headers?.['retry-after'],
+              () => this.handleSubmitLogs(db)
+          );
+        }
+
+        return handleError(error, 'Unable to submit logs');
       });
   }
 
@@ -457,6 +623,14 @@ export class Xmds {
   }
 
   async submitStats(statsXmlString: string) {
+    const method = 'submitStats';
+
+    // Skip request if method was recently rate limited (429)
+    if (this.isRateLimited(method)) {
+      console.debug('[Xmds::submitStats] skipped due to rate limit');
+      return;
+    }
+
     // Make a new request.
     const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
       '  <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
@@ -480,10 +654,29 @@ export class Xmds {
 
         return result === 'true';
       })
-      .catch((error) => handleError(error));
+      .catch((error: AxiosError) => {
+        if (error.response?.status === 429) {
+          // Handle 429 by setting cooldown and retrying this method later
+          this.setRateLimit(
+              method,
+              error.response.headers?.['retry-after'],
+              () => this.submitStats(statsXmlString)
+          );
+        }
+
+        return handleError(error);
+      });
   }
 
   async notifyStatus(keys?: Partial<(keyof StateData)[]>) {
+    const method = 'notifyStatus';
+
+    // Skip request if method was recently rate limited (429)
+    if (this.isRateLimited(method)) {
+      console.debug('[Xmds::notifyStatus] skipped due to rate limit');
+      return;
+    }
+
     const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
       ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
       '   <tns:NotifyStatus>\n' +
@@ -494,14 +687,22 @@ export class Xmds {
       ' </soap:Body>\n' +
       '</soap:Envelope>';
 
-    try {
       return await axios.post(
         this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=notifyStatus',
         soapXml
-      );
-    } catch (e) {
-      return handleError(e);
-    }
+      )
+      .catch((error: AxiosError) => {
+        if (error.response?.status === 429) {
+          // Handle 429 by setting cooldown and retrying this method later
+          this.setRateLimit(
+              method,
+              error.response.headers?.['retry-after'],
+              () => this.notifyStatus(keys)
+          );
+        }
+
+        return handleError(error);
+      });
   }
 
   /**
@@ -509,6 +710,14 @@ export class Xmds {
    * Triggers a `weatherCriteriaUpdates` event once new data is received.
    */
   async getWeather() {
+    const method = 'getWeather';
+
+    // Skip request if method was recently rate limited (429)
+    if (this.isRateLimited(method)) {
+      console.debug('[Xmds::getWeather] skipped due to rate limit');
+      return;
+    }
+
     const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
       ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
       '   <tns:GetWeather>\n' +
@@ -528,36 +737,70 @@ export class Xmds {
       // Emit the weatherCriteriaUpdates event and pass the parsed weather data
       this.emitter.emit('weatherCriteriaUpdates', weatherCriteria.data);
       return weatherCriteria;
-    } catch (e) {
-      console.log('yyyy Line 535 - error', e);
-      return handleError(e);
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 429) {
+          // Handle 429 by setting cooldown and retrying this method later
+          this.setRateLimit(
+              method,
+              error.response.headers?.['retry-after'],
+              () => this.getWeather()
+          );
+        }
+      }
+
+      return handleError(error);
     }
   }
 
   async reportFaults(faults: string) {
-    console.debug('[Xmds::reportFaults] Reporting Faults to CMS');
-    try {
+    const method = 'reportFaults';
 
-      const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
-          ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
-          '   <tns:ReportFaults>\n' +
-          '     <serverKey xsi:type="xsd:string"><![CDATA[' + this.config.cmsKey + ']]></serverKey>\n' +
-          '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
-          '     <fault xsi:type-="xsd:string">' + escapeStringForXml(faults) + '</fault>\n' +
-          '   </tns:ReportFaults>\n' +
-          ' </soap:Body>\n' +
-          '</soap:Envelope>';
-
-      return await axios.post(
-        this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=reportFaults',
-        soapXml
-      );
-    } catch (e) {
-      return handleError(e);
+    // Skip request if method was recently rate limited (429)
+    if (this.isRateLimited(method)) {
+      console.debug('[Xmds::reportFaults] skipped due to rate limit');
+      return;
     }
+
+    console.debug('[Xmds::reportFaults] Reporting Faults to CMS');
+    
+    const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
+        ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
+        '   <tns:ReportFaults>\n' +
+        '     <serverKey xsi:type="xsd:string"><![CDATA[' + this.config.cmsKey + ']]></serverKey>\n' +
+        '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
+        '     <fault xsi:type-="xsd:string">' + escapeStringForXml(faults) + '</fault>\n' +
+        '   </tns:ReportFaults>\n' +
+        ' </soap:Body>\n' +
+        '</soap:Envelope>';
+
+    return await axios.post(
+      this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=reportFaults',
+      soapXml
+    )
+    .catch((error: AxiosError) => {
+      if (error.response?.status === 429) {
+        // Handle 429 by setting cooldown and retrying this method later
+        this.setRateLimit(
+            method,
+            error.response.headers?.['retry-after'],
+            () => this.reportFaults(faults)
+        );
+      }
+
+      return handleError(error);
+    });
   }
 
   async getResource(file: RequiredFile) {
+    const method = 'getResource';
+
+    // Skip request if method was recently rate limited (429)
+    if (this.isRateLimited(method)) {
+      console.debug('[Xmds::getResource] skipped due to rate limit');
+      return;
+    }
+
     try {
       const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
         ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
@@ -584,10 +827,19 @@ export class Xmds {
 
           return xml;
         })
-        .catch((error) => {
+        .catch((error: AxiosError) => {
           console.error('[Xmds::getResource] > Error fetching resource XML: ', {
             error,
           });
+
+          if (error.response?.status === 429) {
+            // Handle 429 by setting cooldown and retrying this method later
+            this.setRateLimit(
+                method,
+                error.response.headers?.['retry-after'],
+                () => this.getResource(file)
+            );
+          }
 
           handleError(error)
         });
@@ -601,6 +853,14 @@ export class Xmds {
   }
   
   async getData(widgetId: RequiredFile['id']) {
+    const method = 'getData';
+
+    // Skip request if method was recently rate limited (429)
+    if (this.isRateLimited(method)) {
+      console.debug('[Xmds::getData] skipped due to rate limit');
+      return;
+    }
+
     try {
       const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
         ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
@@ -625,10 +885,19 @@ export class Xmds {
 
           return xml;
         })
-        .catch((error) => {
+        .catch((error: AxiosError) => {
           console.error('[Xmds::getData] > Error fetching data XML: ', {
             error,
           });
+
+          if (error.response?.status === 429) {
+            // Handle 429 by setting cooldown and retrying this method later
+            this.setRateLimit(
+                method,
+                error.response.headers?.['retry-after'],
+                () => this.getData(widgetId)
+            );
+          }
 
           handleError(error, 'Unable to fetch data for widget with id ' + widgetId);
 

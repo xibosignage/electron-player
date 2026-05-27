@@ -39,7 +39,19 @@ import { Config } from './config/config';
 import { Xmds } from './xmds/xmds';
 import { State } from './common/state';
 import { createFileServer } from './express';
-import { downloadFile, downloadResourceFile, getDownloadedFiles, getLayoutFile, FileManagerFileType, downloadWidgetDataFile, getWidgetFile } from './common/fileManager';
+import {
+  downloadFile,
+  downloadResourceFile,
+  getDownloadedFiles,
+  getLayoutFile,
+  FileManagerFileType,
+  downloadWidgetDataFile,
+  getWidgetFile,
+  purge,
+  purgeAll,
+  isPurging,
+  setIsPurging,
+} from './common/fileManager';
 import Schedule from './xmds/response/schedule/schedule';
 import ScheduleManager from './common/scheduleManager';
 import { InputLayoutType, LocalFile, RequiredFile } from './common/types';
@@ -143,6 +155,7 @@ let xmr: Xmr;
 let schedule: Schedule;
 let manager: ScheduleManager;
 let ssp: Ssp;
+let pendingScheduleRefresh = false;
 
 const loadConfig = async () => {
   console._log('[MAIN] > Loading config started');
@@ -449,6 +462,16 @@ const initXmrEventHandlers = async function () {
     await xmdsMakeScreenshot(xmds);
     await xmds.notifyStatus();
   });
+
+  /**
+   * Clears stats and logs from database.
+   */
+  xmr.on('clearStatsAndLogs', async () => {
+    console.debug('[XMR::clearStatsAndLogs] Clearing stats and Logs from local database');
+
+    db.deleteAllLogs();
+    popStats.clearDB();
+  });
   
   /**
    * Handle incoming schedule criteria updates from the CMS via XMR.
@@ -498,6 +521,40 @@ const initXmrEventHandlers = async function () {
       id: `${widgetId}`,
       type: 'widget',
     } as FileManagerFileType, widgetData, 'updated');
+  });
+
+  /**
+   * Handles `purgeAll` event by clearing all files from the local library directory and their
+   * database records, then immediately requests a fresh required files list from the CMS.
+   */
+  xmr.on('purgeAll', async () => {
+    // Flag purge as in-progress before the transition delay begins
+    setIsPurging(true);
+
+    try {
+      // Push splash screen so XLR transitions away from the current layout before files are deleted
+      if (manager) {
+        manager.layouts = [manager.getSplash()];
+        manager.emitter.emit('layouts', [manager.getSplash()]);
+        console.debug('[XMR::purgeAll] Changed to splash screen');
+      }
+
+      // Give XLR time to switch to the splash screen before wiping the library
+      await new Promise(resolve => setTimeout(resolve, 10000));
+
+      console.debug('[XMR::purgeAll] clearing local library');
+      await purgeAll();
+
+      // Reset CRC cache so collect() forces a full re-fetch of requiredFiles and schedule.
+      // Without this, collectNow() passes the old CRCs and both requests are skipped.
+      xmds.checkRf = null;
+      xmds.checkSchedule = null;
+      pendingScheduleRefresh = true;
+
+      await xmds.collectNow();
+    } finally {
+      setIsPurging(false);
+    }
   });
 }
 
@@ -621,20 +678,38 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr) {
     );
 
     // TODO: implement an Electron specific LibraryManager to keep track of and download these files.
-    await Promise.all(data.files.map(async (file) => {
-      // Download it.
-      if (file.download == 'http') {
-        console.log('[Xmds::on("requiredFiles")] > Downloading: ' + file.saveAs)
-        return await downloadFile((file as unknown) as FileManagerFileType);
-      } else if (file.type === 'resource') {
-        const resourceHtml = await xmds.getResource(file);
-        return await downloadResourceFile((file as unknown) as FileManagerFileType, resourceHtml);
-      } else if (file.type === 'widget') {
-        return dataWidgetUpdate(file);
-      } else {
-        return null;
+    // Skip if 'purgeAll' is in progress
+    if (!isPurging) {
+      await Promise.all(data.files.map(async (file) => {
+        // Skip if 'purgeAll' is in progress mid-iteration
+        if (isPurging) {
+          console.debug('[Xmds::on("requiredFiles")] > Skip downloading: ' + file.saveAs + ', purgeAll is in progress.');
+          return null;
+        }
+
+        // Download it.
+        if (file.download == 'http') {
+          console.log('[Xmds::on("requiredFiles")] > Downloading: ' + file.saveAs)
+          return await downloadFile((file as unknown) as FileManagerFileType);
+        } else if (file.type === 'resource') {
+          const resourceHtml = await xmds.getResource(file);
+          return await downloadResourceFile((file as unknown) as FileManagerFileType, resourceHtml);
+        } else if (file.type === 'widget') {
+          return dataWidgetUpdate(file);
+        } else {
+          return null;
+        }
+      }));
+    }
+
+    // After a purge all, re-emit the schedule event so update-unique-layouts is re-sent with
+    // correct paths now that files are back in the DB and are downloaded in local libraries.
+    if (pendingScheduleRefresh) {
+      pendingScheduleRefresh = false;
+      if (schedule) {
+        xmds.emitter.emit('schedule', schedule);
       }
-    }));
+    }
 
     // After all files have been processed, keep track of widget files and set up regular updates for them if required based on the updateInterval property.
     data.updateDataWidgets(async (file) => {
@@ -646,12 +721,22 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr) {
       await data.composeMediaInventory(true),
     );
 
+    // Clean up files marked for purge
+    if (data.purge?.length) {
+      console.debug('[Xmds::on("requiredFiles")] purge list received', {
+        purgeCount: data.purge.length,
+        purgeItems: data.purge.map(p => p.storedAs),
+        method: 'XMDS::requiredFiles',
+      });
+      purge(data.purge);
+    }
+
     // Count how many of the required files are present in local storage
     const inventory = getDownloadedFiles();
     const inventoryNames = new Set(inventory.map(f => (f as { name: string }).name));
     config.state.requiredFilesCount = data.files.length;
 
-    // Each file type is stored under a different name in the DB — find which ones are not yet present
+    // Each file type is stored under a different name in the DB. Find which ones are not yet present
     const missingFiles = data.files.filter(file => {
       if (file.type === 'resource') {
         return !inventoryNames.has(`layout_${file.layoutId}_region_${file.regionId}_media_${file.mediaId}.html`);
@@ -861,6 +946,17 @@ const mainFunctions = {
             const sspLayoutItem = item as SspLayout;
 
             return [...arr, sspLayoutItem];
+          }
+
+          // Splash screen has no DB record, pass it directly so XLR receives `layoutId: 0`
+          if (item.file === 0) {
+            return [...arr, {
+              layoutId: 0,
+              path: '0.xlf',
+              shortPath: '0.xlf',
+              response: item.response ?? '',
+              scheduleId: -1,
+            }];
           }
 
           const layoutFile = getLayoutFile(item.file) as LocalFile;

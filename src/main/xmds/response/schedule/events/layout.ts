@@ -1,5 +1,8 @@
-import { getLayoutFile } from "../../../../common/fileManager";
+import { getFileByName, getLayoutFile } from "../../../../common/fileManager";
 import { criteria, CriteriaResponseType, CriteriaType } from "../criteria";
+import { ConsoleDB } from "../../../../../shared/console/ConsoleDB";
+
+const consoleDB = new ConsoleDB();
 
 export interface LayoutInterface {
     readonly response: LayoutResponseType;
@@ -17,6 +20,7 @@ export interface LayoutInterface {
     readonly shareOfVoice: number;
     readonly syncEvent: boolean;
     readonly toDt: string;
+    dependants: string[];
     index: number;
     interruptCommittedDuration: number;
     criteria?: CriteriaType[];
@@ -46,6 +50,7 @@ export type LayoutResponseType = {
         todt: string;
     };
     criteria?: CriteriaResponseType[];
+    dependents?: { file: string[] }[];
 }
 
 export class Layout implements LayoutInterface {
@@ -64,6 +69,7 @@ export class Layout implements LayoutInterface {
     readonly shareOfVoice: number;
     readonly syncEvent: boolean;
     readonly toDt: string;
+    dependants: string[];
     index: number;
     interruptCommittedDuration: number;
     criteria?: CriteriaType[] | undefined;
@@ -86,6 +92,9 @@ export class Layout implements LayoutInterface {
         this.toDt = response.$.todt;
         this.index = 0;
         this.interruptCommittedDuration = 0;
+        this.dependants = response.dependents
+            ? response.dependents.reduce((a: string[], b) => [...a, ...b.file], [])
+            : [];
 
         if (response.criteria && response.criteria.length > 0) {
             this.criteria = response.criteria.reduce((a: CriteriaType[], b) => {
@@ -118,7 +127,28 @@ export class Layout implements LayoutInterface {
         return this.criteria.length > 0;
     }
 
+    /**
+     * Returns true if the layout has no active faults and all required files are downloaded.
+     */
     async isValid(): Promise<boolean> {
+        if (consoleDB.hasActiveFaultForLayout(this.file)) {
+            return false;
+        }
+
+        // Layout XLF must be present in the DB
+        if (!getLayoutFile(this.file)) {
+            return false;
+        }
+
+        // All dependant media files must also be present
+        if (this.dependants.length > 0) {
+            for (const dependant of this.dependants) {
+                if (!getFileByName(dependant)) {
+                    return false;
+                }
+            }
+        }
+
         return true;
     }
 

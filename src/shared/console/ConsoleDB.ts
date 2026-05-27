@@ -37,6 +37,7 @@ export class ConsoleDB {
   private db: Database.Database;
   private insertStmt: Database.Statement;
   private dedupFaultStmt: Database.Statement;
+  private activeFaultForLayoutStmt: Database.Statement;
 
   // In-memory mirrors so the status window never touches SQLite.
   private _count: number = 0;
@@ -120,6 +121,13 @@ export class ConsoleDB {
 
     // Seed the in-memory count once at startup — the only DB read needed for count().
     this._count = (this.db.prepare('SELECT COUNT(*) as count FROM logs').get() as { count: number }).count;
+    this.activeFaultForLayoutStmt = this.db.prepare(`
+      SELECT id FROM logs
+      WHERE category = 'Fault'
+        AND layoutId = ?
+        AND (expires IS NULL OR expires > ?)
+      LIMIT 1
+    `);
   }
 
   insert(entry: LogEntry) {
@@ -198,6 +206,13 @@ export class ConsoleDB {
     this._count = Math.max(0, this._count - result.changes);
   }
 
+  /**
+   * Deletes all log entries from the logs table.
+   */
+  deleteAllLogs() {
+    this.db.prepare('DELETE FROM logs').run();
+  }
+
   deleteLogsByCategory(logCategory: LogCategoryType) {
     if (!logCategory) {
       return;
@@ -231,6 +246,15 @@ export class ConsoleDB {
       ids.scheduleId ?? null,
       now
     );
+    return result !== undefined;
+  }
+
+  /**
+   * Returns true if the layout has any active (non-expired) fault.
+   */
+  hasActiveFaultForLayout(layoutId: number): boolean {
+    const now = DateTime.now().toFormat('yyyy-MM-dd HH:mm:ss');
+    const result = this.activeFaultForLayoutStmt.get(layoutId, now);
     return result !== undefined;
   }
 

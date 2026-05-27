@@ -5,7 +5,7 @@ import { DefaultLayout } from "../xmds/response/schedule/events/defaultLayout";
 import { Config } from "../config/config";
 import { getLayoutIds } from "./parser";
 import { InputLayoutType } from "./types";
-import { getLayoutFile } from "./fileManager";
+import { getLayoutFile, isPurging } from "./fileManager";
 import { OverlayLayout } from "../xmds/response/schedule/events/overlayLayout";
 import SspLayout from "../xmds/response/schedule/events/sspLayout";
 import { geoLocationManager } from "./geoLocationManager";
@@ -90,6 +90,13 @@ export default class ScheduleManager {
     async assessLayouts() {
         if (this.isAssessingLayouts) {
             console.info('Still active, skipping.', {
+                method: 'Schedule: Manager: Assess'
+            });
+            return;
+        }
+
+        if (isPurging) {
+            console.debug('[ScheduleManager::assessLayouts] > Purge in progress, skipping assessment.', {
                 method: 'Schedule: Manager: Assess'
             });
             return;
@@ -390,6 +397,13 @@ export default class ScheduleManager {
                 method: 'Schedule: Manager: Assess Overlays',
             });
 
+            return;
+        }
+
+        if (isPurging) {
+            console.debug('[ScheduleManager::assessOverlays] > Purge in progress, skipping assessment.', {
+                method: 'Schedule: Manager: Assess Overlays'
+            });
             return;
         }
         this.isAssessingOverlays = true;

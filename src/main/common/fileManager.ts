@@ -21,6 +21,17 @@ export type FileManagerFileType =  RequiredFile & {
     lastDownloaded: string;
 };
 
+export type PurgeItemType = {
+    id: number | null;
+    storedAs: string | null;
+};
+
+export let isPurging = false;
+
+export function setIsPurging(value: boolean) {
+    isPurging = value;
+}
+
 export async function downloadAndSaveFile(
     file: FileManagerFileType,
     options: {
@@ -142,6 +153,10 @@ export function getDownloadedFiles() {
 
 export function getLayoutFile(layoutId: number): LocalFile | undefined {
     return store.db.prepare(`SELECT * FROM files WHERE fileId = ? AND type = 'layout'`).get(String(layoutId)) as LocalFile | undefined;
+}
+
+export function getFileByName(name: string): LocalFile | undefined {
+    return store.db.prepare(`SELECT * FROM files WHERE name = ?`).get(name) as LocalFile | undefined;
 }
 
 export function localFileUrlFromFileName(fileName: string) {
@@ -288,4 +303,97 @@ export function getWidgetFile(fileId: number) {
     }
 
     return localFile;
+}
+
+
+export function purge(purgeList: PurgeItemType[]) {
+    console.debug('[FileManager] purge: start', {
+        total: purgeList.length,
+        method: 'FileManager::purge',
+    });
+
+    for (const item of purgeList) {
+        if (!item.storedAs) {
+            console.debug('[FileManager] purge: skipped invalid item', { item, method: 'FileManager::purge' });
+            continue;
+        }
+
+        const file = store.getByStoredAs(item.storedAs);
+
+        if (!file) {
+            console.debug('[FileManager] purge: file not found in DB, nothing to remove', {
+                storedAs: item.storedAs,
+                method: 'FileManager::purge',
+            });
+            continue;
+        }
+
+        // Remove from disk first. Only remove from DB if confirmed deleted.
+        // If deletion fails, leave the DB record intact so the next collection interval can retry.
+        if (file.localPath && fs.existsSync(file.localPath)) {
+            try {
+                fs.unlinkSync(file.localPath);
+            } catch (err) {
+                console.warn('[FileManager] purge: failed to delete file from disk, will retry in the next collection interval', {
+                    localPath: file.localPath,
+                    err,
+                    method: 'FileManager::purge',
+                });
+                continue;
+            }
+        }
+
+        // File is gone from disk (either just deleted, or was never there), safe to remove DB record.
+        store.deleteByStoredAs(item.storedAs);
+
+        console.debug('[FileManager] purge: removed', {
+            storedAs: item.storedAs,
+            localPath: file.localPath,
+            method: 'FileManager::purge',
+        });
+    }
+
+    console.debug('[FileManager] purge: done', { method: 'FileManager::purge' });
+}
+
+/**
+ * Clears all required files from the local library directory and removes their database records.
+ */
+export async function purgeAll() {
+    try {
+        isPurging = true;
+
+        console.debug('[FileManager] purgeAll: start', { method: 'FileManager::purgeAll' });
+
+        const files = store.getAll();
+        const failed: string[] = [];
+
+        for (const file of files) {
+            // Only attempt disk deletion if a local path is recorded and the file actually exists
+            if (file.localPath && fs.existsSync(file.localPath)) {
+                try {
+                    fs.unlinkSync(file.localPath);
+                } catch (err) {
+                    // Keep the DB record so the file does not go stale
+                    failed.push(file.localPath);
+                    continue;
+                }
+            }
+
+            // File is confirmed gone from disk (deleted just now, or was never stored), safe to remove DB record
+            store.deleteByStoredAs(file.name);
+        }
+
+        if (failed.length > 0) {
+            console.error('[FileManager] purgeAll: some files could not be deleted from disk and were kept in the database', {
+                failedFiles: failed,
+                method: 'FileManager::purgeAll',
+            });
+        }
+
+        console.debug('[FileManager] purgeAll: done', { method: 'FileManager::purgeAll' });
+    } finally {
+        // Always reset the flag, even if an unexpected error occurs mid-purge
+        isPurging = false;
+    }
 }
