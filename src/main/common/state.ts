@@ -159,12 +159,13 @@ export class State {
 
     const filteredData: Partial<StateData> = {};
     for (const key of Object.keys(stateData) as (keyof StateData)[]) {
-      console.debug('[State::toJson] Checking key for status update', {
-        key,
-        included: keys.includes(key),
-      });
 
       if (keys?.includes(key)) {
+        console.debug('[State::toJson] Checking key for status update', {
+          key,
+          included: keys.includes(key),
+        });
+
         if (key === 'statusDialog') {
           (filteredData[key] as any) = JSON.stringify(statusDialogData);
         } else {

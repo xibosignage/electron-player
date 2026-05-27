@@ -104,30 +104,22 @@ setInterval(() => {
 
 // Axios interceptors
 axios.interceptors.request.use(req => {
-  console.log('[HTTP →]', {
-    method: req.method,
-    url: req.url,
-    data: req.data,
-    headers: req.headers,
-  });
+  console.log('[HTTP →]', { method: req.method, url: req.url });
   return req;
 });
 
 axios.interceptors.response.use(
   res => {
-    console.log('[HTTP ←]', {
-      status: res.status,
-      url: res.config.url,
-      data: res.data,
-    });
+    console.log('[HTTP ←]', { status: res.status, url: res.config.url });
     return res;
   },
   err => {
+    // Log only metadata — never the response body, which can be large XML.
     console.error('[HTTP ✖]', {
       message: err.message,
       code: err.code,
       url: err.config?.url,
-      response: err.response,
+      status: err.response?.status,
     });
     return Promise.reject(err);
   }
@@ -152,6 +144,7 @@ ipcMain.handle('renderer-log', (_event, level: string, args: any) => {
 });
 
 let appConfig: ConfigData;
+let statusWindowVisible = false;
 const state = new State();
 export const config = new Config(app, process.platform, state);
 registerConfigAdapter({ getConfig: () => JSON.parse(config.toJson()) });
@@ -305,6 +298,40 @@ ipcMain.handle('execute-xlr-event', async (_event, { eventName, payload }: { eve
   }
 });
 
+// Collects all status-window data and pushes the rendered HTML to the renderer.
+// Called both by the 5-second interval (while visible) and immediately when the
+// window is first shown, so the window is never blank on open.
+const collectAndPushStatus = async (win: BrowserWindow) => {
+  config.state.activeFaults = faults.getActiveFaults();
+  config.state.pendingStatsCount = popStats.getCount();
+  config.state.pendingLogsCount = db.count();
+
+  const rawCriteria = scheduleCriteriaManager.getActiveCriteria();
+  config.state.activeCriteria = Object.fromEntries(
+    Object.entries(rawCriteria).map(([key, entry]) => [key, {
+      metric: entry.metric,
+      value: entry.value,
+      ttl: entry.ttl,
+    }])
+  );
+
+  config.state.recentLogs = db.getRecentLogs(5).map(l => ({
+    level: l.level ?? '',
+    message: l.message ?? '',
+    timestamp: l.timestamp ?? 0,
+  }));
+
+  try {
+    const diskStats = await fs.statfs(config.getSetting('library'));
+    config.state.totalSpace = diskStats.bsize * diskStats.blocks;
+    config.state.availableSpace = diskStats.bsize * diskStats.bavail;
+  } catch (err) {
+    console.warn('[MAIN] Could not read disk stats:', err);
+  }
+
+  win.webContents.send('state-change', config.state.toHtml());
+};
+
 const configureIpc = (win) => {
   ipcMain.on('open-child-window', (_event, url) => {
     const view = new WebContentsView();
@@ -336,6 +363,14 @@ const configureIpc = (win) => {
   ipcMain.on('report-fault', (_event, faultData) => {
     console.debug('[MAIN] report-fault event received', faultData);
     faults.emitter.emit('message', faultData);
+  });
+
+  ipcMain.on('status-window-visibility', (_event, visible: boolean) => {
+    statusWindowVisible = visible;
+    if (visible) {
+      // Push immediately so the window isn't blank while waiting for the first interval tick.
+      collectAndPushStatus(win);
+    }
   });
 };
 
@@ -847,11 +882,11 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr) {
         console.debug('[Xmds::submitStats] Stats submitted to CMS');
         // If response succeeded, then delete pushed logs
         if (success) {
-          console.log('Deleting pushed stats, count = ' + stats.length);
+          console.log('[Xmds::submitStats] Deleting pushed stats, count = ' + stats.length);
 
           popStats.clearSubmitted(stats);
 
-          console.log('Deleted pushed stats');
+          console.log('[Xmds::submitStats] Deleted pushed stats');
         }
       });
     }
@@ -1034,39 +1069,12 @@ const mainFunctions = {
     // Periodically check for expired faults and delete it
     faults.clear();
 
-    // Set up a regular status update push
-    setInterval(() => {
-      config.state.activeFaults = faults.getActiveFaults();
-      config.state.pendingStatsCount = popStats.getCount();
-      config.state.pendingLogsCount = db.count();
-      
-      // Current active criteria updates
-      const rawCriteria = scheduleCriteriaManager.getActiveCriteria();
-      config.state.activeCriteria = Object.fromEntries(
-        Object.entries(rawCriteria).map(([key, entry]) => [key, {
-          metric: entry.metric,
-          value: entry.value,
-          ttl: entry.ttl,
-        }])
-      );
-
-      // Last 5 non-fault log entries for the status window
-      config.state.recentLogs = db.getRecentLogs(5).map(l => ({
-        level: l.level ?? '',
-        message: l.message ?? '',
-        timestamp: l.timestamp ?? 0,
-      }));
-      
-      // Read disk usage for the library directory
-      try {
-        const diskStats = require('fs').statfsSync(config.getSetting('library'));
-        config.state.totalSpace = diskStats.bsize * diskStats.blocks;
-        config.state.availableSpace = diskStats.bsize * diskStats.bavail;
-      } catch (err) {
-        console.warn('[MAIN] Could not read disk stats:', err);
-      }
-      
-      win.webContents.send('state-change', config.state.toHtml());
+    // Refresh the status window every 5 seconds while it is open.
+    // collectAndPushStatus is also called immediately when the window is shown,
+    // so the first render is never blank.
+    setInterval(async () => {
+      if (!statusWindowVisible) return;
+      await collectAndPushStatus(win);
     }, 5000);
 
     xmds.start(config.getSetting('collectionInterval', 60));

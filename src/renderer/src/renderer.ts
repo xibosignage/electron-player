@@ -262,7 +262,9 @@ window.playerAPI.onConfigure(async (config: ConfigData) => {
 });
 
 window.playerAPI.onStateChange((state) => {
-  $('#status').html(state);
+  if ($('#status').is(':visible')) {
+    $('#status').html(state);
+  }
 });
 
 window.playerAPI.onUpdateLoop((layouts) => {
@@ -291,14 +293,26 @@ window.playerAPI.onShowStatusWindow((timeout) => {
   showStatusWindowFn(timeout);
 });
 
+let statusWindowHideTimer: ReturnType<typeof setTimeout> | null = null;
+
 const showStatusWindowFn = (timeout: number) => {
   console.debug('[Renderer::onShowStatusWindow]', { timeout });
+
+  // Cancel any in-flight hide timer so a second show doesn't cut off updates early.
+  if (statusWindowHideTimer !== null) {
+    clearTimeout(statusWindowHideTimer);
+    statusWindowHideTimer = null;
+  }
+
+  window.playerAPI.notifyStatusWindowVisibility(true);
   $('#status').show();
-  setTimeout(() => {
+
+  statusWindowHideTimer = setTimeout(() => {
     console.debug('[Renderer::onShowStatusWindow] Hiding status window after timeout of:', timeout + ' seconds');
     $('#status').hide();
+    window.playerAPI.notifyStatusWindowVisibility(false);
+    statusWindowHideTimer = null;
   }, timeout * 1000);
-
 };
 
 const init = async () => {

@@ -39,6 +39,10 @@ export class ConsoleDB {
   private dedupFaultStmt: Database.Statement;
   private activeFaultForLayoutStmt: Database.Statement;
 
+  // In-memory mirrors so the status window never touches SQLite.
+  private _count: number = 0;
+  private _recentLogs: LogEntry[] = []; // most-recent-first, non-Fault, max 5
+
   constructor() {
     const userDataPath = app.getPath('userData');
     const logsDir = path.join(userDataPath, 'logs');
@@ -115,6 +119,8 @@ export class ConsoleDB {
       LIMIT 1
     `);
 
+    // Seed the in-memory count once at startup — the only DB read needed for count().
+    this._count = (this.db.prepare('SELECT COUNT(*) as count FROM logs').get() as { count: number }).count;
     this.activeFaultForLayoutStmt = this.db.prepare(`
       SELECT id FROM logs
       WHERE category = 'Fault'
@@ -146,12 +152,21 @@ export class ConsoleDB {
       regionId: entry.regionId || null,
       widgetId: entry.widgetId || null,
     });
+
+    this._count++;
+
+    console._log('[ConsoleDB::insert] - Debugging', {
+      category: entry.category,
+      ...entry,
+    })
+    if (entry.category !== 'Fault') {
+      this._recentLogs.unshift(entry);
+      if (this._recentLogs.length > 5) this._recentLogs.pop();
+    }
   }
 
   count() {
-    const result = this.db.prepare('SELECT COUNT(*) as count FROM logs').get() as { count: number };
-
-    return result.count;
+    return this._count;
   }
 
   getLogsByCategory(category: LogCategoryType, limit: number = LogsThreshold): LogEntry[] {
@@ -177,22 +192,18 @@ export class ConsoleDB {
 
   /**
    * Returns the most recent log entries across all categories except Fault.
-   * @param limit Number of entries to return
+   * Served from the in-memory ring buffer — no DB query.
    */
   getRecentLogs(limit = 5): LogEntry[] {
-    const stmt = this.db.prepare(`SELECT * FROM logs WHERE category != 'Fault' ORDER BY timestamp DESC LIMIT ?`);
-    return stmt.all(limit) as LogEntry[];
+    return this._recentLogs.slice(0, limit);
   }
 
   deleteLogs(logs: LogEntry[]) {
     const idsToDelete = logs.reduce((ids: number[], log) => [...ids, log.id as number], []);
 
-    // Prepare the statement with placeholders for each ID
     const placeholders = idsToDelete.map(() => '?').join(',');
-    const stmt = this.db.prepare(`DELETE FROM logs WHERE id IN (${placeholders})`);
-
-    // Execute the statement with the array of IDs
-    stmt.run(...idsToDelete);
+    const result = this.db.prepare(`DELETE FROM logs WHERE id IN (${placeholders})`).run(...idsToDelete);
+    this._count = Math.max(0, this._count - result.changes);
   }
 
   /**
@@ -207,10 +218,8 @@ export class ConsoleDB {
       return;
     }
 
-    const stmt = this.db.prepare(`DELETE FROM logs WHERE category = ?`);
-
-    // Execute deletion of logs by given category
-    stmt.run(logCategory);
+    const result = this.db.prepare(`DELETE FROM logs WHERE category = ?`).run(logCategory);
+    this._count = Math.max(0, this._count - result.changes);
   }
 
   /**
@@ -255,8 +264,9 @@ export class ConsoleDB {
     }
 
     const now = DateTime.now().toFormat('yyyy-MM-dd HH:mm:ss');
-    this.db.prepare(
+    const result = this.db.prepare(
       `DELETE FROM logs WHERE category = ? AND expires IS NOT NULL AND expires < ?`
     ).run(logCategory, now);
+    this._count = Math.max(0, this._count - result.changes);
   }
 }

@@ -20,6 +20,7 @@ export interface StatEntry {
 export class StatsDB {
   private db: Database.Database;
   private insertStmt: Database.Statement;
+  private _count: number = 0;
 
   constructor() {
     const userDataPath = app.getPath('userData');
@@ -49,22 +50,25 @@ export class StatsDB {
     this.insertStmt = this.db.prepare(`
       INSERT INTO stats (scheduleid, layoutid, mediaid, type, fromdt, todt, count, duration, timestamp, tag) VALUES (@scheduleid, @layoutid, @mediaid, @type, @fromdt, @todt, @count, @duration, @timestamp, @tag)
     `);
+
+    this._count = (this.db.prepare('SELECT COUNT(*) as count FROM stats').get() as { count: number }).count;
   }
 
   insert(stat: StatEntry) {
     try {
-    this.insertStmt.run({
-      scheduleid: stat.scheduleid || null,
-      layoutid: stat.layoutid || null,
-      mediaid: stat.mediaid || null,
-      type: stat.type || null,
-      fromdt: stat.fromdt || null,
-      todt: stat.todt || null,
-      count: stat.count || 0,
-      duration: stat.duration || 0,
-      timestamp: stat.timestamp || Date.now(),
-      tag: stat.tag || null,
-    });
+      this.insertStmt.run({
+        scheduleid: stat.scheduleid || null,
+        layoutid: stat.layoutid || null,
+        mediaid: stat.mediaid || null,
+        type: stat.type || null,
+        fromdt: stat.fromdt || null,
+        todt: stat.todt || null,
+        count: stat.count || 0,
+        duration: stat.duration || 0,
+        timestamp: stat.timestamp || Date.now(),
+        tag: stat.tag || null,
+      });
+      this._count++;
     } catch (error) {
       console.error('StatsDB insert error:', error);
     }
@@ -76,10 +80,8 @@ export class StatsDB {
     return stmt.get(query) as StatEntry | undefined;
   }
 
-  // Returns the total number of stat entries pending submission.
   count(): number {
-    const result = this.db.prepare('SELECT COUNT(*) as count FROM stats').get() as { count: number };
-    return result.count;
+    return this._count;
   }
 
   getAll(limit = 50) : StatEntry[] {
@@ -96,11 +98,12 @@ export class StatsDB {
 
   deleteAll() {
     this.db.prepare(`DELETE FROM stats`).run();
+    this._count = 0;
   }
 
   bulkDeleteByIds(ids: number[]) {
     const placeholders = ids.map(() => '?').join(', ');
-    const stmt = this.db.prepare(`DELETE FROM stats WHERE id IN (${placeholders})`);
-    stmt.run(...ids);
+    const result = this.db.prepare(`DELETE FROM stats WHERE id IN (${placeholders})`).run(...ids);
+    this._count = Math.max(0, this._count - result.changes);
   }
 }
