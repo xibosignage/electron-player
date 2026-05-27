@@ -137,6 +137,13 @@ export async function downloadFile(file: FileManagerFileType) {
                 fileName: file.saveAs,
                 method: 'FileManager::downloadFile',
             });
+
+            // Keep metadata columns (e.g. code) in sync without re-downloading.
+            if (file.code !== undefined && existing.code !== file.code) {
+                store.db.prepare(`UPDATE files SET code = ? WHERE name = ?`).run(file.code, file.saveAs);
+                console.debug(`[FileManager] Updated code for existing file: ${file.saveAs}`, { code: file.code });
+            }
+
             return file;
         }
     }
@@ -291,6 +298,21 @@ export async function downloadWidgetDataFile(file: FileManagerFileType, widgetDa
     }
 
     return file;
+}
+
+export function findLayoutFileByCode(code: string): { layoutId: number; name: string } | null {
+    const file = store.db.prepare(
+        `SELECT fileId, name FROM files WHERE type = 'layout' AND status = 'success' AND code = ? LIMIT 1`
+    ).get(code) as Pick<LocalFile, 'fileId' | 'name'> | undefined;
+
+    if (!file) {
+        console.warn(`[FileManager] findLayoutFileByCode: no layout found for code "${code}"`);
+        return null;
+    }
+
+    console.debug(`[FileManager] findLayoutFileByCode: found layout`, { code, layoutId: file.fileId });
+
+    return { layoutId: parseInt(file.fileId, 10), name: file.name };
 }
 
 export function getWidgetFile(fileId: number) {

@@ -6,6 +6,7 @@ export type InputLayoutType = {
     scheduleId?: number;
     isOverlay?: boolean;
     shareOfVoice?: number;
+    code?: string;
 };
 
 export type MediaInventoryFileType = {
@@ -30,6 +31,7 @@ export interface LocalFile {
     fileType: string;
     md5: string;
     lastDownloaded: string;
+    code?: string;
 }
 
 export interface RequiredFile {

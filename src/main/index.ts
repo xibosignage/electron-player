@@ -21,6 +21,7 @@
 if (require('electron-squirrel-startup')) app.quit();
 
 const fs = require('fs/promises');
+const { readFileSync } = require('fs');
 import { installExtension, JQUERY_DEBUGGER } from 'electron-devtools-installer';
 import { app, shell, WebContentsView, BrowserWindow, ipcMain, session, screen } from 'electron';
 import { join } from 'path';
@@ -31,6 +32,7 @@ import 'dotenv/config';
 import { DateTime } from 'luxon';
 import os from 'os';
 import { IXlrEvents } from '@xibosignage/xibo-layout-renderer';
+import { monitorEventLoopDelay } from 'perf_hooks';
 
 import icon from '../../resources/icon.png?asset';
 import { spawn } from 'child_process';
@@ -50,6 +52,7 @@ import {
   purgeAll,
   isPurging,
   setIsPurging,
+  findLayoutFileByCode,
 } from './common/fileManager';
 import Schedule from './xmds/response/schedule/schedule';
 import ScheduleManager from './common/scheduleManager';
@@ -70,6 +73,34 @@ import { OverlayLayout } from './xmds/response/schedule/events/overlayLayout';
 import { Faults } from '../shared/faults/Faults';
 import Ssp from './common/ssp';
 import SspLayout from './xmds/response/schedule/events/sspLayout';
+
+/**
+ * Extract the layout `code` attribute from an XLF file without fully parsing it.
+ * Returns undefined if the file cannot be read or does not contain a code attribute.
+ * Used to pre-populate InputLayoutType.code so navLayout can match by code without
+ * fetching and parsing every XLF at runtime.
+ */
+function extractLayoutCode(localPath: string): string | undefined {
+  try {
+    const content: string = readFileSync(localPath, 'utf-8');
+    const match = content.match(/\bcode="([^"]*)"/);
+    return match?.[1] || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Passive event-loop lag monitor — logs a warning whenever the main thread is
+// blocked for more than 50 ms. Helps verify that sync-I/O fixes are working.
+const elMonitor = monitorEventLoopDelay({ resolution: 10 });
+elMonitor.enable();
+setInterval(() => {
+  const maxMs = elMonitor.max / 1e6;
+  if (maxMs > 50) {
+    console.warn(`[EL-LAG] Main process blocked for ${maxMs.toFixed(0)} ms in the last 10 s`);
+  }
+  elMonitor.reset();
+}, 10_000);
 
 // Axios interceptors
 axios.interceptors.request.use(req => {
@@ -232,6 +263,10 @@ ipcMain.handle('ssp-report-widget-impression', async (_event, urls: string[], du
   console.debug('[MAIN][ssp-report-widget-impression] Reporting SSP widget impression', { urls, duration });
   if (!ssp) return;
   await ssp.reportWidgetImpression(urls, duration);
+});
+
+ipcMain.handle('find-layout-by-code', async (_event, code: string) => {
+  return findLayoutFileByCode(code);
 });
 
 ipcMain.handle('execute-xlr-event', async (_event, { eventName, payload }: { eventName: keyof IXlrEvents, payload: any }) => {
@@ -463,7 +498,13 @@ const initXmrEventHandlers = async function () {
     const widgetLocalFile = getWidgetFile(widgetId);
 
     if (widgetLocalFile === null) {
-      console.debug('[XMR::dataUpdate] No local file found for widget ' + widgetId);
+      // No local file yet — download fresh (e.g. widget data cache not ready during requiredFiles processing).
+      console.debug('[XMR::dataUpdate] No local file found, downloading fresh for widget ' + widgetId);
+      await downloadWidgetDataFile({
+        id: `${widgetId}`,
+        type: 'widget',
+      } as FileManagerFileType, widgetData, 'success');
+
       return;
     }
 
@@ -737,6 +778,7 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr) {
               shortPath: _layout.name,
               scheduleId: 'scheduleId' in item ? (item as Layout).scheduleId : -1,
               shareOfVoice: 'shareOfVoice' in item ? (item as (Layout | OverlayLayout | SspLayout)).shareOfVoice : 0,
+              code: _layout.localPath ? extractLayoutCode(_layout.localPath) : undefined,
             };
 
             if (item instanceof OverlayLayout || 'isOverlay' in item) {
@@ -923,6 +965,7 @@ const mainFunctions = {
                 shortPath: layoutFile?.name || '',
                 response: item.response ?? '',
                 scheduleId: 'scheduleId' in item ? (item as Layout).scheduleId : -1,
+                code: layoutFile.localPath ? extractLayoutCode(layoutFile.localPath) : undefined,
               },
             ];
           }

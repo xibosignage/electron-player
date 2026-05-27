@@ -26,9 +26,16 @@ export class FileStore {
             );
         `);
 
+        // Migration: add code column if not present (existing DBs won't have it)
+        const hasCodeColumn = (this.db.prepare(`PRAGMA table_info(files)`).all() as { name: string }[])
+            .some(col => col.name === 'code');
+        if (!hasCodeColumn) {
+            this.db.exec(`ALTER TABLE files ADD COLUMN code TEXT`);
+        }
+
         this.insertStmt = this.db.prepare<LocalFile>(`
-            INSERT INTO files (name, url, localPath, size, status, fileId, type, fileType, md5)
-            VALUES (@name, @url, @localPath, @size, @status, @fileId, @type, @fileType, @md5)
+            INSERT INTO files (name, url, localPath, size, status, fileId, type, fileType, md5, code)
+            VALUES (@name, @url, @localPath, @size, @status, @fileId, @type, @fileType, @md5, @code)
             ON CONFLICT(name) DO UPDATE SET
                 url = excluded.url,
                 localPath = excluded.localPath,
@@ -37,6 +44,7 @@ export class FileStore {
                 type = excluded.type,
                 fileType = excluded.fileType,
                 md5 = excluded.md5,
+                code = excluded.code,
                 lastDownloaded = CURRENT_TIMESTAMP
         `);
 
@@ -46,6 +54,7 @@ export class FileStore {
                 size = @size,
                 status = @status,
                 md5 = @md5,
+                code = @code,
                 lastDownloaded = CURRENT_TIMESTAMP
             WHERE name = @name
         `);
@@ -62,6 +71,7 @@ export class FileStore {
             type: file.type,
             fileType: file.fileType,
             md5: file.md5,
+            code: file.code ?? null,
         });
     }
 
@@ -72,6 +82,7 @@ export class FileStore {
             size: file.size,
             status: file.status,
             md5: file.md5,
+            code: file.code ?? null,
         });
     }
 

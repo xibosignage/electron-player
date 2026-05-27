@@ -157,6 +157,22 @@ const initXlrEventHandlers = function () {
     await window.apiHandler.executeXlrEvent('layoutStart', { layoutId: layout.layoutId });
   });
 
+  xlr.on('navLayout', async (layoutCode: string) => {
+    const result = await window.apiHandler.findLayoutByCode(layoutCode);
+    console.debug('[navLayout] [RENDERER] navLayout triggered', { layoutCode, foundLayoutId: result?.layoutId ?? null });
+
+    if (!result) {
+      console.warn('[navLayout] [RENDERER] Layout not found for code:', layoutCode);
+      return;
+    }
+
+    await xlr.playInterruptLayout({
+      layoutId: result.layoutId,
+      path: result.name,
+      response: null,
+    });
+  });
+
   xlr.on('layoutEnd', async (layout) => {
     // SSP impression reporting
     if (layout.layoutId === -1 && currentSspAd) {
@@ -194,6 +210,7 @@ const initXlrEventHandlers = function () {
     });
     await window.apiHandler.executeXlrEvent('overlayEnd', { scheduleId: overlay.scheduleId });
   });
+
 }
 
 export const startApp = async () => {

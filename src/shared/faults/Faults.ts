@@ -46,6 +46,7 @@ export class Faults {
 
     emitter: Emitter<FaultsEvents> = createNanoEvents<FaultsEvents>();
     clearIntervalId: NodeJS.Timeout | null = null;
+    private _activeFaultsCache: Array<{code: number, reason: string, layoutId: number | null, scheduleId: number | null, mediaId: number | null}> | null = null;
 
     constructor(db: ConsoleDB) {
         this.db = db;
@@ -132,17 +133,20 @@ export class Faults {
      * Returns all non-expired faults from the database.
      * @returns Active faults with their code and reason
      */
-    getActiveFaults(): Array<{code: number, reason: string, mediaId: number | null, layoutId: number | null, scheduleId: number | null}> {
-        const faults = this.db.getLogsByCategory('Fault');
-        return faults
-            .filter(f => f.message !== null && String(f.message).trim() !== '')
-            .map(f => ({
-                code: parseInt(f.code ?? FaultCodes.FaultGeneralError.toString()),
-                reason: f.message ?? '',
-                mediaId: f.mediaId ?? null,
-                layoutId: f.layoutId ?? null,
-                scheduleId: f.scheduleId ?? null,
-            }));
+    getActiveFaults(): Array<{code: number, reason: string, layoutId: number | null, scheduleId: number | null, mediaId: number | null}> {
+        if (this._activeFaultsCache === null) {
+            const faults = this.db.getLogsByCategory('Fault');
+            this._activeFaultsCache = faults
+                .filter(f => f.message !== null && String(f.message).trim() !== '')
+                .map(f => ({
+                    code: parseInt(f.code ?? FaultCodes.FaultGeneralError.toString()),
+                    reason: f.message ?? '',
+                    mediaId: f.mediaId ?? null,
+                    layoutId: f.layoutId ?? null,
+                    scheduleId: f.scheduleId ?? null,
+                }));
+        }
+        return this._activeFaultsCache;
     }
 
     toJson() {

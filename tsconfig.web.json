@@ -18,6 +18,9 @@
       ],
       "@shared/*": [
         "src/shared/*"
+      ],
+      "@xibosignage/xibo-layout-renderer": [
+        "../xibo-layout-renderer/dist/xibo-layout-renderer.d.ts"
       ]
     }
   }

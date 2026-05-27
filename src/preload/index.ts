@@ -65,6 +65,8 @@ const apiHandler: ApiHandler = {
     ipcRenderer.invoke('ssp-get-widget-ad', partnerId),
   sspReportWidgetImpression: (urls: string[], duration: number) =>
     ipcRenderer.invoke('ssp-report-widget-impression', urls, duration),
+  findLayoutByCode: (code: string) =>
+    ipcRenderer.invoke('find-layout-by-code', code),
 }
 
 contextBridge.exposeInMainWorld('apiHandler', apiHandler);
