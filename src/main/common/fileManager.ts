@@ -28,6 +28,10 @@ export type PurgeItemType = {
 
 export let isPurging = false;
 
+export function setIsPurging(value: boolean) {
+    isPurging = value;
+}
+
 export async function downloadAndSaveFile(
     file: FileManagerFileType,
     options: {
@@ -149,6 +153,10 @@ export function getDownloadedFiles() {
 
 export function getLayoutFile(layoutId: number): LocalFile | undefined {
     return store.db.prepare(`SELECT * FROM files WHERE fileId = ? AND type = 'layout'`).get(String(layoutId)) as LocalFile | undefined;
+}
+
+export function getFileByName(name: string): LocalFile | undefined {
+    return store.db.prepare(`SELECT * FROM files WHERE name = ?`).get(name) as LocalFile | undefined;
 }
 
 export function localFileUrlFromFileName(fileName: string) {

@@ -49,6 +49,7 @@ import {
   purge,
   purgeAll,
   isPurging,
+  setIsPurging,
 } from './common/fileManager';
 import Schedule from './xmds/response/schedule/schedule';
 import ScheduleManager from './common/scheduleManager';
@@ -479,26 +480,33 @@ const initXmrEventHandlers = async function () {
    * database records, then immediately requests a fresh required files list from the CMS.
    */
   xmr.on('purgeAll', async () => {
-    // Push splash screen so XLR transitions away from the current layout before files are deleted
-    if (manager) {
-      manager.layouts = [manager.getSplash()];
-      manager.emitter.emit('layouts', [manager.getSplash()]);
-      console.debug('[XMR::purgeAll] Changed to splash screen');
+    // Flag purge as in-progress before the transition delay begins
+    setIsPurging(true);
+
+    try {
+      // Push splash screen so XLR transitions away from the current layout before files are deleted
+      if (manager) {
+        manager.layouts = [manager.getSplash()];
+        manager.emitter.emit('layouts', [manager.getSplash()]);
+        console.debug('[XMR::purgeAll] Changed to splash screen');
+      }
+
+      // Give XLR time to switch to the splash screen before wiping the library
+      await new Promise(resolve => setTimeout(resolve, 10000));
+
+      console.debug('[XMR::purgeAll] clearing local library');
+      await purgeAll();
+
+      // Reset CRC cache so collect() forces a full re-fetch of requiredFiles and schedule.
+      // Without this, collectNow() passes the old CRCs and both requests are skipped.
+      xmds.checkRf = null;
+      xmds.checkSchedule = null;
+      pendingScheduleRefresh = true;
+
+      await xmds.collectNow();
+    } finally {
+      setIsPurging(false);
     }
-
-    // Give XLR time to switch to the splash screen before wiping the library
-    await new Promise(resolve => setTimeout(resolve, 10000));
-
-    console.debug('[XMR::purgeAll] clearing local library');
-    await purgeAll();
-
-    // Reset CRC cache so collect() forces a full re-fetch of requiredFiles and schedule.
-    // Without this, collectNow() passes the old CRCs and both requests are skipped.
-    xmds.checkRf = null;
-    xmds.checkSchedule = null;
-    pendingScheduleRefresh = true;
-
-    await xmds.collectNow();
   });
 }
 

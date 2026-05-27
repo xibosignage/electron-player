@@ -37,6 +37,7 @@ export class ConsoleDB {
   private db: Database.Database;
   private insertStmt: Database.Statement;
   private dedupFaultStmt: Database.Statement;
+  private activeFaultForLayoutStmt: Database.Statement;
 
   constructor() {
     const userDataPath = app.getPath('userData');
@@ -110,6 +111,14 @@ export class ConsoleDB {
         AND widgetId IS ?
         AND mediaId IS ?
         AND scheduleId IS ?
+        AND (expires IS NULL OR expires > ?)
+      LIMIT 1
+    `);
+
+    this.activeFaultForLayoutStmt = this.db.prepare(`
+      SELECT id FROM logs
+      WHERE category = 'Fault'
+        AND layoutId = ?
         AND (expires IS NULL OR expires > ?)
       LIMIT 1
     `);
@@ -228,6 +237,15 @@ export class ConsoleDB {
       ids.scheduleId ?? null,
       now
     );
+    return result !== undefined;
+  }
+
+  /**
+   * Returns true if the layout has any active (non-expired) fault.
+   */
+  hasActiveFaultForLayout(layoutId: number): boolean {
+    const now = DateTime.now().toFormat('yyyy-MM-dd HH:mm:ss');
+    const result = this.activeFaultForLayoutStmt.get(layoutId, now);
     return result !== undefined;
   }
 
