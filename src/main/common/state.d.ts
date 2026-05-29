@@ -46,6 +46,9 @@ export declare class State {
   requiredFilesCount: number;
   downloadedFilesCount: number;
   missingFiles: string[];
+  globalDependenciesCount: number;
+  globalDependenciesReadyCount: number;
+  missingGlobalDependencies: string[];
   nextScheduleUpdate: DateTime;
   pendingStatsCount: number;
   pendingLogsCount: number;

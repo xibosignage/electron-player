@@ -72,6 +72,9 @@ export class State {
   requiredFilesCount: number;
   downloadedFilesCount: number;
   missingFiles: string[];
+  globalDependenciesCount: number;
+  globalDependenciesReadyCount: number;
+  missingGlobalDependencies: string[];
   nextScheduleUpdate: DateTime;
   pendingStatsCount: number;
   pendingLogsCount: number;
@@ -106,6 +109,9 @@ export class State {
     this.requiredFilesCount = 0;
     this.downloadedFilesCount = 0;
     this.missingFiles = [];
+    this.globalDependenciesCount = 0;
+    this.globalDependenciesReadyCount = 0;
+    this.missingGlobalDependencies = [];
     this.nextScheduleUpdate = DateTime.now();
     this.pendingStatsCount = 0;
     this.pendingLogsCount = 0;
@@ -145,6 +151,8 @@ export class State {
       pendingLogsCount: this.pendingLogsCount,
       requiredFiles: this.downloadedFilesCount + ' / ' + this.requiredFilesCount,
       missingFiles: this.missingFiles,
+      globalDependencies: this.globalDependenciesReadyCount + ' / ' + this.globalDependenciesCount,
+      missingGlobalDependencies: this.missingGlobalDependencies,
       scheduleLoop: this.scheduleLoop,
       allLayoutIds: this.allLayoutIds,
       nextScheduleUpdate: this.nextScheduleUpdate,
@@ -204,6 +212,10 @@ export class State {
       + '<p>Number of Logs ready to send: ' + this.pendingLogsCount + '</p>'
       + '<p>Required Files: ' + this.downloadedFilesCount + ' / ' + this.requiredFilesCount + '</p>'
       + (this.missingFiles.length === 0 ? '' : '<p>Missing Required Files: ' + this.missingFiles.join(', ') + '</p>')
+      + '<p>Global Dependencies: ' + this.globalDependenciesReadyCount + ' / ' + this.globalDependenciesCount + '</p>'
+      + (this.missingGlobalDependencies.length === 0
+        ? ''
+        : '<p>Missing Global Dependencies: ' + this.missingGlobalDependencies.join(', ') + '</p>')
       + '<br />'
       + '<h1 class="title">Schedule Status</h1>'
       + '<p>All Layouts (* = not scheduled): ' + this.allLayoutIds + '</p>'

@@ -26,6 +26,7 @@ export enum FaultCodes {
     FaultBadResponse = 5003,
     FaultBadRequest = 5002,
     FaultNoData = 5001,
+    FaultGlobalDependenciesMissing = 5004,
 
     FaultSettingNotAvailable = 6000,
     FaultTimerInvalidDay = 6001,

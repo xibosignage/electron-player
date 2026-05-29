@@ -5,7 +5,8 @@ import { DefaultLayout } from "../xmds/response/schedule/events/defaultLayout";
 import { Config } from "../config/config";
 import { getLayoutIds } from "./parser";
 import { InputLayoutType } from "./types";
-import { getLayoutFile, isPurging } from "./fileManager";
+import { getFileByName, getLayoutFile, isPurging } from "./fileManager";
+import { Faults, FaultCodes } from "../../shared/faults/Faults";
 import { OverlayLayout } from "../xmds/response/schedule/events/overlayLayout";
 import SspLayout from "../xmds/response/schedule/events/sspLayout";
 import { geoLocationManager } from "./geoLocationManager";
@@ -39,14 +40,16 @@ export default class ScheduleManager {
     scheduleIdsThatHaveMaxPlays: number[] = [];
 
     config: Config;
+    faults: Faults;
 
-    constructor(schedule: Schedule, config: Config) {
+    constructor(schedule: Schedule, config: Config, faults: Faults) {
         this.emitter = createNanoEvents<ScheduleEvents>();
         this.schedule = schedule;
         this.layouts = [];
         this.overlays = [];
         this.layouts.push(this.getSplash());
         this.config = config;
+        this.faults = faults;
     }
 
     on<E extends keyof ScheduleEvents>(event: E, callback: ScheduleEvents[E]) {
@@ -85,6 +88,64 @@ export default class ScheduleManager {
     }
 
     /**
+     * Returns true if all global schedule dependencies are present in the local files DB.
+     */
+    private async isGlobalDependenciesValid(): Promise<boolean> {
+        if (!this.schedule || !this.schedule.dependants || this.schedule.dependants.length === 0) {
+            this.config.state.globalDependenciesCount = 0;
+            this.config.state.globalDependenciesReadyCount = 0;
+            this.config.state.missingGlobalDependencies = [];
+            return true;
+        }
+
+        const missing: string[] = [];
+
+        for (const dependent of this.schedule.dependants) {
+            if (!getFileByName(dependent)) {
+                missing.push(dependent);
+            }
+        }
+
+        this.config.state.globalDependenciesCount = this.schedule.dependants.length;
+        this.config.state.globalDependenciesReadyCount = this.schedule.dependants.length - missing.length;
+        this.config.state.missingGlobalDependencies = missing;
+
+        if (missing.length > 0) {
+            return false;
+        }
+
+        console.info('Global dependencies ready', {
+            method: 'Schedule: Manager: isGlobalDependenciesValid',
+        });
+
+        return true;
+    }
+
+    /**
+     * Checks global dependencies after required files have been downloaded and raises a fault if any are missing.
+     */
+    async checkGlobalDependencies(): Promise<void> {
+        const valid = await this.isGlobalDependenciesValid();
+
+        if (!valid) {
+            const missingCount = this.config.state.missingGlobalDependencies.length;
+            const totalCount = this.config.state.globalDependenciesCount;
+
+            console.error(
+                'Global dependencies: ' + missingCount + '/' + totalCount + ' files missing.',
+                { method: 'Schedule: Manager: checkGlobalDependencies' }
+            );
+
+            this.faults.emitter.emit('message', {
+                code: FaultCodes.FaultGlobalDependenciesMissing,
+                reason: missingCount + '/' + totalCount + ' global dependencies missing.',
+                layoutId: null,
+                mediaId: null,
+            });
+        }
+    }
+
+    /**
      * Assess normal layouts from the current schedule
      */
     async assessLayouts() {
@@ -102,12 +163,12 @@ export default class ScheduleManager {
             return;
         }
 
-        // if (!await this.isGlobalDependenciesValid()) {
-        //     console.debug('Global dependencies not ready, skipping.', {
-        //         method: 'Schedule: Manager: Assess'
-        //     });
-        //     return;
-        // }
+        if (!await this.isGlobalDependenciesValid()) {
+            console.debug('Global dependencies not ready, skipping.', {
+                method: 'Schedule: Manager: Assess'
+            });
+            return;
+        }
 
         this.isAssessingLayouts = true;
 
