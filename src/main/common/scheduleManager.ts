@@ -467,6 +467,14 @@ export default class ScheduleManager {
             });
             return;
         }
+
+        if (this.config.state.missingGlobalDependencies.length > 0) {
+            console.debug('Global dependencies not ready, skipping.', {
+                method: 'Schedule: Manager: Assess Overlays'
+            });
+            return;
+        }
+
         this.isAssessingOverlays = true;
 
         // If we don't have anything to assess, drop out straight away.
