@@ -32,6 +32,10 @@ export default class ScheduleManager {
     sspShareOfVoice: number = 0;
     sspAverageDuration: number = 0;
 
+    globalDependenciesCount: number = 0;
+    globalDependenciesReadyCount: number = 0;
+    missingGlobalDependencies: string[] = [];
+
     layouts: ScheduleLayoutsType[];
     overlays: OverlayLayout[];
 
@@ -92,9 +96,9 @@ export default class ScheduleManager {
      */
     private async isGlobalDependenciesValid(): Promise<boolean> {
         if (!this.schedule || !this.schedule.dependants || this.schedule.dependants.length === 0) {
-            this.config.state.globalDependenciesCount = 0;
-            this.config.state.globalDependenciesReadyCount = 0;
-            this.config.state.missingGlobalDependencies = [];
+            this.globalDependenciesCount = 0;
+            this.globalDependenciesReadyCount = 0;
+            this.missingGlobalDependencies = [];
             return true;
         }
 
@@ -106,9 +110,9 @@ export default class ScheduleManager {
             }
         }
 
-        this.config.state.globalDependenciesCount = this.schedule.dependants.length;
-        this.config.state.globalDependenciesReadyCount = this.schedule.dependants.length - missing.length;
-        this.config.state.missingGlobalDependencies = missing;
+        this.globalDependenciesCount = this.schedule.dependants.length;
+        this.globalDependenciesReadyCount = this.schedule.dependants.length - missing.length;
+        this.missingGlobalDependencies = missing;
 
         if (missing.length > 0) {
             return false;
@@ -128,8 +132,8 @@ export default class ScheduleManager {
         const valid = await this.isGlobalDependenciesValid();
 
         if (!valid) {
-            const missingCount = this.config.state.missingGlobalDependencies.length;
-            const totalCount = this.config.state.globalDependenciesCount;
+            const missingCount = this.missingGlobalDependencies.length;
+            const totalCount = this.globalDependenciesCount;
 
             console.error(
                 'Global dependencies: ' + missingCount + '/' + totalCount + ' files missing.',
@@ -468,7 +472,7 @@ export default class ScheduleManager {
             return;
         }
 
-        if (this.config.state.missingGlobalDependencies.length > 0) {
+        if (this.missingGlobalDependencies.length > 0) {
             console.debug('Global dependencies not ready, skipping.', {
                 method: 'Schedule: Manager: Assess Overlays'
             });

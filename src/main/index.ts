@@ -305,6 +305,9 @@ const collectAndPushStatus = async (win: BrowserWindow) => {
   config.state.activeFaults = faults.getActiveFaults();
   config.state.pendingStatsCount = popStats.getCount();
   config.state.pendingLogsCount = db.count();
+  config.state.globalDependenciesCount = manager?.globalDependenciesCount ?? 0;
+  config.state.globalDependenciesReadyCount = manager?.globalDependenciesReadyCount ?? 0;
+  config.state.missingGlobalDependencies = manager?.missingGlobalDependencies ?? [];
 
   const rawCriteria = scheduleCriteriaManager.getActiveCriteria();
   config.state.activeCriteria = Object.fromEntries(
