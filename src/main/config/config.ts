@@ -114,6 +114,10 @@ export class Config {
       this.displayName = data.displayName;
       this.xmdsVersion = data.xmdsVersion;
       this.settings = data.settings || {};
+
+      // Restore the last known approval status so offline boots can still attempt collection.
+      // Default 2 means not registered, which correctly blocks collection on a fresh install.
+      this.state.displayStatus = data.displayStatus ?? 2;
     } catch {
       // Probably the file doesn't exist.
       this.displayName = this.platform + ' Unknown player';
@@ -161,6 +165,7 @@ export class Config {
         displayName: this.displayName,
         xmdsVersion: this.xmdsVersion,
         settings: this.settings,
+        displayStatus: this.state.displayStatus,
       }, null, 2),
     );
     await fs.rename(tmp, this.cmsSavePath);

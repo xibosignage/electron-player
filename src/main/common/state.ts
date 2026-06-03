@@ -75,6 +75,7 @@ export class State {
   globalDependenciesCount: number;
   globalDependenciesReadyCount: number;
   missingGlobalDependencies: string[];
+  usingCachedSchedule: boolean;
   nextScheduleUpdate: DateTime;
   pendingStatsCount: number;
   pendingLogsCount: number;
@@ -112,6 +113,7 @@ export class State {
     this.globalDependenciesCount = 0;
     this.globalDependenciesReadyCount = 0;
     this.missingGlobalDependencies = [];
+    this.usingCachedSchedule = false;
     this.nextScheduleUpdate = DateTime.now();
     this.pendingStatsCount = 0;
     this.pendingLogsCount = 0;
@@ -153,6 +155,7 @@ export class State {
       missingFiles: this.missingFiles,
       globalDependencies: this.globalDependenciesReadyCount + ' / ' + this.globalDependenciesCount,
       missingGlobalDependencies: this.missingGlobalDependencies,
+      usingCachedSchedule: this.usingCachedSchedule,
       scheduleLoop: this.scheduleLoop,
       allLayoutIds: this.allLayoutIds,
       nextScheduleUpdate: this.nextScheduleUpdate,
@@ -216,6 +219,7 @@ export class State {
       + (this.missingGlobalDependencies.length === 0
         ? ''
         : '<p>Missing Global Dependencies: ' + this.missingGlobalDependencies.join(', ') + '</p>')
+      + (this.usingCachedSchedule ? '<p>Schedule: Using cached schedule (last known from CMS)</p>' : '')
       + '<br />'
       + '<h1 class="title">Schedule Status</h1>'
       + '<p>All Layouts (* = not scheduled): ' + this.allLayoutIds + '</p>'
