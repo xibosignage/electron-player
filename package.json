@@ -46,7 +46,7 @@
     "@types/luxon": "^3.7.1",
     "@types/xml2js": "^0.4.14",
     "@xibosignage/xibo-communication-framework": "https+git@github.com:xibosignage/xibo-communication-framework.git#017d71570cce6f37e2e88943714a28d8d91e5297",
-    "@xibosignage/xibo-layout-renderer": "https+git@github.com:xibosignage/xibo-layout-renderer.git#56c97148b9fdc0dbe68897ef9ca4f7c34d5b0ef3",
+    "@xibosignage/xibo-layout-renderer": "https+git@github.com:xibosignage/xibo-layout-renderer.git#76a3357043d6306b0466b667f30b145a248e37c3",
     "@xmldom/xmldom": "^0.9.10",
     "axios": "^1.8.4",
     "better-sqlite3": "^12.4.1",
