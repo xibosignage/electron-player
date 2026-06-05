@@ -54,6 +54,8 @@ export interface ScheduleInterface {
 
 export default class Schedule implements ScheduleInterface {
     private readonly response: string;
+    rawXml: string = '';
+    fromCache: boolean = false;
     filterFrom: string | undefined;
     filterTo: string | undefined;
     generated: string | undefined;
@@ -67,6 +69,7 @@ export default class Schedule implements ScheduleInterface {
 
     constructor(response: string) {
         this.response = response;
+        this.rawXml = response;
     }
 
     async parse(): Promise<void> {

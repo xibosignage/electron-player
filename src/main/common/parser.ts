@@ -5,6 +5,7 @@ import { ScheduleLayoutsType } from "./scheduleManager";
 import { LogEntry } from "../../shared/console/ConsoleDB";
 import { StatEntry } from "./stats/StatsDB";
 import { OverlayLayout } from "../xmds/response/schedule/events/overlayLayout";
+import { scheduleCriteriaManager } from "../../shared/scheduleCriteria/scheduleCriteriaManager";
 
 export function getLayoutIds(layouts: ScheduleLayoutsType[] | OverlayLayout[]): number[] {
     return layouts.reduce((a: number[], b) => {
@@ -328,8 +329,32 @@ export function submitStatXmlString(statObj: StatEntry) {
     statXml += 'tag=&quot;' + statObj.tag + '&quot; ';
   }
 
+  if (statObj.type !== 'event') {
+    const activeCriteria = scheduleCriteriaManager.getActiveCriteria();
+    const criteriaKeys = Object.keys(activeCriteria);
+
+    if (criteriaKeys.length > 0) {
+      let tags = '';
+      for (const key of criteriaKeys) {
+        const criterion = activeCriteria[key];
+        if (!criterion) continue;
+        tags = tags === ''
+          ? 'CRITERIA|' + criterion.metric + ':' + criterion.value
+          : tags + ', ' + criterion.metric + ':' + criterion.value;
+      }
+
+      statXml += '&gt;' +
+        '&lt;engagements&gt;' +
+        '&lt;engagement tag=&quot;' + tags + '&quot; duration=&quot;0&quot; count=&quot;1&quot;&gt;&lt;/engagement&gt;' +
+        '&lt;/engagements&gt;' +
+        '&lt;/stat&gt;';
+
+      return statXml;
+    }
+  }
+
   statXml += '/&gt;';
-  
+
   return statXml;
 }
 

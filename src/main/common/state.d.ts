@@ -49,6 +49,7 @@ export declare class State {
   globalDependenciesCount: number;
   globalDependenciesReadyCount: number;
   missingGlobalDependencies: string[];
+  usingCachedSchedule: boolean;
   nextScheduleUpdate: DateTime;
   pendingStatsCount: number;
   pendingLogsCount: number;

@@ -628,6 +628,9 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr) {
     });
 
     await config.setConfig(data);
+    
+    // Successfully registered with the CMS, so we are no longer running from a cached schedule.
+    config.state.usingCachedSchedule = false;
 
     // Configure SSP now that we have the updated settings (isSspEnabled, hardwareKey)
     if (ssp) {
@@ -798,11 +801,22 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr) {
   });
 
   xmds.on('schedule', async (data) => {
+    // Log once when a live schedule comes in after the player was running from a cached one.
+    if (!data.fromCache && schedule?.fromCache) {
+      console.debug('[MAIN] Live schedule received from CMS; switching from cached schedule to live schedule.');
+    }
     schedule = data;
     console.debug('[Xmds::on("schedule")] > Schedule', {
       schedule: data,
       shouldParse: false,
     });
+
+    // Only save to disk when it came from the CMS. Skipping this for a cached schedule
+    // prevents the schedule listener from writing the same file back to itself during an offline boot restore.
+    if (!data.fromCache) {
+      const libraryPath = config.getSetting('library');
+      await fs.writeFile(join(libraryPath, 'schedule.xml'), data.rawXml);
+    }
 
     // Update schedule of ScheduleManager
     let scheduleLayouts =
@@ -1090,6 +1104,49 @@ const mainFunctions = {
       if (!statusWindowVisible) return;
       await collectAndPushStatus(win);
     }, 5000);
+
+    // Always try the live CMS schedule first. The cached schedule.xml is only used as a
+    // fallback if the first collection completes without getting a live schedule (i.e. offline).
+    let liveScheduleReceived = false;
+    let firstCollectionHandled = false;
+
+    // Temporary listener just to track whether a live schedule arrived during the first collect.
+    const removeScheduleFlagListener = xmds.on('schedule', (data: Schedule) => {
+      if (!data.fromCache) liveScheduleReceived = true;
+    });
+
+    const removeCollectedListener = xmds.on('collected', async () => {
+      // Only run this once, on the very first collect cycle after startup.
+      if (firstCollectionHandled) return;
+      firstCollectionHandled = true;
+      removeScheduleFlagListener();
+      removeCollectedListener();
+
+      if (!liveScheduleReceived) {
+        // CMS was unreachable, try to restore from the last saved schedule on disk.
+        let rawXml: string | undefined;
+        try {
+          const libraryPath = config.getSetting('library');
+          rawXml = await fs.readFile(join(libraryPath, 'schedule.xml'), 'utf8');
+        } catch {
+          console.debug('[MAIN] No cached schedule found, waiting for CMS.');
+        }
+
+        if (rawXml !== undefined) {
+          try {
+            const cachedSchedule = new Schedule(rawXml);
+            await cachedSchedule.parse();
+            // Mark as cached so the schedule listener does not re-write the same file to disk.
+            cachedSchedule.fromCache = true;
+            xmds.emitter.emit('schedule', cachedSchedule);
+            config.state.usingCachedSchedule = true;
+            console.debug('[MAIN] Network unavailable, restored schedule from cache.');
+          } catch {
+            console.warn('[MAIN] Cached schedule.xml exists but could not be parsed.');
+          }
+        }
+      }
+    });
 
     xmds.start(config.getSetting('collectionInterval', 60));
 
