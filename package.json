@@ -45,7 +45,7 @@
     "@types/he": "^1.2.3",
     "@types/luxon": "^3.7.1",
     "@types/xml2js": "^0.4.14",
-    "@xibosignage/xibo-communication-framework": "0.0.9",
+    "@xibosignage/xibo-communication-framework": "^0.0.9",
     "@xibosignage/xibo-layout-renderer": "^1.0.29",
     "@xmldom/xmldom": "^0.9.10",
     "axios": "^1.8.4",
