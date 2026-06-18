@@ -169,7 +169,16 @@ export class ConsoleDB {
     return this._count;
   }
 
-  getLogsByCategory(category: LogCategoryType, limit: number = LogsThreshold): LogEntry[] {
+  /*
+   * Returns log entries from all categories except Fault.
+   */
+  getLogsExcludingFaults(limit: number = LogsThreshold): LogEntry[] {
+    return this.db.prepare(
+      `SELECT * FROM logs WHERE category != 'Fault' ORDER BY timestamp DESC LIMIT ?`
+    ).all(limit) as LogEntry[];
+  }
+
+  getLogsByCategory(category: LogCategoryType | null, limit: number = LogsThreshold): LogEntry[] {
     if (!category) {
       const stmt = this.db.prepare(`SELECT * FROM logs ORDER BY timestamp DESC LIMIT ?`);
 

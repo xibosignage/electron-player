@@ -515,9 +515,10 @@ export class Xmds {
 
     const logLevel = this.config.getSetting('logLevel', 'error');
     const logLevelCategory = logLevel.charAt(0).toUpperCase() + logLevel.slice(1);
-    const logs = db.getLogsByCategory(logLevelCategory, LogsThreshold);
-    console.debug('[Xmds::handleSubmitLogs] Handling log submission', { 
-      logsCount: logs.length, 
+    const logs = db.getLogsExcludingFaults(LogsThreshold);
+
+    console.debug('[Xmds::handleSubmitLogs] Handling log submission', {
+      logsCount: logs.length,
       logLevelCategory,
       logLevel,
     });
@@ -530,6 +531,7 @@ export class Xmds {
       if (this.logsInterval !== undefined) {
         this.hasSubmittedLogs = null;
         clearInterval(this.logsInterval);
+        this.logsInterval = undefined;
       }
 
       return;
@@ -539,6 +541,7 @@ export class Xmds {
     if (logs.length < LogsThreshold && this.logsInterval !== undefined) {
       this.hasSubmittedLogs = null;
       clearInterval(this.logsInterval);
+      this.logsInterval = undefined;
     }
 
     let logsXmlStr = '';
@@ -607,6 +610,12 @@ export class Xmds {
     if (logsCount > LogsThreshold) {
       const batchInterval = 10; // 10 seconds interval for batch submission
 
+      // Clear any existing interval before starting a new one.
+      if (this.logsInterval !== undefined) {
+        clearInterval(this.logsInterval);
+        this.logsInterval = undefined;
+      }
+
       // then submit backlog of logs in batch of LogsThreshold
       this.logsInterval = setInterval(async () => {
         if (this.hasSubmittedLogs || this.hasSubmittedLogs === null) {
@@ -616,6 +625,7 @@ export class Xmds {
     } else {
       if (this.logsInterval !== undefined) {
         clearInterval(this.logsInterval);
+        this.logsInterval = undefined;
       }
 
       await this.handleSubmitLogs(db);
