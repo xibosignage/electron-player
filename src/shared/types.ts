@@ -55,6 +55,31 @@ export type SspAdData = {
   errorUrls: string[];
 };
 
+/**
+ * A single eligible data connector, sent from main to the renderer so the
+ * renderer's DataConnectorManager can host it. `js` is the connector script
+ * filename served by the local file server (appHost + js); `md5` is the
+ * CMS-advertised hash main verified against the on-disk file before sending,
+ * and doubles as the restart discriminator (alongside scheduleId/dataParams).
+ */
+export type DataConnectorPayload = {
+  dataSetId: number;
+  scheduleId: number;
+  dataParams: string;
+  js: string;
+  md5: string;
+};
+
+/**
+ * Result of a renderer → main realtime write. Mirrors the success/status shape
+ * the connector bridge expects so it can resolve the connector's done/error
+ * callbacks.
+ */
+export type RealtimeSetResult = {
+  success: boolean;
+  status: number;
+};
+
 export interface ApiHandler {
   loadConfig: () => Promise<ConfigData>;
   xmdsTryRegister: (config: ConfigData) => Promise<void>;
@@ -66,6 +91,13 @@ export interface ApiHandler {
   sspGetWidgetAd: (partnerId: string) => Promise<SspAdData | null>;
   sspReportWidgetImpression: (urls: string[], duration: number) => Promise<void>;
   findLayoutByCode: (code: string) => Promise<{ layoutId: number; name: string } | null>;
+
+  // Data connector (renderer → main)
+  // Store/clear realtime data, and relay connector-set schedule criteria into
+  // the main process where data connectors and layouts are assessed.
+  realtimeSet: (dataKey: string, dataSetId: number, data: string) => Promise<RealtimeSetResult>;
+  realtimeClear: (dataSetId: number) => Promise<void>;
+  connectorCriteria: (metric: string, value: any, ttl?: number) => Promise<void>;
 }
 
 export interface PlayerAPI {
@@ -80,6 +112,7 @@ export interface PlayerAPI {
   onXlrExpireWidget: (callback: (widgetId: string) => void) => void;
   onXlrExtendWidgetDuration: (callback: (widgetId: string, duration: number) => void) => void;
   onXlrSetWidgetDuration: (callback: (widgetId: string, duration: number) => void) => void;
+  onUpdateDataConnectors: (callback: (connectors: DataConnectorPayload[]) => void) => void;
 
   // Render to main
   openChildWindow: (url: string) => void;

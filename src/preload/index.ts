@@ -66,6 +66,14 @@ const apiHandler: ApiHandler = {
     ipcRenderer.invoke('ssp-report-widget-impression', urls, duration),
   findLayoutByCode: (code: string) =>
     ipcRenderer.invoke('find-layout-by-code', code),
+
+  // Data connector (renderer → main)
+  realtimeSet: (dataKey: string, dataSetId: number, data: string) =>
+    ipcRenderer.invoke('realtime-set', { dataKey, dataSetId, data }),
+  realtimeClear: (dataSetId: number) =>
+    ipcRenderer.invoke('realtime-clear', dataSetId),
+  connectorCriteria: (metric: string, value: any, ttl?: number) =>
+    ipcRenderer.invoke('connector-criteria', { metric, value, ttl }),
 }
 
 contextBridge.exposeInMainWorld('apiHandler', apiHandler);
@@ -82,6 +90,7 @@ const playerApi: PlayerAPI = {
   onXlrExpireWidget: (callback) => ipcRenderer.on('xlr-expire-widget', (_event, widgetId) => callback(widgetId)),
   onXlrExtendWidgetDuration: (callback) => ipcRenderer.on('xlr-extend-widget-duration', (_event, widgetId, duration) => callback(widgetId, duration)),
   onXlrSetWidgetDuration: (callback) => ipcRenderer.on('xlr-set-widget-duration', (_event, widgetId, duration) => callback(widgetId, duration)),
+  onUpdateDataConnectors: (callback) => ipcRenderer.on('update-data-connectors', (_event, connectors) => callback(connectors)),
 
   // Render to main
   openChildWindow: (url) => ipcRenderer.send('open-child-window', url),

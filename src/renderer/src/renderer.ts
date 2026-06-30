@@ -29,9 +29,61 @@ import DefaultLayout from './layout/defaultLayout';
 import { ConfigHandler } from './ConfigHandler';
 import { ConfigData, SspAdData } from '@shared/types';
 import logo from './assets/images/logo.png';
+import { DataConnectorManager } from './dataConnector/dataConnectorManager';
+
+// Base URL the local file server serves cached files from. Shared by XLR (for
+// layouts/resources) and the data connector manager (for connector scripts) so
+// the two can never drift apart.
+const APP_HOST = 'http://localhost:9696/files/';
 
 let xlr: IXlr;
 let currentSspAd: SspAdData | null = null;
+
+// Hosts data connectors in sandboxed iframes and bridges their realtime data to
+// the main process. Driven by the `update-data-connectors` push from main.
+const dataConnectorManager = new DataConnectorManager(APP_HOST);
+
+// [DIAG] Temporary renderer event-loop drift detector. Remove after diagnosis.
+// If the renderer thread is what freezes, drift will spike to ~the freeze
+// duration; if it stays small while main's [EL-LAG] is high, the stall is in
+// main. Uses console._log (raw — no IPC) so the probe adds no load.
+{
+  let __last = Date.now();
+  let __maxDrift = 0;
+  setInterval(() => {
+    const __now = Date.now();
+    const __drift = __now - __last - 1000;
+    if (__drift > __maxDrift) __maxDrift = __drift;
+    __last = __now;
+  }, 1000);
+  setInterval(() => {
+    (console as any)._log(`[DIAG renderer] max event-loop drift in 10s = ${__maxDrift} ms`);
+    __maxDrift = 0;
+  }, 10_000);
+
+  // [DIAG] Log any renderer long task >150ms with its frame attribution, so we
+  // can see WHICH frame blocks: an iframe (connector host xibo-dc-* or a widget
+  // M-*) vs the main document (XLR / our manager). containerName/src may be
+  // empty for opaque-origin (sandboxed) frames, but containerType still tells
+  // us iframe-vs-window.
+  try {
+    const __lt = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        if (entry.duration < 150) continue;
+        const attr = (entry as any).attribution?.[0];
+        (console as any)._log(
+          `[DIAG longtask] ${entry.duration.toFixed(0)}ms`
+          + (attr
+            ? ` container=${attr.containerType} name=${attr.containerName || ''} id=${attr.containerId || ''} src=${attr.containerSrc || ''}`
+            : ' (no attribution)'),
+        );
+      }
+    });
+    __lt.observe({ entryTypes: ['longtask'] });
+  } catch {
+    // longtask entry type not supported — ignore.
+  }
+}
 
 function generateSspXlf(ad: SspAdData): string {
   return '<?xml version="1.0"?>\n' +
@@ -217,7 +269,7 @@ export const startApp = async () => {
   const config = await window.apiHandler.getConfig();
 
   const xlrOptions: Partial<OptionsType> = {
-    appHost: 'http://localhost:9696/files/',
+    appHost: APP_HOST,
     platform: ConsumerPlatform.ELECTRON, // TODO: XLR should support "electron" as a type (as well as webOS, Tizen, etc)
     config: {
       cmsUrl: config.cmsUrl ?? window.location.origin,
@@ -311,6 +363,11 @@ window.playerAPI.onXlrExtendWidgetDuration((widgetId, duration) => {
 window.playerAPI.onXlrSetWidgetDuration((widgetId, duration) => {
   console.debug('[Renderer::onXlrSetWidgetDuration] Setting widget duration', { widgetId, duration });
   xlr.setWidgetDuration(widgetId, duration);
+});
+
+window.playerAPI.onUpdateDataConnectors((connectors) => {
+  console.debug('[Renderer::onUpdateDataConnectors]', { count: connectors.length });
+  void dataConnectorManager.sync(connectors);
 });
 
 let statusWindowHideTimer: ReturnType<typeof setTimeout> | null = null;

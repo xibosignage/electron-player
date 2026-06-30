@@ -22,6 +22,7 @@ if (require('electron-squirrel-startup')) app.quit();
 
 const fs = require('fs/promises');
 const { readFileSync } = require('fs');
+import { createHash } from 'crypto';
 import { installExtension, JQUERY_DEBUGGER } from 'electron-devtools-installer';
 import { app, shell, WebContentsView, BrowserWindow, ipcMain, session, screen } from 'electron';
 import { join } from 'path';
@@ -53,6 +54,7 @@ import {
   isPurging,
   setIsPurging,
   findLayoutFileByCode,
+  getFileByName,
 } from './common/fileManager';
 import Schedule from './xmds/response/schedule/schedule';
 import ScheduleManager from './common/scheduleManager';
@@ -62,7 +64,8 @@ import { createExtendedConsole, registerConfigAdapter } from '../shared/console/
 import { PoPStats } from './common/stats/PoPStats';
 import { submitStatXmlString } from './common/parser';
 import { Layout } from './xmds/response/schedule/events/layout';
-import { ConfigData, MainCallbackType } from '../shared/types';
+import { ConfigData, MainCallbackType, DataConnectorPayload } from '../shared/types';
+import { realtimeDataStore } from './dataConnector/realtimeDataStore';
 import { commandManager } from '../shared/command/commandManager';
 import { registerLocalCommands } from './command/localCommands';
 import { scheduleCriteriaManager } from '../shared/scheduleCriteria/scheduleCriteriaManager';
@@ -100,6 +103,20 @@ setInterval(() => {
     console.warn(`[EL-LAG] Main process blocked for ${maxMs.toFixed(0)} ms in the last 10 s`);
   }
   elMonitor.reset();
+}, 10_000);
+
+// [DIAG] Temporary data-connector load instrumentation. Remove after diagnosis.
+// Uses console._log (raw — no IPC, no DB) so the probe itself adds no load.
+const __dcDiag = { setN: 0, setBytes: 0, getN: 0, getBytes: 0, md5N: 0, md5MaxMs: 0, md5Bytes: 0 };
+(globalThis as any).__dcDiag = __dcDiag;
+setInterval(() => {
+  (console as any)._log(
+    `[DIAG main] realtime-set=${__dcDiag.setN}/10s setBytes=${__dcDiag.setBytes}`
+    + ` realtime-get=${__dcDiag.getN} getBytes=${__dcDiag.getBytes}`
+    + ` md5reads=${__dcDiag.md5N} md5MaxMs=${__dcDiag.md5MaxMs.toFixed(1)} md5Bytes=${__dcDiag.md5Bytes}`,
+  );
+  __dcDiag.setN = 0; __dcDiag.setBytes = 0; __dcDiag.getN = 0; __dcDiag.getBytes = 0;
+  __dcDiag.md5N = 0; __dcDiag.md5MaxMs = 0; __dcDiag.md5Bytes = 0;
 }, 10_000);
 
 // Axios interceptors
@@ -260,6 +277,49 @@ ipcMain.handle('ssp-report-widget-impression', async (_event, urls: string[], du
 
 ipcMain.handle('find-layout-by-code', async (_event, code: string) => {
   return findLayoutFileByCode(code);
+});
+
+// ─── Data connector (renderer → main) ────────────────────────────────────────
+// Connectors run in sandboxed iframes in the renderer; these handlers persist
+// their output and criteria into the main process so the in-process Express
+// /realtime endpoint can serve the data and so criteria can gate assessment.
+
+/**
+ * Store a realtime value written by a data connector. Returns a success/status
+ * shape the renderer's connector bridge maps back to the connector's callbacks.
+ */
+ipcMain.handle('realtime-set', (_event, { dataKey, dataSetId, data }: { dataKey: string; dataSetId: number; data: string }) => {
+  try {
+    realtimeDataStore.set(dataKey, dataSetId, data);
+    const __d = (globalThis as any).__dcDiag; if (__d) { __d.setN++; __d.setBytes += data?.length ?? 0; } // [DIAG]
+    return { success: true, status: 200 };
+  } catch (e) {
+    console.error('[MAIN::realtime-set] > Failed to store realtime data', {
+      dataKey,
+      dataSetId,
+      error: (e as Error)?.message ?? String(e),
+    });
+    return { success: false, status: 500 };
+  }
+});
+
+/**
+ * Drop all realtime data owned by a data connector (dataSet) when it stops.
+ */
+ipcMain.handle('realtime-clear', (_event, dataSetId: number) => {
+  realtimeDataStore.deleteByDataSetId(dataSetId);
+});
+
+/**
+ * Relay schedule criteria set by a data connector into the shared criteria
+ * manager, then re-assess connectors so criteria-gated connectors react.
+ */
+ipcMain.handle('connector-criteria', (_event, { metric, value, ttl }: { metric: string; value: any; ttl?: number }) => {
+  if (!metric || value === undefined || value === null) {
+    return;
+  }
+  scheduleCriteriaManager.addOrReplace(metric, value, ttl);
+  manager?.assessDataConnectors();
 });
 
 ipcMain.handle('execute-xlr-event', async (_event, { eventName, payload }: { eventName: keyof IXlrEvents, payload: any }) => {
@@ -508,6 +568,10 @@ const initXmrEventHandlers = async function () {
       scheduleCriteriaManager.addOrReplace(metric, value, ttl);
     }
     console.log('[XMR::criteriaUpdate] - New criteria updates added', criteriaUpdates);
+
+    // Criteria can gate data connector eligibility, so re-assess straight away
+    // rather than waiting for the next assessment interval (up to ~10s).
+    manager?.assessDataConnectors();
   });
 
   /**
@@ -584,6 +648,12 @@ const initXmrEventHandlers = async function () {
 
       console.debug('[XMR::purgeAll] clearing local library');
       await purgeAll();
+
+      // Stop any running data connectors and clear their realtime data; they
+      // restart once their scripts are re-downloaded and the next assessment
+      // emits them again.
+      realtimeDataStore.deleteAll();
+      mainWindow.webContents.send('update-data-connectors', []);
 
       // Reset CRC cache so collect() forces a full re-fetch of requiredFiles and schedule.
       // Without this, collectNow() passes the old CRCs and both requests are skipped.
@@ -1075,6 +1145,66 @@ const mainFunctions = {
 
         // Send updated overlay loop to XLR
         win.webContents.send('update-overlays', _overlays);
+      });
+
+      manager.on('dataConnectors', (connectors) => {
+        // Build the payload the renderer's connector host needs. For each
+        // eligible connector, verify the on-disk script against the
+        // CMS-advertised md5 before handing it to the renderer to execute.
+        // This is the execution-time integrity gate — the native-player
+        // equivalent of the ChromeOS service-worker cache integrity check, and
+        // defence-in-depth over the download-time verification.
+        const payload: DataConnectorPayload[] = [];
+
+        for (const connector of connectors) {
+          const file = getFileByName(connector.js);
+
+          if (!file || file.status !== 'success' || !file.localPath || !file.md5) {
+            // Script not downloaded yet — it arrives via the normal
+            // required-files flow; the next assessment tick will retry.
+            console.debug('[MAIN::manager.on("dataConnectors")] > Connector script not ready, skipping', {
+              dataSetId: connector.dataSetId,
+              js: connector.js,
+            });
+            continue;
+          }
+
+          try {
+            const __t0 = performance.now(); // [DIAG]
+            const __buf = readFileSync(file.localPath);
+            const __d = (globalThis as any).__dcDiag; // [DIAG]
+            if (__d) { __d.md5N++; __d.md5Bytes = __buf.length; const __dt = performance.now() - __t0; if (__dt > __d.md5MaxMs) __d.md5MaxMs = __dt; }
+            const actualMd5 = createHash('md5').update(__buf).digest('hex');
+            if (actualMd5 !== file.md5) {
+              console.error('[MAIN::manager.on("dataConnectors")] > Connector script failed integrity check, skipping', {
+                dataSetId: connector.dataSetId,
+                js: connector.js,
+              });
+              continue;
+            }
+          } catch (e) {
+            console.error('[MAIN::manager.on("dataConnectors")] > Could not read connector script, skipping', {
+              dataSetId: connector.dataSetId,
+              js: connector.js,
+              error: (e as Error)?.message ?? String(e),
+            });
+            continue;
+          }
+
+          payload.push({
+            dataSetId: connector.dataSetId,
+            scheduleId: connector.scheduleId,
+            dataParams: connector.dataParams,
+            js: connector.js,
+            md5: file.md5,
+          });
+        }
+
+        console._log('[MAIN::manager.on("dataConnectors")] > Sending data connectors to renderer', {
+          count: payload.length,
+          payload,
+        });
+        win.webContents.send('update-data-connectors', payload);
       });
 
       await manager.start(10);
