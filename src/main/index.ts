@@ -1147,7 +1147,11 @@ const mainFunctions = {
         win.webContents.send('update-overlays', _overlays);
       });
 
-      manager.on('dataConnectors', (connectors) => {
+      // Caches localPath → verified md5. When the expected md5 hasn't changed
+      // since the last successful check, skip the file read entirely.
+      const verifiedConnectorMd5s = new Map<string, string>();
+
+      manager.on('dataConnectors', async (connectors) => {
         // Build the payload the renderer's connector host needs. For each
         // eligible connector, verify the on-disk script against the
         // CMS-advertised md5 before handing it to the renderer to execute.
@@ -1169,26 +1173,30 @@ const mainFunctions = {
             continue;
           }
 
-          try {
-            const __t0 = performance.now(); // [DIAG]
-            const __buf = readFileSync(file.localPath);
-            const __d = (globalThis as any).__dcDiag; // [DIAG]
-            if (__d) { __d.md5N++; __d.md5Bytes = __buf.length; const __dt = performance.now() - __t0; if (__dt > __d.md5MaxMs) __d.md5MaxMs = __dt; }
-            const actualMd5 = createHash('md5').update(__buf).digest('hex');
-            if (actualMd5 !== file.md5) {
-              console.error('[MAIN::manager.on("dataConnectors")] > Connector script failed integrity check, skipping', {
+          if (verifiedConnectorMd5s.get(file.localPath) !== file.md5) {
+            try {
+              const __t0 = performance.now(); // [DIAG]
+              const __buf = await fs.readFile(file.localPath);
+              const __d = (globalThis as any).__dcDiag; // [DIAG]
+              if (__d) { __d.md5N++; __d.md5Bytes = __buf.length; const __dt = performance.now() - __t0; if (__dt > __d.md5MaxMs) __d.md5MaxMs = __dt; }
+              const actualMd5 = createHash('md5').update(__buf).digest('hex');
+              if (actualMd5 !== file.md5) {
+                console.error('[MAIN::manager.on("dataConnectors")] > Connector script failed integrity check, skipping', {
+                  dataSetId: connector.dataSetId,
+                  js: connector.js,
+                });
+                verifiedConnectorMd5s.delete(file.localPath);
+                continue;
+              }
+              verifiedConnectorMd5s.set(file.localPath, file.md5);
+            } catch (e) {
+              console.error('[MAIN::manager.on("dataConnectors")] > Could not read connector script, skipping', {
                 dataSetId: connector.dataSetId,
                 js: connector.js,
+                error: (e as Error)?.message ?? String(e),
               });
               continue;
             }
-          } catch (e) {
-            console.error('[MAIN::manager.on("dataConnectors")] > Could not read connector script, skipping', {
-              dataSetId: connector.dataSetId,
-              js: connector.js,
-              error: (e as Error)?.message ?? String(e),
-            });
-            continue;
           }
 
           payload.push({
