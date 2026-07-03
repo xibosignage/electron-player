@@ -74,6 +74,8 @@ const apiHandler: ApiHandler = {
     ipcRenderer.invoke('realtime-clear', dataSetId),
   connectorCriteria: (metric: string, value: any, ttl?: number) =>
     ipcRenderer.invoke('connector-criteria', { metric, value, ttl }),
+  connectorRequest: (path: string, options: { method?: string; headers?: Record<string, string>; data?: string }) =>
+    ipcRenderer.invoke('connector-request', { path, ...options }),
 }
 
 contextBridge.exposeInMainWorld('apiHandler', apiHandler);

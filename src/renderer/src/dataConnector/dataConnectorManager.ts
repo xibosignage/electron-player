@@ -478,28 +478,24 @@ export class DataConnectorManager {
         options: { type?: string; headers?: { key: string; value: string }[]; data?: any } = {},
     ) {
         const method = options.type || 'GET';
-        const headers = new Headers();
+
+        const headers: Record<string, string> = {};
         (options.headers ?? []).forEach((header) => {
-            headers.set(header.key, header.value);
+            headers[header.key] = header.value;
         });
 
-        let body: string | undefined = undefined;
+        let data: string | undefined = undefined;
         if (options.data !== undefined && method !== 'GET' && method !== 'HEAD') {
-            body = typeof options.data === 'string' ? options.data : JSON.stringify(options.data);
+            data = typeof options.data === 'string' ? options.data : JSON.stringify(options.data);
 
-            if (!headers.has('Content-Type')) {
-                headers.set('Content-Type', 'application/json;charset=UTF-8');
+            if (!headers['Content-Type']) {
+                headers['Content-Type'] = 'application/json;charset=UTF-8';
             }
         }
 
-        // Note: like the ChromeOS player, this fetch runs in the renderer and is
-        // subject to CORS — third party APIs must allow it. (A future
-        // enhancement could route this through main for a native, CORS-free
-        // HTTP stack.)
         try {
-            const res = await fetch(path, { method, headers, body });
-            const text = await res.text();
-            this.respond(host, requestId, res.ok, res.status, text);
+            const res = await window.apiHandler.connectorRequest(path, { method, headers, data });
+            this.respond(host, requestId, res.ok, res.status, res.body);
         } catch (e: any) {
             this.respond(host, requestId, false, 0, e?.message ?? String(e));
         }

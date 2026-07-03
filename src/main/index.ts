@@ -322,6 +322,45 @@ ipcMain.handle('connector-criteria', (_event, { metric, value, ttl }: { metric: 
   manager?.assessDataConnectors();
 });
 
+/**
+ * Proxy an HTTP request from a data connector through the Node.js main process.
+ * The renderer runs inside Chromium which enforces CORS; Node.js has no such
+ * restriction, so third-party APIs that don't send CORS headers are reachable
+ * from here but not from a renderer fetch().
+ */
+ipcMain.handle('connector-request', async (
+  _event,
+  { path, method = 'GET', headers = {}, data }: {
+    path: string;
+    method?: string;
+    headers?: Record<string, string>;
+    data?: string;
+  },
+) => {
+  try {
+    const res = await axios({
+      url: path,
+      method,
+      headers,
+      data,
+      validateStatus: () => true,
+      timeout: 30_000,
+      responseType: 'text',
+    });
+    return {
+      ok: res.status >= 200 && res.status < 300,
+      status: res.status,
+      body: typeof res.data === 'string' ? res.data : JSON.stringify(res.data),
+    };
+  } catch (e: any) {
+    console.error('[MAIN::connector-request] > Request failed', {
+      path,
+      error: e?.message ?? String(e),
+    });
+    return { ok: false, status: 0, body: e?.message ?? String(e) };
+  }
+});
+
 ipcMain.handle('execute-xlr-event', async (_event, { eventName, payload }: { eventName: keyof IXlrEvents, payload: any }) => {
   console.debug(`[MAIN] [execute-xlr-event] > Executing XLR event from renderer`, {
     eventName,

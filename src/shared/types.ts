@@ -98,6 +98,11 @@ export interface ApiHandler {
   realtimeSet: (dataKey: string, dataSetId: number, data: string) => Promise<RealtimeSetResult>;
   realtimeClear: (dataSetId: number) => Promise<void>;
   connectorCriteria: (metric: string, value: any, ttl?: number) => Promise<void>;
+  connectorRequest: (path: string, options: {
+    method?: string;
+    headers?: Record<string, string>;
+    data?: string;
+  }) => Promise<{ ok: boolean; status: number; body: string }>;
 }
 
 export interface PlayerAPI {
