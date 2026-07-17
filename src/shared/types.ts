@@ -38,6 +38,7 @@ export interface ConfigData {
   displayName?: string;
   settings: any;
   isConfigured: boolean;
+  displayTags?: Record<string, string>;
   state: StateData;
 }
 
@@ -117,6 +118,7 @@ export interface PlayerAPI {
   onXlrExpireWidget: (callback: (widgetId: string) => void) => void;
   onXlrExtendWidgetDuration: (callback: (widgetId: string, duration: number) => void) => void;
   onXlrSetWidgetDuration: (callback: (widgetId: string, duration: number) => void) => void;
+  onUpdateDisplayTags: (callback: (tags: Record<string, string>) => void) => void;
   onUpdateDataConnectors: (callback: (connectors: DataConnectorPayload[]) => void) => void;
 
   // Render to main

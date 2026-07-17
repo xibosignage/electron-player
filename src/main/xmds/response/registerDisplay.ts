@@ -155,4 +155,33 @@ export class RegisterDisplay {
 
     return collection;
   }
+
+  /** 
+   * Returns display tags from the RegisterDisplay response as a name/value map.
+   */
+  getTags(): Record<string, string> {
+    const tagsNode = this.settings && this.settings['tags'];
+    if (!tagsNode || !tagsNode.length) {
+      return {};
+    }
+
+    const tags: Record<string, string> = {};
+    // XML parser wraps repeated elements in arrays, hence the [0] indexing.
+    const tagList = tagsNode[0].tag;
+
+    if (!tagList || !tagList.length) {
+      return {};
+    }
+
+    for (const tagObject of tagList) {
+      const tagName = tagObject.tagName?.[0] ?? '';
+      const tagValue = tagObject.tagValue?.[0] ?? '';
+
+      if (tagName) {
+        tags[tagName] = tagValue;
+      }
+    }
+
+    return tags;
+  }
 }
