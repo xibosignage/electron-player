@@ -1143,6 +1143,9 @@ const mainFunctions = {
                 response: item.response ?? '',
                 scheduleId: 'scheduleId' in item ? (item as Layout).scheduleId : -1,
                 code: layoutFile.localPath ? extractLayoutCode(layoutFile.localPath) : undefined,
+                cyclePlayback: 'cyclePlayback' in item ? (item as Layout).cyclePlayback : undefined,
+                groupKey: 'groupKey' in item ? (item as Layout).groupKey : undefined,
+                playCount: 'playCount' in item ? (item as Layout).playCount : undefined,
               },
             ];
           }

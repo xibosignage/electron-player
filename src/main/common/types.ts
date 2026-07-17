@@ -7,6 +7,9 @@ export type InputLayoutType = {
     isOverlay?: boolean;
     shareOfVoice?: number;
     code?: string;
+    cyclePlayback?: boolean;
+    groupKey?: number;
+    playCount?: number;
 };
 
 export type MediaInventoryFileType = {
