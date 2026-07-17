@@ -28,6 +28,7 @@ import { DateTime } from 'luxon';
 import { Config } from './config/config';
 import { Faults } from '../shared/faults/Faults';
 import { scheduleCriteriaManager } from '../shared/scheduleCriteria/scheduleCriteriaManager';
+import { realtimeDataStore } from './dataConnector/realtimeDataStore';
 
 const cors = (corsImport as any).default ?? corsImport;
 const port = 9696;
@@ -145,16 +146,38 @@ export async function createFileServer(config: Config, mainWindow: BrowserWindow
 
   /**
    * Retrieves data from the player's real-time data store by dataKey.
-   * Not yet fully implemented pending the real-time data store.
+   *
+   * Data connectors (running in sandboxed iframes in the renderer) publish data
+   * which is forwarded to the main process and held in `realtimeDataStore`.
+   * Real-time widgets read it back through here via xiboIC.getData, using a
+   * relative `/realtime` URL that resolves against the local file server.
+   *
+   * A miss returns 404 (not an empty 200) so xiboIC.getData fires the widget's
+   * error callback and the widget can degrade gracefully — matching the
+   * ChromeOS player's service-worker behaviour.
    */
   server.get('/realtime', (req, res) => {
     const { dataKey } = req.query;
-    if (!dataKey) {
+    if (!dataKey || typeof dataKey !== 'string') {
       res.status(400).json({ success: false, error: 'dataKey is required' });
       return;
     }
-    console.debug('[FileServer::realtime] > Received request', { dataKey });
-    res.status(200).send();
+
+    const record = realtimeDataStore.get(dataKey);
+
+    console.debug('[FileServer::realtime] > Request for realtime data', { dataKey, record });
+
+    if (!record) {
+      console.debug('[FileServer::realtime] > No data for key', { dataKey });
+      res.status(404).json({ success: false, error: 'No data for dataKey' });
+      return;
+    }
+
+    // The connector stored this exactly as it passed it to setData; serve it
+    // verbatim as JSON (the widget's data is itself a JSON string).
+    const __d = (globalThis as any).__dcDiag; if (__d) { __d.getN++; __d.getBytes += record.data?.length ?? 0; } // [DIAG]
+    console.debug('[FileServer::realtime] > Serving realtime data', { dataKey });
+    res.status(200).type('application/json').send(record.data);
   });
 
   /**

@@ -71,8 +71,7 @@ export function createExtendedConsole(
 
     // Determine whether this log should be written to the DB based on logLevel
     const shouldWriteToDB =
-      !(['debug', 'info', 'log'].includes(level) && logLevel === 'error') &&
-      !(level === 'error' && logLevel !== 'error');
+      !(['debug', 'info', 'log'].includes(level) && logLevel === 'error');
 
     if (db && shouldWriteToDB) {
       let logEntry = getLogEntryFromArgs(undefined, data) as LogEntry | undefined;

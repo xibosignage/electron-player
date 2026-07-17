@@ -11,12 +11,14 @@ import { OverlayLayout } from "../xmds/response/schedule/events/overlayLayout";
 import SspLayout from "../xmds/response/schedule/events/sspLayout";
 import { geoLocationManager } from "./geoLocationManager";
 import { scheduleCriteriaManager } from "../../shared/scheduleCriteria/scheduleCriteriaManager";
+import { DataConnector } from "../xmds/response/schedule/events/dataConnector";
 
 export type ScheduleLayoutsType = Layout | DefaultLayout | SspLayout;
 
 interface ScheduleEvents {
     layouts: (object: ScheduleLayoutsType[]) => void;
     overlays: (object: OverlayLayout[]) => void;
+    dataConnectors: (connectors: DataConnector[]) => void;
 }
 
 export default class ScheduleManager {
@@ -71,10 +73,12 @@ export default class ScheduleManager {
             // Regular collection.
             await this.assessLayouts();
             await this.assessOverlays();
+            this.assessDataConnectors();
         }, interval * 1000);
-        
+
         await this.assessLayouts();
         await this.assessOverlays();
+        this.assessDataConnectors();
     }
 
     async update(schedule: Schedule) {
@@ -610,6 +614,86 @@ export default class ScheduleManager {
         // Keep only command/s with the highest priority
         // If all commands share the same priority value, then they are all included
         return evaluatedCommands.filter(c => c.priority === maxPriority);
+    }
+
+    /**
+     * Assess data connectors from the current schedule.
+     *
+     * Emits the eligible set on every call (including an empty set) — the
+     * renderer's DataConnectorManager diffs this against its running connector
+     * hosts and starts/stops accordingly. This is the data-connector analogue of
+     * assessLayouts/assessOverlays and is driven from the same assessment loop.
+     */
+    assessDataConnectors() {
+        if (!this.schedule || !Array.isArray(this.schedule.dataConnectors)) {
+            this.emitter.emit('dataConnectors', []);
+            return;
+        }
+
+        const now = new Date();
+
+        const evaluated = this.schedule.dataConnectors.filter(connector => {
+            // Must have a valid dataSet to be runnable (dataSetId is parsed from
+            // the schedule XML and is NaN when the attribute is missing/invalid).
+            if (Number.isNaN(connector.dataSetId)) {
+                return false;
+            }
+
+            // Check if it's within the active date range
+            if (!(now > connector.getFromDt() && now < connector.getToDt())) {
+                return false;
+            }
+
+            // If there is criteria, then evaluate all criteria attached to the connector
+            if (connector.criteria && connector.criteria.length > 0) {
+                for (const { metric, condition, value } of connector.criteria) {
+                    const matched = scheduleCriteriaManager.evaluateCriteria(metric, condition, value);
+                    if (!matched) {
+                        return false;
+                    }
+                }
+            }
+
+            // Handle geofence logic if applicable
+            if (connector.isGeoAware) {
+                try {
+                    // Extract the polygon from the connector's geoLocation
+                    const geo = JSON.parse(connector.geoLocation);
+                    const polygon = geo.geometry.coordinates[0];
+
+                    // Check if the device's current location falls inside the polygon
+                    const insidePolygon = geoLocationManager.isCurrentLocationInsidePolygon(polygon);
+
+                    // If the device is outside the polygon, skip this connector
+                    if (!insidePolygon) {
+                        return false;
+                    }
+                } catch (e) {
+                    // A malformed geoLocation (bad/empty JSON, missing geometry)
+                    // must not abort assessment for every other connector. Fail
+                    // this one closed — treat it as ineligible — and log.
+                    console.error('[ScheduleManager::assessDataConnectors] > Data connector has invalid geoLocation, skipping', {
+                        dataSetId: connector.dataSetId,
+                        error: (e as Error)?.message ?? String(e),
+                    });
+                    return false;
+                }
+            }
+
+            return true;
+        });
+
+        // A dataSet should only run one connector instance — keep the highest
+        // priority connector per dataSetId.
+        const byDataSet = new Map<number, DataConnector>();
+        for (const connector of evaluated) {
+            const existing = byDataSet.get(connector.dataSetId);
+            if (!existing || connector.priority > existing.priority) {
+                byDataSet.set(connector.dataSetId, connector);
+            }
+        }
+
+        this.emitter.emit('dataConnectors', Array.from(byDataSet.values()));
     }
 
     /**
