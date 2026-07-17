@@ -28,6 +28,7 @@ import { PoPStats } from '../common/stats/PoPStats';
 import { submitStatXmlString } from '../common/parser';
 import { purgeAll, clearScheduleCache, setIsPurging } from '../common/fileManager';
 import { realtimeDataStore } from '../dataConnector/realtimeDataStore';
+import { FaultCodes } from '../../shared/faults/Faults';
 
 export interface CmsTransferDeps {
   config: Config;
@@ -71,10 +72,12 @@ async function flushToOldCms(deps: Pick<CmsTransferDeps, 'xmds' | 'db' | 'popSta
 }
 
 /**
- * Transfers this display to a different CMS: disconnects from the current CMS, purges local
- * library/schedule/stats/logs state (since layout/media/widget IDs are CMS-specific), then
- * registers against the new CMS. Keeps hardwareKey/xmrChannel/macAddress/displayName unchanged
- * so the new CMS recognizes this as the same physical device.
+ * Transfers this display to a different CMS: validates and registers against the new CMS first,
+ * and only once that succeeds purges local library/schedule/stats/logs state (since layout/
+ * media/widget IDs are CMS-specific). Keeps hardwareKey/xmrChannel/macAddress/displayName
+ * unchanged so the new CMS recognizes this as the same physical device. If validation/
+ * registration fails, nothing on the old CMS's side was touched — config rolls back and a fault
+ * is raised so the old CMS is told about the failed attempt.
  *
  * Triggered by a CMS-pushed `changeCms` XMR command, and retried on boot via
  * config.pendingCmsTransfer if a previous attempt was interrupted mid-transfer.
@@ -107,7 +110,32 @@ export async function performCmsTransfer(newCmsUrl: string, newCmsKey: string, d
       clearInterval(xmds.interval);
     }
 
-    // Show splash so XLR transitions away from the current layout before the library is wiped.
+    // Best-effort flush of queued logs/stats to the old CMS, while we're still pointed at it.
+    await flushToOldCms({ xmds, db, popStats });
+
+    // Clear any rate-limit cooldowns accrued against the old CMS — they're keyed by method
+    // name only, so a recent old-CMS 429 would otherwise silently block the new CMS too.
+    xmds.clearRateLimits();
+
+    // Point at the new CMS to validate it. hardwareKey/xmrChannel/macAddress/displayName stay
+    // unchanged. Nothing destructive has happened yet, so a failure here is a clean no-op for
+    // the old CMS's cache/library/logs/stats.
+    config.cmsUrl = newCmsUrl;
+    config.cmsKey = newCmsKey;
+
+    // Force getSchemaVersion() to refetch, in case the new CMS runs a different XMDS schema.
+    config.xmdsVersion = undefined;
+    await xmds.getSchemaVersion();
+
+    const result = await validateAndRegister(xmds);
+
+    if (!result.success) {
+      throw result.error instanceof Error ? result.error : new Error(String(result.error));
+    }
+
+    // New CMS validated and registered — now safe to tear down everything that's specific to
+    // the old CMS. Show splash first so XLR transitions away from the current layout before the
+    // library is wiped.
     setIsPurging(true);
     if (manager) {
       manager.layouts = [manager.getSplash()];
@@ -115,9 +143,8 @@ export async function performCmsTransfer(newCmsUrl: string, newCmsKey: string, d
     }
     await new Promise((resolve) => setTimeout(resolve, 10000));
 
-    // Best-effort flush of queued logs/stats to the old CMS, then unconditionally clear them —
+    // Logs/stats were already flushed above, so it's now safe to unconditionally clear them —
     // they reference old-CMS layout/widget IDs that are meaningless on the new CMS.
-    await flushToOldCms({ xmds, db, popStats });
     db.deleteAllLogs();
     popStats.clearDB();
 
@@ -133,25 +160,6 @@ export async function performCmsTransfer(newCmsUrl: string, newCmsKey: string, d
     xmds.checkSchedule = null;
     setPendingScheduleRefresh(true);
 
-    // Force getSchemaVersion() to refetch, in case the new CMS runs a different XMDS schema.
-    config.xmdsVersion = undefined;
-
-    // Clear any rate-limit cooldowns accrued against the old CMS — they're keyed by method
-    // name only, so a recent old-CMS 429 would otherwise silently block the new CMS too.
-    xmds.clearRateLimits();
-
-    // Point at the new CMS. hardwareKey/xmrChannel/macAddress/displayName stay unchanged.
-    config.cmsUrl = newCmsUrl;
-    config.cmsKey = newCmsKey;
-
-    await xmds.getSchemaVersion();
-
-    const result = await validateAndRegister(xmds);
-
-    if (!result.success) {
-      throw result.error instanceof Error ? result.error : new Error(String(result.error));
-    }
-
     // Success — config was already persisted inside registerDisplay(), and the live
     // xmds.on('registered', ...) handler already reconfigured SSP/XMR for the new CMS.
     // (A "pending admin authorisation" response still resolves here, and collect()'s own
@@ -163,20 +171,30 @@ export async function performCmsTransfer(newCmsUrl: string, newCmsKey: string, d
 
     console.log('[CmsTransfer] Transfer to new CMS completed', { newCmsUrl });
   } catch (err) {
+    const errMessage = err instanceof Error ? err.message : String(err);
+
     console.error('[CmsTransfer] Transfer to new CMS failed, rolling back to previous CMS', {
       newCmsUrl,
       err,
     });
 
-    console.alert('CMS transfer failed: ' + (err instanceof Error ? err.message : String(err)), {
+    console.alert('CMS transfer failed: ' + errMessage, {
       shouldParse: false,
       eventType: 'CMS Transfer',
       alertType: 'both',
     });
 
+    // Raise a fault so the old CMS (which we're about to roll back to) is told this display
+    // tried and failed to leave for newCmsUrl — it'll go out on the next submitLogs/reportFaults.
+    console.fault('CMS transfer to ' + newCmsUrl + ' failed: ' + errMessage, {
+      code: FaultCodes.FaultGeneralError,
+      shouldParse: false,
+    });
+
     // Roll back in-memory config — disk config was never overwritten (registerDisplay only
     // saves on success), so the pending-transfer marker on disk still reflects the new CMS and
-    // will drive a retry on the next boot.
+    // will drive a retry on the next boot. The old CMS's cache/library/logs/stats were never
+    // touched, since validation now happens before any of that is torn down.
     config.cmsUrl = oldCmsUrl;
     config.cmsKey = oldCmsKey;
     config.xmdsVersion = oldXmdsVersion;
