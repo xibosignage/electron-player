@@ -1009,16 +1009,17 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr) {
         return;
       }
 
+      const recordGeoLocation = config.getSetting('isRecordGeoLocationOnProofOfPlay', false) === true;
       let statsXmlString = '';
       stats.map((stat) => {
-        statsXmlString += submitStatXmlString(stat);
+        statsXmlString += submitStatXmlString(stat, recordGeoLocation);
       });
 
       xmds.submitStats(statsXmlString).then((success) => {
 
         console.debug('[Xmds::submitStats] Stats submitted to CMS');
-        // If response succeeded, then delete pushed logs
-        if (success) {
+        // If response succeeded, then delete pushed logs 
+        if (success) { 
           console.log('[Xmds::submitStats] Deleting pushed stats, count = ' + stats.length);
 
           popStats.clearSubmitted(stats);

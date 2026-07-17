@@ -198,6 +198,7 @@ export class Config {
     this.settings['sizeX'] = registerDisplay.getSetting('sizeX', 0);
     this.settings['sizeY'] = registerDisplay.getSetting('sizeY', 0);
     this.settings['sendCurrentLayoutAsStatusUpdate'] = registerDisplay.getSetting('sendCurrentLayoutAsStatusUpdate', false);
+    this.settings['isRecordGeoLocationOnProofOfPlay'] = registerDisplay.getSetting('isRecordGeoLocationOnProofOfPlay', false) === '1';
     this.state.displayStatus = registerDisplay.status || 0;
 
     await this.saveCms();
