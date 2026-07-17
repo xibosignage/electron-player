@@ -6,6 +6,7 @@ import { LogEntry } from "../../shared/console/ConsoleDB";
 import { StatEntry } from "./stats/StatsDB";
 import { OverlayLayout } from "../xmds/response/schedule/events/overlayLayout";
 import { scheduleCriteriaManager } from "../../shared/scheduleCriteria/scheduleCriteriaManager";
+import { geoLocationManager } from "./geoLocationManager";
 
 export function getLayoutIds(layouts: ScheduleLayoutsType[] | OverlayLayout[]): number[] {
     return layouts.reduce((a: number[], b) => {
@@ -314,7 +315,7 @@ export function submitLogsXmlString(log: LogEntry) {
     return xmlString;
 }
 
-export function submitStatXmlString(statObj: StatEntry) {
+export function submitStatXmlString(statObj: StatEntry, recordGeoLocation = false) {
   let statXml = '&lt;stat ' +
     'fromdt=&quot;' + statObj.fromdt + '&quot; ' +
     'todt=&quot;' + statObj.todt + '&quot; ' +
@@ -330,22 +331,37 @@ export function submitStatXmlString(statObj: StatEntry) {
   }
 
   if (statObj.type !== 'event') {
+    const engagementTags: string[] = [];
+
     const activeCriteria = scheduleCriteriaManager.getActiveCriteria();
     const criteriaKeys = Object.keys(activeCriteria);
-
     if (criteriaKeys.length > 0) {
-      let tags = '';
+      let criteriaTag = '';
       for (const key of criteriaKeys) {
         const criterion = activeCriteria[key];
         if (!criterion) continue;
-        tags = tags === ''
+        criteriaTag = criteriaTag === ''
           ? 'CRITERIA|' + criterion.metric + ':' + criterion.value
-          : tags + ', ' + criterion.metric + ':' + criterion.value;
+          : criteriaTag + ', ' + criterion.metric + ':' + criterion.value;
       }
+      if (criteriaTag !== '') {
+        engagementTags.push(criteriaTag);
+      }
+    }
 
+    if (recordGeoLocation) {
+      const { latitude, longitude } = geoLocationManager.getCurrentLocation();
+      if (latitude !== null && longitude !== null && !(latitude === 0 && longitude === 0)) {
+        engagementTags.push('LOCATION:' + latitude + ':' + longitude);
+      }
+    }
+
+    if (engagementTags.length > 0) {
       statXml += '&gt;' +
         '&lt;engagements&gt;' +
-        '&lt;engagement tag=&quot;' + tags + '&quot; duration=&quot;0&quot; count=&quot;1&quot;&gt;&lt;/engagement&gt;' +
+        engagementTags.map(tag =>
+          '&lt;engagement tag=&quot;' + tag + '&quot; duration=&quot;0&quot; count=&quot;1&quot;&gt;&lt;/engagement&gt;'
+        ).join('') +
         '&lt;/engagements&gt;' +
         '&lt;/stat&gt;';
 

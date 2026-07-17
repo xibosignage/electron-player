@@ -281,6 +281,7 @@ export const startApp = async () => {
       splashScreen: logo,
       logo: logo,
     },
+    displayTags: config.displayTags ?? {},
   };
 
   // Create a splash screen
@@ -363,6 +364,12 @@ window.playerAPI.onXlrExtendWidgetDuration((widgetId, duration) => {
 window.playerAPI.onXlrSetWidgetDuration((widgetId, duration) => {
   console.debug('[Renderer::onXlrSetWidgetDuration] Setting widget duration', { widgetId, duration });
   xlr.setWidgetDuration(widgetId, duration);
+});
+
+window.playerAPI.onUpdateDisplayTags((tags) => {
+  if (xlr) {
+    xlr.config.displayTags = tags;
+  }
 });
 
 window.playerAPI.onUpdateDataConnectors((connectors) => {

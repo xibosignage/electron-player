@@ -527,7 +527,7 @@ const createWindow = () => {
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
-      webSecurity: true,
+      webSecurity: false,
     },
   });
 
@@ -707,7 +707,7 @@ async function dataWidgetUpdate(file: RequiredFile) {
 }
 
 let screenshotIntervalId: NodeJS.Timeout | null = null;
-const initXmdsEventHandlers = async function (config: Config, xmr: Xmr) {
+const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: BrowserWindow) {
   // Bind to some events
   xmds.on('collecting', () => {
     console.debug('[Xmds::on("collecting")] > Collecting Data with collection interval ' +
@@ -742,8 +742,13 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr) {
       return;
     }
 
+    const prevDisplayTags = JSON.stringify(config.displayTags);
     await config.setConfig(data);
-    
+    // Only notify the renderer when tags actually change to avoid unnecessary updates.
+    if (JSON.stringify(config.displayTags) !== prevDisplayTags) {
+      win.webContents.send('update-display-tags', config.displayTags);
+    }
+
     // Successfully registered with the CMS, so we are no longer running from a cached schedule.
     config.state.usingCachedSchedule = false;
 
@@ -1015,16 +1020,17 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr) {
         return;
       }
 
+      const recordGeoLocation = config.getSetting('isRecordGeoLocationOnProofOfPlay', false) === true;
       let statsXmlString = '';
       stats.map((stat) => {
-        statsXmlString += submitStatXmlString(stat);
+        statsXmlString += submitStatXmlString(stat, recordGeoLocation);
       });
 
       xmds.submitStats(statsXmlString).then((success) => {
 
         console.debug('[Xmds::submitStats] Stats submitted to CMS');
-        // If response succeeded, then delete pushed logs
-        if (success) {
+        // If response succeeded, then delete pushed logs 
+        if (success) { 
           console.log('[Xmds::submitStats] Deleting pushed stats, count = ' + stats.length);
 
           popStats.clearSubmitted(stats);
@@ -1151,6 +1157,9 @@ const mainFunctions = {
                 response: item.response ?? '',
                 scheduleId: 'scheduleId' in item ? (item as Layout).scheduleId : -1,
                 code: layoutFile.localPath ? extractLayoutCode(layoutFile.localPath) : undefined,
+                cyclePlayback: 'cyclePlayback' in item ? (item as Layout).cyclePlayback : undefined,
+                groupKey: 'groupKey' in item ? (item as Layout).groupKey : undefined,
+                playCount: 'playCount' in item ? (item as Layout).playCount : undefined,
               },
             ];
           }
@@ -1278,7 +1287,7 @@ const mainFunctions = {
 
     // Bind event handlers
     await initXmrEventHandlers();
-    await initXmdsEventHandlers(config, xmr);
+    await initXmdsEventHandlers(config, xmr, win);
     await initSspEventHandlers();
 
     // Retry a CMS transfer that didn't finish (e.g. app crash mid-transfer) before this boot.
@@ -1456,7 +1465,7 @@ app.whenReady().then(() => {
       responseHeaders: {
         ...details.responseHeaders,
         'Content-Security-Policy': [
-          "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' http://localhost:9696 https://develop.xibo.co.uk data: https:; connect-src 'self' http://localhost:9696 https://auth.signlicence.co.uk; media-src 'self' http://localhost:9696 https:; frame-src 'self' http://localhost:9696; font-src 'self' http://localhost:9696 http://localhost data:;",
+          "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:9696; style-src 'self' 'unsafe-inline' http://localhost:9696; img-src 'self' http://localhost:9696 https://develop.xibo.co.uk data: https:; connect-src 'self' http://localhost:9696 https://auth.signlicence.co.uk; media-src 'self' http://localhost:9696 https:; frame-src 'self' http://localhost:9696 https: http:; font-src 'self' http://localhost:9696 http://localhost data:;",
         ],
         // 'Access-Control-Allow-Origin': ['http://localhost:5173'],  // Allow any domain to access
         'Access-Control-Allow-Methods': ['GET, POST, PUT, DELETE, OPTIONS'],  // Allowed methods
