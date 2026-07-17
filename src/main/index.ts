@@ -38,7 +38,7 @@ import { monitorEventLoopDelay } from 'perf_hooks';
 import icon from '../../resources/icon.png?asset';
 import { spawn } from 'child_process';
 import { Config } from './config/config';
-import { Xmds } from './xmds/xmds';
+import { Xmds, validateAndRegister } from './xmds/xmds';
 import { State } from './common/state';
 import { createFileServer } from './express';
 import {
@@ -76,6 +76,7 @@ import { OverlayLayout } from './xmds/response/schedule/events/overlayLayout';
 import { Faults } from '../shared/faults/Faults';
 import Ssp from './common/ssp';
 import SspLayout from './xmds/response/schedule/events/sspLayout';
+import { performCmsTransfer } from './cms/transferCms';
 
 /**
  * Extract the layout `code` attribute from an XLF file without fully parsing it.
@@ -221,23 +222,7 @@ ipcMain.handle('xmds-try-register', async (_event, _config) => {
   config.cmsKey = configData.cmsKey;
   config.displayName = configData.displayName;
 
-  try {
-    const xmds = new Xmds(config);
-
-    const schemaVersion = await xmds.getSchemaVersion();
-    if (schemaVersion <= 0) {
-      return {success: false, error: "Cannot reach that URL"};
-    }
-
-    const xmdsRegister = await xmds.registerDisplay();
-
-    return { success: true, data: xmdsRegister };
-  } catch (err) {
-    return {
-      success: false,
-      error: err,
-    }
-  }
+  return await validateAndRegister(new Xmds(config));
 });
 
 ipcMain.handle('ssp-get-ad', async () => {
@@ -735,6 +720,28 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
       registerDisplay: data,
       shouldParse: false,
     });
+
+    // The CMS signals a "Transfer to another CMS" request by including newCmsAddress/newCmsKey
+    // (the address/key entered by the user in the CMS) in the RegisterDisplay response, rather
+    // than via a dedicated XMR command. Their presence is the signal to transfer.
+    const newCmsAddress = data.getSetting('newCmsAddress', null) as string | null;
+    const newCmsKey = data.getSetting('newCmsKey', null) as string | null;
+    if (newCmsAddress && newCmsKey) {
+      console.log('[Xmds::on("registered")] > CMS transfer requested', { newCmsAddress });
+
+      await performCmsTransfer(newCmsAddress, newCmsKey, {
+        config,
+        xmds,
+        manager,
+        mainWindow,
+        db,
+        popStats,
+        setPendingScheduleRefresh: (value) => { pendingScheduleRefresh = value; },
+      });
+
+      return;
+    }
+
     const prevDisplayTags = JSON.stringify(config.displayTags);
     await config.setConfig(data);
     // Only notify the renderer when tags actually change to avoid unnecessary updates.
@@ -1081,6 +1088,13 @@ const mainFunctions = {
     // We are configured so continue starting the rest of the application.
     console.log('Configured.');
 
+    // If a CMS transfer was interrupted (e.g. by a crash) before it could be confirmed, resume
+    // targeting the new CMS from the very first boot cycle onwards.
+    if (config.pendingCmsTransfer) {
+      config.cmsUrl = config.pendingCmsTransfer.cmsUrl;
+      config.cmsKey = config.pendingCmsTransfer.cmsKey;
+    }
+
     if (!xmds) {
       // Configure XMDS
       xmds = new Xmds(config);
@@ -1275,6 +1289,20 @@ const mainFunctions = {
     await initXmrEventHandlers();
     await initXmdsEventHandlers(config, xmr, win);
     await initSspEventHandlers();
+
+    // Retry a CMS transfer that didn't finish (e.g. app crash mid-transfer) before this boot.
+    if (config.pendingCmsTransfer) {
+      const pending = config.pendingCmsTransfer;
+      await performCmsTransfer(pending.cmsUrl, pending.cmsKey, {
+        config,
+        xmds,
+        manager,
+        mainWindow: win,
+        db,
+        popStats,
+        setPendingScheduleRefresh: (value) => { pendingScheduleRefresh = value; },
+      });
+    }
 
     // Delete faults on app start/reboot
     faults.clearDB('MAIN');

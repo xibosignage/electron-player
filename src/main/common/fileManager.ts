@@ -419,3 +419,26 @@ export async function purgeAll() {
         isPurging = false;
     }
 }
+
+/**
+ * Deletes the cached requiredFiles.json/schedule.xml from the library directory. These are not
+ * touched by purgeAll(), but they reference layout/media IDs from a specific CMS, so they must
+ * also be cleared when transferring to a different CMS to avoid the offline cached-schedule
+ * fallback replaying stale, CMS-specific IDs.
+ */
+export async function clearScheduleCache(libraryPath: string) {
+    for (const fileName of ['requiredFiles.json', 'schedule.xml']) {
+        const filePath = join(libraryPath, fileName);
+        try {
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+        } catch (err) {
+            console.error('[FileManager] clearScheduleCache: failed to delete file', {
+                filePath,
+                err,
+                method: 'FileManager::clearScheduleCache',
+            });
+        }
+    }
+}

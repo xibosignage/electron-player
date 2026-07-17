@@ -170,6 +170,16 @@ export class Xmds {
   }
 
   /**
+   * Clears all rate-limit cooldowns and pending retries. The rate limit tracker is keyed only
+   * by method name (not by CMS), so a cooldown set against one CMS would otherwise silently
+   * block the same method against a different CMS after a transfer.
+   */
+  clearRateLimits() {
+    Xmds.rateLimitTracker.clear();
+    Xmds.pendingRetries.clear();
+  }
+
+  /**
    * Returns true if the given method is still rate limited.
    *
    * @param method
@@ -931,5 +941,28 @@ export class Xmds {
    */
   setGetWeatherData(value: boolean) {
     this.getWeatherData = value;
+  }
+}
+
+/**
+ * Checks that the CMS behind `xmdsInstance.config`'s current cmsUrl/cmsKey is reachable and
+ * registers the display against it. Shared between the first-run config panel (scratch Xmds
+ * instance) and CMS-transfer flows (the live Xmds singleton).
+ */
+export async function validateAndRegister(xmdsInstance: Xmds) {
+  try {
+    const schemaVersion = await xmdsInstance.getSchemaVersion();
+    if (schemaVersion <= 0) {
+      return { success: false, error: 'Cannot reach that URL' };
+    }
+
+    const xmdsRegister = await xmdsInstance.registerDisplay();
+
+    return { success: true, data: xmdsRegister };
+  } catch (err) {
+    return {
+      success: false,
+      error: err,
+    };
   }
 }
