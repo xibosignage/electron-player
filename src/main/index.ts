@@ -640,6 +640,10 @@ const initXmrEventHandlers = async function () {
         type: 'widget',
       } as FileManagerFileType, widgetData, 'success');
 
+      // Notify the widget's rendered iframe via the same rtNotifyData
+      // broadcast a data connector's own notifyHost call uses, keyed by
+      // widgetId — module templates already listen for their own widgetId.
+      mainWindow.webContents.send('notify-widget-data-changed', String(widgetId));
       return;
     }
 
@@ -649,6 +653,8 @@ const initXmrEventHandlers = async function () {
       id: `${widgetId}`,
       type: 'widget',
     } as FileManagerFileType, widgetData, 'updated');
+
+    mainWindow.webContents.send('notify-widget-data-changed', String(widgetId));
   });
 
   /**
