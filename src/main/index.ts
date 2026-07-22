@@ -62,7 +62,7 @@ import { InputLayoutType, LocalFile, RequiredFile } from './common/types';
 import { ConsoleDB } from '../shared/console/ConsoleDB';
 import { createExtendedConsole, registerConfigAdapter } from '../shared/console/ExtendedConsole';
 import { PoPStats } from './common/stats/PoPStats';
-import { submitStatXmlString } from './common/parser';
+import { getWidgetDataKey, submitStatXmlString } from './common/parser';
 import { Layout } from './xmds/response/schedule/events/layout';
 import { ConfigData, MainCallbackType, DataConnectorPayload } from '../shared/types';
 import { realtimeDataStore } from './dataConnector/realtimeDataStore';
@@ -630,6 +630,7 @@ const initXmrEventHandlers = async function () {
       return;
     }
 
+    const widgetDataKey = getWidgetDataKey(String(widgetId));
     const widgetLocalFile = getWidgetFile(widgetId);
 
     if (widgetLocalFile === null) {
@@ -640,6 +641,10 @@ const initXmrEventHandlers = async function () {
         type: 'widget',
       } as FileManagerFileType, widgetData, 'success');
 
+      // Notify the widget's rendered iframe via the same rtNotifyData
+      // broadcast a data connector's own notifyHost call uses, keyed by
+      // widgetId — module templates already listen for their own widgetId.
+      mainWindow.webContents.send('notify-widget-data-changed', widgetDataKey);
       return;
     }
 
@@ -649,6 +654,8 @@ const initXmrEventHandlers = async function () {
       id: `${widgetId}`,
       type: 'widget',
     } as FileManagerFileType, widgetData, 'updated');
+
+    mainWindow.webContents.send('notify-widget-data-changed', widgetDataKey);
   });
 
   /**

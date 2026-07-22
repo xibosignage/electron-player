@@ -377,6 +377,11 @@ window.playerAPI.onUpdateDataConnectors((connectors) => {
   void dataConnectorManager.sync(connectors);
 });
 
+window.playerAPI.onNotifyWidgetDataChanged((widgetId) => {
+  console.debug('[Renderer::onNotifyWidgetDataChanged] Notifying widget of data change', { widgetId });
+  dataConnectorManager.notifyWidgets(widgetId);
+});
+
 let statusWindowHideTimer: ReturnType<typeof setTimeout> | null = null;
 
 const showStatusWindowFn = (timeout: number) => {

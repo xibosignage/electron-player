@@ -94,6 +94,7 @@ const playerApi: PlayerAPI = {
   onXlrSetWidgetDuration: (callback) => ipcRenderer.on('xlr-set-widget-duration', (_event, widgetId, duration) => callback(widgetId, duration)),
   onUpdateDisplayTags: (callback) => ipcRenderer.on('update-display-tags', (_event, tags) => callback(tags)),
   onUpdateDataConnectors: (callback) => ipcRenderer.on('update-data-connectors', (_event, connectors) => callback(connectors)),
+  onNotifyWidgetDataChanged: (callback) => ipcRenderer.on('notify-widget-data-changed', (_event, widgetId) => callback(widgetId)),
 
   // Render to main
   openChildWindow: (url) => ipcRenderer.send('open-child-window', url),

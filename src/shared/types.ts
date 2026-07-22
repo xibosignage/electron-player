@@ -120,6 +120,12 @@ export interface PlayerAPI {
   onXlrSetWidgetDuration: (callback: (widgetId: string, duration: number) => void) => void;
   onUpdateDisplayTags: (callback: (tags: Record<string, string>) => void) => void;
   onUpdateDataConnectors: (callback: (connectors: DataConnectorPayload[]) => void) => void;
+  // Fired when a classic (non-data-connector) widget's data file has been
+  // re-downloaded. The renderer broadcasts this the same way a data
+  // connector's own notifyHost call does, using widgetId as the dataKey —
+  // widget templates already register for their own widgetId via
+  // xiboIC.registerNotifyDataListener().
+  onNotifyWidgetDataChanged: (callback: (widgetId: string) => void) => void;
 
   // Render to main
   openChildWindow: (url: string) => void;
