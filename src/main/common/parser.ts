@@ -394,6 +394,6 @@ export function escapeStringForXml(unsafe: string | null): string {
         .replace(/'/g, '&apos;');
 }
 
-export const getWidgetDataKey = (widgetId: string) => `widgetId_${widgetId}`;
+export const getWidgetDataKey = (widgetId: string) => `widget_${widgetId}`;
 
-export const getDataSetDataKey = (dataSetId: string) => `dataSetId_${dataSetId}`;
+export const getDataSetDataKey = (dataSetId: string) => `dataSet_${dataSetId}`;
