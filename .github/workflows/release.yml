@@ -91,6 +91,9 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+      
+      - name: 'Install Visual Studio Build Tools'
+        uses: microsoft/setup-msbuild@v2
 
       - name: 'Install Dependencies'
         run: npm ci
