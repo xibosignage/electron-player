@@ -91,12 +91,6 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-      
-      - name: 'Install Visual Studio Build Tools'
-        uses: microsoft/setup-msbuild@v2
-        
-      - name: 'Install C++ Build Tools'
-        uses: ilammy/msvc-dev-cmd@v1
 
       - name: 'Install Dependencies'
         run: npm ci
@@ -110,8 +104,8 @@ jobs:
 
       - name: 'Upload .exe to Release'
         run: |
-          # Use a broader search to find EITHER .exe or .msi
-          $PACKAGE_PATH = (Get-ChildItem -Path ./out/make/**/*.exe, ./out/make/**/*.msi -Recurse | Select-Object -First 1).FullName
+          # Robust search for either .exe or .msi files using standard PowerShell syntax
+          $PACKAGE_PATH = (Get-ChildItem -Path "./out/make" -File -Recurse | Where-Object { $_.Extension -match "\.(exe|msi)$" } | Select-Object -First 1).FullName
           
           if (-not $PACKAGE_PATH) {
             Write-Error "No installer file (.exe or .msi) found in ./out/make/"
