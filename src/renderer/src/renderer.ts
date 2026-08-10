@@ -139,6 +139,31 @@ const runConfigHandler = async (config: ConfigData) => {
   await configHandler.run();
 };
 
+/**
+ * Resolve a layout code against the locally cached files and play that layout
+ * once as an interrupt, resuming the normal loop afterwards.
+ *
+ * @param layoutCode The CMS layout code identifying the layout to navigate to
+ */
+const navigateToLayoutByCode = async function (layoutCode: string) {
+  const result = await window.apiHandler.findLayoutByCode(layoutCode);
+  console.debug('[navLayout] [RENDERER] navigateToLayoutByCode triggered', {
+    layoutCode,
+    foundLayoutId: result?.layoutId ?? null,
+  });
+
+  if (!result) {
+    console.warn('[navLayout] [RENDERER] Layout not found for code:', layoutCode);
+    return;
+  }
+
+  await xlr.playInterruptLayout({
+    layoutId: result.layoutId,
+    path: result.name,
+    response: null,
+  });
+};
+
 const initXlrEventHandlers = function () {
   xlr.on('sspWidgetRequest', async (media) => {
     console.debug('[XLR::on("sspWidgetRequest")] > Requesting SSP widget ad', {
@@ -210,19 +235,7 @@ const initXlrEventHandlers = function () {
   });
 
   xlr.on('navLayout', async (layoutCode: string) => {
-    const result = await window.apiHandler.findLayoutByCode(layoutCode);
-    console.debug('[navLayout] [RENDERER] navLayout triggered', { layoutCode, foundLayoutId: result?.layoutId ?? null });
-
-    if (!result) {
-      console.warn('[navLayout] [RENDERER] Layout not found for code:', layoutCode);
-      return;
-    }
-
-    await xlr.playInterruptLayout({
-      layoutId: result.layoutId,
-      path: result.name,
-      response: null,
-    });
+    await navigateToLayoutByCode(layoutCode);
   });
 
   xlr.on('layoutEnd', async (layout) => {
@@ -349,6 +362,11 @@ window.playerAPI.onShowStatusWindow((timeout) => {
 window.playerAPI.onTriggerWebhook(({ triggerCode, widgetId }) => {
   console.debug('[Renderer::onTriggerWebhook] Dispatching webhook trigger to XLR', { triggerCode, widgetId });
   xlr.triggerAction(triggerCode, widgetId);
+});
+
+window.playerAPI.onNavigateToLayoutCode(async (layoutCode) => {
+  console.debug('[Renderer::onNavigateToLayoutCode] Navigating to layout by code', { layoutCode });
+  await navigateToLayoutByCode(layoutCode);
 });
 
 window.playerAPI.onXlrExpireWidget((widgetId) => {

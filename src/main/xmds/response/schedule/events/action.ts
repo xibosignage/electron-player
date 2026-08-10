@@ -33,6 +33,7 @@ export interface ActionInterface {
 
     getFromDt(): Date;
     getToDt(): Date;
+    hasCriteria(): boolean;
 }
 
 export class Action implements ActionInterface {
@@ -57,10 +58,13 @@ export class Action implements ActionInterface {
         this.geoLocation = response.$.geoLocation;
         this.isGeoAware = response.$.isGeoAware === '1';
         this.layoutCode = response.$.layoutCode;
-        this.priority = parseInt(response.$.priority);
         this.scheduleId = parseInt(response.$.scheduleid);
         this.toDt = response.$.todt;
         this.triggerCode = response.$.triggerCode;
+
+        // Falls back to 0 when the attribute is missing or non-numeric
+        const priority = parseInt(response.$.priority);
+        this.priority = Number.isNaN(priority) ? 0 : priority;
 
         if (response.criteria && response.criteria.length > 0) {
             this.criteria = response.criteria.reduce((a: CriteriaType[], b) => {
@@ -75,5 +79,9 @@ export class Action implements ActionInterface {
 
     getToDt(): Date {
         return new Date(this.toDt);
+    }
+
+    hasCriteria(): boolean {
+        return this.criteria !== undefined && this.criteria.length > 0;
     }
 }

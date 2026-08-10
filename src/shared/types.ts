@@ -115,6 +115,7 @@ export interface PlayerAPI {
   onUpdateOverlays: (callback: (overlays: InputLayoutType[]) => void) => void;
   onShowStatusWindow: (callback: (timeout: number) => void) => void;
   onTriggerWebhook: (callback: (payload: { triggerCode: string; widgetId?: string }) => void) => void;
+  onNavigateToLayoutCode: (callback: (layoutCode: string) => void) => void;
   onXlrExpireWidget: (callback: (widgetId: string) => void) => void;
   onXlrExtendWidgetDuration: (callback: (widgetId: string, duration: number) => void) => void;
   onXlrSetWidgetDuration: (callback: (widgetId: string, duration: number) => void) => void;
