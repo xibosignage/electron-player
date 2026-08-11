@@ -89,6 +89,7 @@ const playerApi: PlayerAPI = {
   onUpdateOverlays: (callback) => ipcRenderer.on('update-overlays', (_event, value) => callback(value)),
   onShowStatusWindow: (callback) => ipcRenderer.on('showStatusWindow', (_event, timeout) => callback(timeout)),
   onTriggerWebhook: (callback) => ipcRenderer.on('trigger-webhook', (_event, payload) => callback(payload)),
+  onNavigateToLayoutCode: (callback) => ipcRenderer.on('navigate-to-layout-code', (_event, layoutCode) => callback(layoutCode)),
   onXlrExpireWidget: (callback) => ipcRenderer.on('xlr-expire-widget', (_event, widgetId) => callback(widgetId)),
   onXlrExtendWidgetDuration: (callback) => ipcRenderer.on('xlr-extend-widget-duration', (_event, widgetId, duration) => callback(widgetId, duration)),
   onXlrSetWidgetDuration: (callback) => ipcRenderer.on('xlr-set-widget-duration', (_event, widgetId, duration) => callback(widgetId, duration)),

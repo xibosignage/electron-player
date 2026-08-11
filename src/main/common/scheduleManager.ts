@@ -12,6 +12,7 @@ import SspLayout from "../xmds/response/schedule/events/sspLayout";
 import { geoLocationManager } from "./geoLocationManager";
 import { scheduleCriteriaManager } from "../../shared/scheduleCriteria/scheduleCriteriaManager";
 import { DataConnector } from "../xmds/response/schedule/events/dataConnector";
+import { Action } from "../xmds/response/schedule/events/action";
 
 export type ScheduleLayoutsType = Layout | DefaultLayout | SspLayout;
 
@@ -614,6 +615,80 @@ export default class ScheduleManager {
         // Keep only command/s with the highest priority
         // If all commands share the same priority value, then they are all included
         return evaluatedCommands.filter(c => c.priority === maxPriority);
+    }
+
+    /**
+     * Assess schedule-level Action events from the current schedule.
+     *
+     * @returns An array of eligible actions, filtered to the highest priority present
+     */
+    assessActions(): Action[] {
+        if (!this.schedule || !Array.isArray(this.schedule.actions)) {
+            return [];
+        }
+
+        const now = new Date();
+
+        const evaluated = this.schedule.actions.filter(action => {
+            // An action with no trigger code can never be addressed
+            if (!action.triggerCode) {
+                return false;
+            }
+
+            // Check if it's within the active date range
+            if (!(now > action.getFromDt() && now < action.getToDt())) {
+                return false;
+            }
+
+            // If there is criteria, then evaluate all criteria attached to the action
+            if (action.hasCriteria()) {
+                for (const { metric, condition, value } of action.criteria ?? []) {
+                    const matched = scheduleCriteriaManager.evaluateCriteria(metric, condition, value);
+                    if (!matched) {
+                        return false;
+                    }
+                }
+            }
+
+            // Handle geofence logic if applicable
+            if (action.isGeoAware) {
+                try {
+                    // Extract the polygon from the action's geoLocation
+                    const geo = JSON.parse(action.geoLocation);
+                    const polygon = geo.geometry.coordinates[0];
+
+                    // Check if the device's current location falls inside the polygon
+                    const insidePolygon = geoLocationManager.isCurrentLocationInsidePolygon(polygon);
+
+                    // If the device is outside the polygon, skip this action
+                    if (!insidePolygon) {
+                        return false;
+                    }
+                } catch (e) {
+                    // A malformed geoLocation (bad/empty JSON, missing geometry)
+                    // must not abort assessment for every other action. Fail
+                    // this one closed, treat it as ineligible, and log.
+                    console.error('[ScheduleManager::assessActions] > Scheduled action has invalid geoLocation, skipping', {
+                        scheduleId: action.scheduleId,
+                        error: (e as Error)?.message ?? String(e),
+                    });
+                    return false;
+                }
+            }
+
+            return true;
+        });
+
+        if (evaluated.length === 0) {
+            return [];
+        }
+
+        // Find the highest priority
+        const maxPriority = Math.max(...evaluated.map(a => a.priority));
+
+        // Keep only action/s with the highest priority
+        // If all actions share the same priority value, then they are all included
+        return evaluated.filter(a => a.priority === maxPriority);
     }
 
     /**

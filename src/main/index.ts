@@ -480,7 +480,7 @@ const configureExpress = () => {
     expressPath,
     appName,
   })
-  createFileServer(config, mainWindow, faults);
+  createFileServer(config, mainWindow, faults, handleTrigger);
 
   console.log(expressPath);
 
@@ -558,6 +558,53 @@ const createWindow = () => {
   }
 };
 
+/**
+ * Handle an incoming webhook trigger code by dispatching it to both places an
+ * action can be defined:
+ *  - the currently playing layout, whose own XLF actions the renderer matches and runs
+ *  - the schedule, whose Action events apply under any layout
+ *
+ * @param triggerCode The trigger code to dispatch
+ * @param widgetId Optional widget to target, for layout actions only
+ */
+const handleTrigger = async function (triggerCode: string, widgetId?: string) {
+  if (!triggerCode) {
+    return;
+  }
+
+  // Dispatch to the currently playing layout's own actions
+  mainWindow.webContents.send('trigger-webhook', { triggerCode, widgetId });
+
+  // Dispatch to schedule-level Action events
+  const actions = manager?.assessActions() ?? [];
+  const match = actions.find(action => action.triggerCode === triggerCode);
+
+  if (!match) {
+    console.debug('[MAIN::handleTrigger] > No scheduled action matched', {
+      triggerCode,
+      eligibleScheduledActions: actions.length,
+    });
+    return;
+  }
+
+  console.debug('[MAIN::handleTrigger] > Matched scheduled action', {
+    triggerCode,
+    scheduleId: match.scheduleId,
+    actionType: match.actionType,
+  });
+
+  if (match.actionType === 'navLayout') {
+    mainWindow.webContents.send('navigate-to-layout-code', match.layoutCode);
+  } else if (match.actionType === 'command') {
+    await commandManager.executeCommandByCode(match.commandCode);
+  } else {
+    console.warn('[MAIN::handleTrigger] > Unsupported scheduled actionType', {
+      actionType: match.actionType,
+      scheduleId: match.scheduleId,
+    });
+  }
+};
+
 const initXmrEventHandlers = async function () {
   // Bind to some XMR events
   xmr.on('connected', () => {
@@ -607,12 +654,12 @@ const initXmrEventHandlers = async function () {
   });
 
   /**
-   * Handles an incoming webhook trigger from the CMS. Forwards the trigger code
-   * to the renderer so XLR can dispatch it to the active layout's action controller.
+   * Handles an incoming webhook trigger from the CMS by routing the trigger code
+   * to the current layout's actions and any matching schedule-level Action events.
    */
-  xmr.on('triggerWebhook', (triggerCode: string, widgetId?: string) => {
+  xmr.on('triggerWebhook', async (triggerCode: string, widgetId?: string) => {
     console.debug('[XMR::triggerWebhook] Received webhook trigger', { triggerCode, widgetId });
-    mainWindow.webContents.send('trigger-webhook', { triggerCode, widgetId });
+    await handleTrigger(triggerCode, widgetId);
   });
 
   /**

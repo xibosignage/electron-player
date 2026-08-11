@@ -19,4 +19,5 @@ export declare class Action implements ActionInterface {
 
     getFromDt(): Date;
     getToDt(): Date;
+    hasCriteria(): boolean;
 }

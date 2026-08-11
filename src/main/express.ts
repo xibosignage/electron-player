@@ -34,7 +34,20 @@ const cors = (corsImport as any).default ?? corsImport;
 const port = 9696;
 let isListening = false;
 
-export async function createFileServer(config: Config, mainWindow: BrowserWindow, faults: Faults) {
+/**
+ * Creates the local file server and Player API.
+ *
+ * @param config Player configuration
+ * @param mainWindow The window hosting the renderer, used to push XLR instructions
+ * @param faults Fault store used by the /fault endpoint
+ * @param onTrigger Dispatches a trigger code to the current layout and to schedule-level Action events
+ */
+export async function createFileServer(
+  config: Config,
+  mainWindow: BrowserWindow,
+  faults: Faults,
+  onTrigger: (triggerCode: string, widgetId?: string) => Promise<void>,
+) {
   const server = express();
   // Use the cors middleware
   server.use(cors());
@@ -87,7 +100,8 @@ export async function createFileServer(config: Config, mainWindow: BrowserWindow
   });
 
   /**
-   * Dispatches a trigger code to XLR. Optionally targets a specific widget by ID.
+   * Dispatches a trigger code to the current layout's actions and to any
+   * matching schedule-level Action event. Optionally targets a specific widget by ID.
    */
   server.post('/trigger', (req, res) => {
     const { trigger, id } = req.body ?? {};
@@ -95,10 +109,12 @@ export async function createFileServer(config: Config, mainWindow: BrowserWindow
       res.status(400).json({ success: false, error: 'trigger is required' });
       return;
     }
-    console.debug('[FileServer::trigger] > Dispatching trigger to XLR', { trigger, id });
-    const payload: { triggerCode: string; widgetId?: string } = { triggerCode: trigger, widgetId: undefined };
-    if (id != null) payload.widgetId = String(id);
-    mainWindow.webContents.send('trigger-webhook', payload);
+    console.debug('[FileServer::trigger] > Dispatching trigger', { trigger, id });
+    onTrigger(String(trigger), id != null ? String(id) : undefined)
+      .catch(e => console.error('[FileServer::trigger] > Failed to dispatch trigger', {
+        trigger,
+        error: (e as Error)?.message ?? String(e),
+      }));
     res.json({ success: true });
   });
 
