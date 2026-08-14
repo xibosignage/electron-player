@@ -518,7 +518,6 @@ const createWindow = () => {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#000',
-    resizable: false,
     minimizable: false,
     maximizable: false,
     frame: false,
