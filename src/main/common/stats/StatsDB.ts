@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { app } from "electron";
 import { join } from 'path';
 import { existsSync, mkdirSync } from "fs";
+import { getPlayerDataDir } from "../paths";
 
 export interface StatEntry {
   id?: number;
@@ -23,8 +24,7 @@ export class StatsDB {
   private _count: number = 0;
 
   constructor() {
-    const userDataPath = app.getPath('userData');
-    const statsDir = join(userDataPath, 'stats');
+    const statsDir = join(getPlayerDataDir(app.getPath('userData')), 'stats');
     if (!existsSync(statsDir)) mkdirSync(statsDir, { recursive: true });
 
     const dbPath = join(statsDir, 'stats.db');

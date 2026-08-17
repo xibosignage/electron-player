@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 Xibo Signage Ltd
+ * Copyright (c) 2026 Xibo Signage Ltd
  *
  * Xibo - Digital Signage - https://xibosignage.com
  *
@@ -58,6 +58,9 @@ import {
 } from './common/fileManager';
 import Schedule from './xmds/response/schedule/schedule';
 import ScheduleManager from './common/scheduleManager';
+import { migrateLegacyPlayer } from './migration/legacyPlayer';
+import { applyProxyConfig } from './common/proxy';
+import { ensureAutostartEntry, installCrashRecovery } from './common/watchdog';
 import { InputLayoutType, LocalFile, RequiredFile } from './common/types';
 import { ConsoleDB } from '../shared/console/ConsoleDB';
 import { createExtendedConsole, registerConfigAdapter } from '../shared/console/ExtendedConsole';
@@ -196,6 +199,12 @@ let pendingScheduleRefresh = false;
 const loadConfig = async () => {
   console._log('[MAIN] > Loading config started');
   const t = Date.now();
+
+  // Import identity from a legacy 1.8 Linux player, if this is a first boot after an
+  // in-place upgrade. Must run before config.load(), which would otherwise generate and
+  // persist a fresh hardware key and permanently orphan the display in the CMS.
+  await migrateLegacyPlayer(config);
+
   await config.load();
 
   console._log(`[MAIN] > Loading config finished in ${Date.now() - t}ms`);
@@ -534,6 +543,9 @@ const createWindow = () => {
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
   })
+
+  // Restore the restart-on-crash behaviour the legacy player got from its watchdog process.
+  installCrashRecovery(mainWindow);
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url);
@@ -1443,6 +1455,11 @@ const init = async (win: BrowserWindow) => {
   configureExpress();
 
   appConfig = await loadConfig();
+
+  // Must happen before the first XMDS collection: devices migrated from the legacy 1.8
+  // player may only be able to reach their CMS through an upstream proxy.
+  await applyProxyConfig(config.proxy);
+
   state.version = config.version ?? '';
   state.cmsUrl = config.cmsUrl ?? '';
   state.deviceName = config.displayName ?? '';
@@ -1539,6 +1556,11 @@ app.whenReady().then(() => {
   installExtension(JQUERY_DEBUGGER)
     .then((ext) => console.log(`Added Extension:  ${ext.name}`))
     .catch((err) => console.log('An error occurred: ', err));
+
+  // Start with the desktop session on real installs, as the legacy player's desktop entry did.
+  if (!is.dev) {
+    ensureAutostartEntry();
+  }
 
   createWindow();
 
