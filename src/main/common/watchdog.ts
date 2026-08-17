@@ -131,7 +131,7 @@ export function installCrashRecovery(win: BrowserWindow): void {
  * Under snap confinement the real ~/.config is not writable, so the entry goes in
  * SNAP_USER_DATA, which snapd's user session agent scans for autostart entries.
  */
-export function ensureAutostartEntry(): void {
+function ensureLinuxAutostartEntry(): void {
   try {
     const base = isSnap() ? (process.env.SNAP_USER_DATA as string) : homedir();
     const autostartDir = join(base, '.config', 'autostart');
@@ -146,4 +146,33 @@ export function ensureAutostartEntry(): void {
   } catch (err) {
     console.error('[Watchdog] Failed to write autostart entry:', err);
   }
+}
+
+/**
+ * Start the player automatically when the user logs in, replacing whatever autostart mechanism
+ * (Startup shortcut, Run key, or a legacy watchdog service) the legacy Windows player used.
+ *
+ * `setLoginItemSettings` is Electron's cross-platform wrapper for the `HKCU\...\Run` registry
+ * key on Windows — no manual registry or shortcut handling needed.
+ */
+function ensureWindowsAutostartEntry(): void {
+  try {
+    app.setLoginItemSettings({ openAtLogin: true });
+    console.log('[Watchdog] Configured login item for autostart');
+  } catch (err) {
+    console.error('[Watchdog] Failed to configure autostart:', err);
+  }
+}
+
+/**
+ * Start the player automatically when the desktop session logs in. Dispatches to the
+ * platform-appropriate mechanism — Windows and Linux have no autostart primitive in common.
+ */
+export function ensureAutostartEntry(): void {
+  if (process.platform === 'win32') {
+    ensureWindowsAutostartEntry();
+    return;
+  }
+
+  ensureLinuxAutostartEntry();
 }
