@@ -844,7 +844,7 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
     xmr.start(xmrWebSocketAddress, config.getSetting('xmrCmsKey', 'n/a'));
     
     const makeScreenshot = async () => {
-      await xmdsMakeScreenshot(xmds);
+      await xmdsMakeScreenshot(xmds, config.getSetting('screenShotSize', 0) ?? 0);
       await xmds.notifyStatus();
     };
     const screenshotRequested = data.getSetting('screenShotRequested', 0);
