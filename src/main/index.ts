@@ -36,7 +36,6 @@ import { IXlrEvents } from '@xibosignage/xibo-layout-renderer';
 import { monitorEventLoopDelay } from 'perf_hooks';
 
 import icon from '../../resources/icon.png?asset';
-import { spawn } from 'child_process';
 import { Config } from './config/config';
 import { Xmds, validateAndRegister } from './xmds/xmds';
 import { State } from './common/state';
@@ -471,42 +470,7 @@ const configureIpc = (win) => {
 };
 
 const configureExpress = () => {
-  // Start express
-  const appName = app.getPath('exe');
-  const expressPath = is.dev ?
-    './dist/main/express.js' :
-    join(process.resourcesPath, './app', './dist/main/express.js');
-  const redirectOutput = function (stream) {
-    stream.on('data', (data) => {
-      data.toString().split('\n').forEach((line) => {
-        console.log(line);
-      });
-    });
-  };
-
-  console.debug('[configureExpress]', {
-    config,
-    expressPath,
-    appName,
-  })
   createFileServer(config, mainWindow, faults, handleTrigger);
-
-  console.log(expressPath);
-
-  const expressAppProcess =
-    spawn(
-      appName, [
-      '--inspect=8315',
-      expressPath
-    ], {
-      env: {
-        ...process.env,
-        ELECTRON_RUN_AS_NODE: '1'
-      },
-      stdio: ['ignore', 'pipe', 'pipe']
-    }
-    );
-  [expressAppProcess.stdout, expressAppProcess.stderr].forEach(redirectOutput);
 };
 
 const configureFileManager = () => {
