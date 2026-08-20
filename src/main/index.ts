@@ -196,26 +196,50 @@ let manager: ScheduleManager;
 let ssp: Ssp;
 let pendingScheduleRefresh = false;
 
+// Memoized so the work below only ever runs once per process, no matter how many callers
+// invoke loadConfig(). It's called from two independent places — main's own boot (init())
+// and the renderer's boot script, via the 'load-config' IPC handler below — with no
+// coordination between them. Without this cache, both could run concurrently: migration
+// and config.load() would race each other's file reads/writes, and Config.load()'s "no
+// config.json yet, generate a fresh identity" fallback could fire in one call after the
+// other has already migrated the real identity into memory but before it's hit disk,
+// silently clobbering the migrated hardwareKey for that boot's first RegisterDisplay.
+let loadConfigPromise: Promise<any> | null = null;
+
 const loadConfig = async () => {
-  console._log('[MAIN] > Loading config started');
-  const t = Date.now();
-
-  // Import identity from a legacy 1.8 Linux player, if this is a first boot after an
-  // in-place upgrade. Must run before config.load(), which would otherwise generate and
-  // persist a fresh hardware key and permanently orphan the display in the CMS.
-  await migrateLegacyPlayer(config);
-
-  await config.load();
-
-  console._log(`[MAIN] > Loading config finished in ${Date.now() - t}ms`);
-
-  appConfig = JSON.parse(config.toJson());
-
-  if (appConfig && typeof appConfig.state === 'string') {
-    appConfig.state = JSON.parse(appConfig.state);
+  if (loadConfigPromise) {
+    return loadConfigPromise;
   }
 
-  return appConfig;
+  loadConfigPromise = (async () => {
+    console._log('[MAIN] > Loading config started');
+    const t = Date.now();
+
+    // Import identity from a legacy player, if this is a first boot after an in-place
+    // upgrade. Must run before config.load(), which would otherwise generate and persist
+    // a fresh hardware key and permanently orphan the display in the CMS.
+    await migrateLegacyPlayer(config);
+
+    await config.load();
+
+    // Must happen before the first XMDS collection: devices migrated from a legacy player
+    // may only be able to reach their CMS through an upstream proxy. Lives here (rather
+    // than only in main's own boot sequence) so it's guaranteed to complete before
+    // whichever caller gets here first sees isConfigured() and proceeds to trigger XMDS.
+    await applyProxyConfig(config.proxy);
+
+    console._log(`[MAIN] > Loading config finished in ${Date.now() - t}ms`);
+
+    appConfig = JSON.parse(config.toJson());
+
+    if (appConfig && typeof appConfig.state === 'string') {
+      appConfig.state = JSON.parse(appConfig.state);
+    }
+
+    return appConfig;
+  })();
+
+  return loadConfigPromise;
 };
 
 // Register load config handler
@@ -1454,11 +1478,9 @@ const init = async (win: BrowserWindow) => {
   // Player API and static file serving
   configureExpress();
 
+  // Also applies the proxy config, if any was migrated — see loadConfig() for why that
+  // lives there rather than here.
   appConfig = await loadConfig();
-
-  // Must happen before the first XMDS collection: devices migrated from the legacy 1.8
-  // player may only be able to reach their CMS through an upstream proxy.
-  await applyProxyConfig(config.proxy);
 
   state.version = config.version ?? '';
   state.cmsUrl = config.cmsUrl ?? '';
