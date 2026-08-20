@@ -235,6 +235,7 @@ export class Config {
     this.settings['sizeX'] = registerDisplay.getSetting('sizeX', 0);
     this.settings['sizeY'] = registerDisplay.getSetting('sizeY', 0);
     this.settings['sendCurrentLayoutAsStatusUpdate'] = registerDisplay.getSetting('sendCurrentLayoutAsStatusUpdate', false);
+    this.settings['screenShotSize'] = Number(registerDisplay.getSetting('screenShotSize', 0)) || 0;
     this.displayTags = registerDisplay.getTags();
     this.settings['isRecordGeoLocationOnProofOfPlay'] = registerDisplay.getSetting('isRecordGeoLocationOnProofOfPlay', false) === '1';
     this.state.displayStatus = registerDisplay.status || 0;

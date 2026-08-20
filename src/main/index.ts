@@ -627,7 +627,7 @@ const initXmrEventHandlers = async function () {
     xmds.collectNow();
   });
   xmr.on('screenShot', async () => {
-    await xmdsMakeScreenshot(xmds);
+    await xmdsMakeScreenshot(xmds, config.getSetting('screenShotSize', 0) ?? 0);
     await xmds.notifyStatus();
   });
 
