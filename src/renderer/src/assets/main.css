@@ -46,6 +46,42 @@ form, input, button, label, a {
     padding: 25px;
     background: #565656;
     box-shadow: 3px 4px 5px 0 #8885;
+    box-sizing: border-box;
+}
+
+#status-content {
+    height: 100%;
+    overflow-y: auto;
+    padding-right: 30px;
+    overflow-wrap: anywhere;
+}
+
+#status-content pre {
+    white-space: pre-wrap;
+}
+
+#status-content:focus {
+    outline: none;
+}
+
+#status-close {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: #00000059;
+    color: white;
+    font-size: 24px;
+    line-height: 36px;
+    cursor: pointer;
+}
+
+#status-close:hover, #status-close:focus {
+    background: #000000a6;
 }
 
 .layout {
