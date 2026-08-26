@@ -2,13 +2,14 @@ import { AxiosResponse } from "axios";
 import { Xmds } from "../../main/xmds/xmds";
 import { captureDesktop } from "./desktopCapture";
 
-export async function xmdsMakeScreenshot(xmds: Xmds): Promise<AxiosResponse<any, any, {}> | Error | {
+export async function xmdsMakeScreenshot(xmds: Xmds, maxDimension: number = 0): Promise<AxiosResponse<any, any, {}> | Error | {
     message: any;
     status?: any;
 } | undefined> {
-    const stream = await captureDesktop();
+    const stream = await captureDesktop(maxDimension);
     console.debug('[xmdsUtils] > [xmdsMakeScreenshot] > Requesting a screenshot', {
         method: 'captureDesktop',
+        maxDimension,
         stream: stream ? 'Captured successfully' : 'Failed to capture',
     });
 
