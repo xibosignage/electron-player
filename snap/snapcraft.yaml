@@ -35,7 +35,9 @@ apps:
 parts:
   app:
     plugin: dump
-    source: out/xibo-player-linux-x64
+    source:
+      - on amd64: out/xibo-player-linux-x64
+      - on arm64: out/xibo-player-linux-arm64
     # STRATEGY: Move custom libraries into the standard system path
     # This prevents 'not found' errors because the loader checks here by default.
     organize:

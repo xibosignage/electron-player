@@ -8,7 +8,18 @@ on:
 jobs:
   build-linux:
     # We'll run on Ubuntu as it's required for .deb and .snap packages
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.dist.runs-on }}
+    strategy:
+      matrix:
+        dist:
+          - {
+              arch: x64,
+              runs-on: ubuntu-latest
+            }
+          - {
+              arch: arm64,
+              runs-on: ubuntu-24.04-arm
+            }
 
     steps:
       - name: 'Checkout Repository'
@@ -38,9 +49,9 @@ jobs:
       - name: 'Pack Snap'
         id: snap-build
         run: |
-          mkdir -p out/make/snap/x64/
+          mkdir -p out/make/snap/${{ matrix.dist.arch }}/
           # --destructive-mode allows building without a VM/Container
-          sudo snapcraft pack --output out/make/snap/x64/ --destructive-mode
+          sudo snapcraft pack --output out/make/snap/${{ matrix.dist.arch }}/ --destructive-mode
           # Set the snap path as an output for the next steps
           SNAP_PATH=$(find ./out/make/snap -name '*.snap' -type f | head -n 1)
           echo "SNAP_PATH=$SNAP_PATH" >> $GITHUB_ENV
