@@ -5,7 +5,7 @@ import { DefaultLayout } from "../xmds/response/schedule/events/defaultLayout";
 import { Config } from "../config/config";
 import { getLayoutIds } from "./parser";
 import { InputLayoutType } from "./types";
-import { getFileByName, getLayoutFile, isPurging } from "./fileManager";
+import { isFileDownloaded, getLayoutFile, isPurging } from "./fileManager";
 import { Faults, FaultCodes } from "../../shared/faults/Faults";
 import { OverlayLayout } from "../xmds/response/schedule/events/overlayLayout";
 import SspLayout from "../xmds/response/schedule/events/sspLayout";
@@ -109,8 +109,9 @@ export default class ScheduleManager {
 
         const missing: string[] = [];
 
+        // Files that failed to download keep their row, so the status is what decides.
         for (const dependent of this.schedule.dependants) {
-            if (!getFileByName(dependent)) {
+            if (!isFileDownloaded(dependent)) {
                 missing.push(dependent);
             }
         }
