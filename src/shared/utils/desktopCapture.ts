@@ -87,12 +87,9 @@ async function captureWithDesktopCapturer(maxDimension: number): Promise<string 
 /**
  * Capture the screen using whichever method the display environment allows.
  *
- * Wayland refuses direct screen access, so desktopCapturer would raise a consent dialog
- * on the sign itself with nobody there to accept it. There we read the newest screenshot
- * from a directory a user supplied task writes to instead.
- *
- * Windows, X11 and unknown sessions keep using desktopCapturer, and never touch the
- * directory, so devices that work today are unaffected.
+ * Wayland raises a consent dialog on the sign that nobody is there to accept, so there we
+ * read the newest screenshot from a directory instead. Every other environment captures
+ * directly with desktopCapturer.
  *
  * @param maxDimension The CMS screenShotSize setting, or zero for the screen size
  * @param faults Optional fault channel, used to raise and clear screenshot faults
