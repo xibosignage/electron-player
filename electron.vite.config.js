@@ -56,7 +56,6 @@ export default defineConfig(({mode}) => {
         rollupOptions: {
           input: {
             index: resolve(__dirname, 'src/main/index.ts'),
-            express: resolve(__dirname, 'src/main/express.ts'),
           },
           external: ['better-sqlite3'],
         },

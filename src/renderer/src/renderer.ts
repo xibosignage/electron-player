@@ -329,7 +329,16 @@ window.playerAPI.onConfigure(async (config: ConfigData) => {
 
 window.playerAPI.onStateChange((state) => {
   if ($('#status').is(':visible')) {
-    $('#status').html(state);
+    // Replacing the content empties the scroll container, which clamps scrollTop back to 0.
+    // Save and restore it so a refresh doesn't yank the reader away from a long log line.
+    const content = document.getElementById('status-content');
+    const scrollTop = content?.scrollTop ?? 0;
+
+    $('#status-content').html(state);
+
+    if (content) {
+      content.scrollTop = scrollTop;
+    }
   }
 });
 
@@ -402,6 +411,25 @@ window.playerAPI.onNotifyWidgetDataChanged((widgetId) => {
 
 let statusWindowHideTimer: ReturnType<typeof setTimeout> | null = null;
 
+/**
+ * Hides the status window and stops the main process pushing state updates to it.
+ * Safe to call when the window is already hidden.
+ */
+const hideStatusWindowFn = (reason: string) => {
+  if (statusWindowHideTimer !== null) {
+    clearTimeout(statusWindowHideTimer);
+    statusWindowHideTimer = null;
+  }
+
+  if (!$('#status').is(':visible')) {
+    return;
+  }
+
+  console.debug('[Renderer::hideStatusWindow] Hiding status window', { reason });
+  $('#status').hide();
+  window.playerAPI.notifyStatusWindowVisibility(false);
+};
+
 const showStatusWindowFn = (timeout: number) => {
   console.debug('[Renderer::onShowStatusWindow]', { timeout });
 
@@ -414,12 +442,56 @@ const showStatusWindowFn = (timeout: number) => {
   window.playerAPI.notifyStatusWindowVisibility(true);
   $('#status').show();
 
+  // Focus the scroll container, not the close button, so the arrow keys scroll straight
+  // away without a Tab press. Focus goes on the container because the 5-second refresh
+  // replaces every child, so anything focused inside would lose focus on the next tick.
+  $('#status-content').trigger('focus');
+
   statusWindowHideTimer = setTimeout(() => {
-    console.debug('[Renderer::onShowStatusWindow] Hiding status window after timeout of:', timeout + ' seconds');
-    $('#status').hide();
-    window.playerAPI.notifyStatusWindowVisibility(false);
-    statusWindowHideTimer = null;
+    hideStatusWindowFn('timeout of ' + timeout + ' seconds elapsed');
   }, timeout * 1000);
+};
+
+/**
+ * Keys that close the status window while it is open.
+ *
+ * Handled at the document level rather than only on the close button because a signage
+ * remote has no Tab key, so it can never move focus onto the button. Which key a remote
+ * actually emits for "back" varies by receiver, hence more than one.
+ */
+const STATUS_WINDOW_CLOSE_KEYS = ['escape', 'backspace', 'enter'];
+
+/**
+ * Shows the status window on "i" and closes it on any of the close keys above.
+ */
+const onStatusWindowKeydown = (event: KeyboardEvent) => {
+  const key = event.key.toLowerCase();
+  const isCloseKey = STATUS_WINDOW_CLOSE_KEYS.includes(key);
+
+  if (key !== 'i' && !isCloseKey) {
+    return;
+  }
+
+  // Ignore if the user is typing inside an input field
+  const target = event.target as HTMLElement;
+  if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+    return;
+  }
+
+  if (isCloseKey) {
+    // Only consume the key while the window is open, so Enter and Backspace keep their
+    // normal meaning for the config UI and for interactive layouts.
+    if (!$('#status').is(':visible')) {
+      return;
+    }
+
+    event.preventDefault();
+    hideStatusWindowFn(key + ' key pressed');
+    return;
+  }
+
+  console.debug('[Renderer] showStatusWindow event triggered by keypress "i"');
+  showStatusWindowFn(60); // Show for 60 seconds
 };
 
 const init = async () => {
@@ -427,21 +499,12 @@ const init = async () => {
   console.debug('[RENDERER] init > config', config);
   window.config = config;
 
-  const showStatusWindow = (event: KeyboardEvent) => {
-    if (event.key.toLowerCase() === 'i') {
-      // Ignore if the user is typing inside an input field
-      const target = event.target as HTMLElement;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
-        return;
-      }
+  document.removeEventListener('keydown', onStatusWindowKeydown); // Ensure we don't add multiple listeners
+  document.addEventListener('keydown', onStatusWindowKeydown);
 
-      console.debug('[Renderer] showStatusWindow event triggered by keypress "i"');
-      showStatusWindowFn(60); // Show for 60 seconds
-    }
-  };
-
-  document.removeEventListener('keydown', showStatusWindow); // Ensure we don't add multiple listeners
-  document.addEventListener('keydown', showStatusWindow);
+  $('#status-close').off('click').on('click', () => {
+    hideStatusWindowFn('close button clicked');
+  });
 
   if (!config.isConfigured) {
     runConfigHandler(config);

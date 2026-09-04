@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 Xibo Signage Ltd
+ * Copyright (c) 2026 Xibo Signage Ltd
  *
  * Xibo - Digital Signage - https://xibosignage.com
  *
@@ -36,7 +36,6 @@ import { IXlrEvents } from '@xibosignage/xibo-layout-renderer';
 import { monitorEventLoopDelay } from 'perf_hooks';
 
 import icon from '../../resources/icon.png?asset';
-import { spawn } from 'child_process';
 import { Config } from './config/config';
 import { Xmds, validateAndRegister } from './xmds/xmds';
 import { State } from './common/state';
@@ -58,6 +57,9 @@ import {
 } from './common/fileManager';
 import Schedule from './xmds/response/schedule/schedule';
 import ScheduleManager from './common/scheduleManager';
+import { migrateLegacyPlayer } from './migration/legacyPlayer';
+import { applyProxyConfig } from './common/proxy';
+import { ensureAutostartEntry, installCrashRecovery } from './common/watchdog';
 import { InputLayoutType, LocalFile, RequiredFile } from './common/types';
 import { ConsoleDB } from '../shared/console/ConsoleDB';
 import { createExtendedConsole, registerConfigAdapter } from '../shared/console/ExtendedConsole';
@@ -196,6 +198,12 @@ let pendingScheduleRefresh = false;
 const loadConfig = async () => {
   console._log('[MAIN] > Loading config started');
   const t = Date.now();
+
+  // Import identity from a legacy 1.8 Linux player, if this is a first boot after an
+  // in-place upgrade. Must run before config.load(), which would otherwise generate and
+  // persist a fresh hardware key and permanently orphan the display in the CMS.
+  await migrateLegacyPlayer(config);
+
   await config.load();
 
   console._log(`[MAIN] > Loading config finished in ${Date.now() - t}ms`);
@@ -462,42 +470,7 @@ const configureIpc = (win) => {
 };
 
 const configureExpress = () => {
-  // Start express
-  const appName = app.getPath('exe');
-  const expressPath = is.dev ?
-    './dist/main/express.js' :
-    join(process.resourcesPath, './app', './dist/main/express.js');
-  const redirectOutput = function (stream) {
-    stream.on('data', (data) => {
-      data.toString().split('\n').forEach((line) => {
-        console.log(line);
-      });
-    });
-  };
-
-  console.debug('[configureExpress]', {
-    config,
-    expressPath,
-    appName,
-  })
   createFileServer(config, mainWindow, faults, handleTrigger);
-
-  console.log(expressPath);
-
-  const expressAppProcess =
-    spawn(
-      appName, [
-      '--inspect=8315',
-      expressPath
-    ], {
-      env: {
-        ...process.env,
-        ELECTRON_RUN_AS_NODE: '1'
-      },
-      stdio: ['ignore', 'pipe', 'pipe']
-    }
-    );
-  [expressAppProcess.stdout, expressAppProcess.stderr].forEach(redirectOutput);
 };
 
 const configureFileManager = () => {
@@ -533,6 +506,9 @@ const createWindow = () => {
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
   })
+
+  // Restore the restart-on-crash behaviour the legacy player got from its watchdog process.
+  installCrashRecovery(mainWindow);
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url);
@@ -614,7 +590,7 @@ const initXmrEventHandlers = async function () {
     xmds.collectNow();
   });
   xmr.on('screenShot', async () => {
-    await xmdsMakeScreenshot(xmds);
+    await xmdsMakeScreenshot(xmds, config.getSetting('screenShotSize', 0) ?? 0);
     await xmds.notifyStatus();
   });
 
@@ -831,7 +807,7 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
     xmr.start(xmrWebSocketAddress, config.getSetting('xmrCmsKey', 'n/a'));
     
     const makeScreenshot = async () => {
-      await xmdsMakeScreenshot(xmds);
+      await xmdsMakeScreenshot(xmds, config.getSetting('screenShotSize', 0) ?? 0);
       await xmds.notifyStatus();
     };
     const screenshotRequested = data.getSetting('screenShotRequested', 0);
@@ -1442,6 +1418,11 @@ const init = async (win: BrowserWindow) => {
   configureExpress();
 
   appConfig = await loadConfig();
+
+  // Must happen before the first XMDS collection: devices migrated from the legacy 1.8
+  // player may only be able to reach their CMS through an upstream proxy.
+  await applyProxyConfig(config.proxy);
+
   state.version = config.version ?? '';
   state.cmsUrl = config.cmsUrl ?? '';
   state.deviceName = config.displayName ?? '';
@@ -1538,6 +1519,11 @@ app.whenReady().then(() => {
   installExtension(JQUERY_DEBUGGER)
     .then((ext) => console.log(`Added Extension:  ${ext.name}`))
     .catch((err) => console.log('An error occurred: ', err));
+
+  // Start with the desktop session on real installs, as the legacy player's desktop entry did.
+  if (!is.dev) {
+    ensureAutostartEntry();
+  }
 
   createWindow();
 

@@ -1,24 +1,31 @@
 name: xibo-player
 base: core24
-version: '4.0.3'
+version: '4.0.9'
 summary: Xibo Linux Player
 description: Xibo for Linux Digital Signage Player
 confinement: strict
-grade: devel
+# Must be 'stable' to be publishable to the stable channel. Devices running the legacy 1.8
+# player refresh in place from this same snap name, so a 'devel' grade blocks the upgrade.
+grade: stable
 
 apps:
   xibo-player:
     extensions: [gnome]
     command: xibo-player --no-sandbox
     plugs:
-      - browser-support
-      - home 
+      # The Chromium sandbox is disabled above, so browser-support is not required and is
+      # deliberately omitted: it is not auto-connected, and an unconnected plug on refresh
+      # would silently break every migrated device.
+      - home
       - network
       - network-bind
       - opengl
       - audio-playback
       - screen-inhibit-control
       - x11
+      # Carried over from the legacy 1.8 snap, which shipped both of these.
+      - gsettings
+      - framebuffer
     environment:
       TMPDIR: $XDG_RUNTIME_DIR
       LIBGL_ALWAYS_SOFTWARE: '0'

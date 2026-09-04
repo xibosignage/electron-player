@@ -209,7 +209,11 @@
                 </div>
             </div>
         </div>
-        <div style="display: none; overflow-y: auto;" id="status"></div>
+        <div style="display: none;" id="status">
+            <button type="button" id="status-close"
+                title="Close (Esc, Backspace or Enter)" aria-label="Close status window">&times;</button>
+            <div id="status-content" tabindex="0"></div>
+        </div>
         <script type="module" src="/src/renderer.ts"></script>
     </body>
 </html>

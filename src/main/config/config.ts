@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 Xibo Signage Ltd
+ * Copyright (c) 2026 Xibo Signage Ltd
  *
  * Xibo - Digital Signage - https://xibosignage.com
  *
@@ -26,6 +26,17 @@ import os from 'os';
 
 import { RegisterDisplay } from '../xmds/response/registerDisplay';
 import { State } from '../common/state';
+import { getPlayerDataDir, isSnap } from '../common/paths';
+
+/**
+ * HTTP proxy carried over from a legacy 1.8 player install, or configured locally.
+ * `url` is the proxy origin (e.g. http://proxy.example.com:8080).
+ */
+export type ProxyConfig = {
+  url: string;
+  username?: string;
+  password?: string;
+};
 
 export class Config {
   // Environment
@@ -68,13 +79,20 @@ export class Config {
   // confirmed successful, so it can be resumed on the next boot after a crash.
   pendingCmsTransfer: { cmsUrl: string; cmsKey: string; requestedAt: string } | null = null;
 
+  // Upstream HTTP proxy, if the device needs one to reach the CMS.
+  proxy: ProxyConfig | null = null;
+
   constructor(app: Electron.App, platform: string, state: State) {
     const savePath = app.getPath('userData');
     this.savePath = join(savePath, 'config.json');
     this.cmsSavePath = join(savePath, 'cms_config.json');
     this.platform = platform;
-    this.library = join(app.getPath('documents'), 'xibo_library');
-    this.dbPath = join(savePath, 'playerDb.db');
+
+    // Bulk data (library + file store) lives outside the versioned snap data directory so
+    // snap refreshes don't duplicate it. See getPlayerDataDir().
+    const dataDir = getPlayerDataDir(savePath);
+    this.library = isSnap() ? join(dataDir, 'xibo_library') : join(app.getPath('documents'), 'xibo_library');
+    this.dbPath = join(dataDir, 'playerDb.db');
     this.settings = {};
     this.state = state;
     this.state.appVersionCode = this.versionCode;
@@ -104,6 +122,7 @@ export class Config {
       this.xmrChannel = data.xmrChannel ?? randomUUID();
       this.macAddress = data.macAddress || this.getMacAddress();
       this.pendingCmsTransfer = data.pendingCmsTransfer ?? null;
+      this.proxy = data.proxy ?? null;
     } catch {
       // Probably the file doesn't exist.
       this.hardwareKey = (await machineId()).substring(0, 40);
@@ -151,6 +170,7 @@ export class Config {
         macAddress: this.macAddress,
         platform: this.platform,
         pendingCmsTransfer: this.pendingCmsTransfer,
+        proxy: this.proxy,
       }, null, 2),
     );
     await fs.rename(tmp, this.savePath);
@@ -215,6 +235,7 @@ export class Config {
     this.settings['sizeX'] = registerDisplay.getSetting('sizeX', 0);
     this.settings['sizeY'] = registerDisplay.getSetting('sizeY', 0);
     this.settings['sendCurrentLayoutAsStatusUpdate'] = registerDisplay.getSetting('sendCurrentLayoutAsStatusUpdate', false);
+    this.settings['screenShotSize'] = Number(registerDisplay.getSetting('screenShotSize', 0)) || 0;
     this.displayTags = registerDisplay.getTags();
     this.settings['isRecordGeoLocationOnProofOfPlay'] = registerDisplay.getSetting('isRecordGeoLocationOnProofOfPlay', false) === '1';
     this.state.displayStatus = registerDisplay.status || 0;
@@ -278,6 +299,7 @@ export class Config {
       displayTags: this.displayTags,
       state: this.state.toJson(),
       pendingCmsTransfer: this.pendingCmsTransfer,
+      proxy: this.proxy,
     });
   }
 }
