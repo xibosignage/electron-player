@@ -11,7 +11,8 @@
     "package": "npm run build && electron-forge package",
     "make": "npm run build && electron-forge make",
     "make:snap": "node scripts/set-snap-version.cjs && mkdir -p out/make/snap/x64/ && snapcraft pack --output out/make/snap/x64/",
-    "rebuild": "electron-rebuild -f -w better-sqlite3"
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "postinstall": "install-electron --no"
   },
   "author": "Xibo Signage Ltd",
   "devDependencies": {
@@ -29,9 +30,9 @@
     "@types/express": "^5.0.6",
     "@types/jquery": "^3.5.32",
     "@types/xmldom": "^0.1.34",
-    "electron": "^35.1.0",
+    "electron": "^43.4.0",
     "electron-devtools-installer": "^4.0.0",
-    "electron-vite": "^2.0.0",
+    "electron-vite": "^5.0.0",
     "eslint": "^8.56.0",
     "eslint-config-google": "^0.14.0"
   },
@@ -49,7 +50,7 @@
     "@xibosignage/xibo-layout-renderer": "^1.0.31",
     "@xmldom/xmldom": "^0.9.10",
     "axios": "^1.8.4",
-    "better-sqlite3": "^12.4.1",
+    "better-sqlite3": "^13.0.3",
     "cheerio": "^1.1.2",
     "cors": "^2.8.5",
     "dexie": "^4.2.0",
@@ -68,6 +69,7 @@
   },
   "overrides": {
     "@electron/node-gyp": "npm:node-gyp@^12.2.0",
-    "node-gyp": "^12.2.0"
+    "node-gyp": "^12.2.0",
+    "node-abi": "^3.94.0"
   }
 }

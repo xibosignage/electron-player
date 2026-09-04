@@ -20,8 +20,7 @@
  */
 import {resolve} from 'path';
 import {readFileSync} from 'node:fs';
-import {defineConfig, externalizeDepsPlugin, bytecodePlugin}
-  from 'electron-vite';
+import {defineConfig} from 'electron-vite';
 
 export default defineConfig(({mode}) => {
   const packageJson = JSON.parse(readFileSync('./package.json', 'utf-8'));
@@ -49,9 +48,9 @@ export default defineConfig(({mode}) => {
       server: {
         hmr: false,
       },
-      plugins: [externalizeDepsPlugin({exclude: devLibraries})],
       define: versionDefine,
       build: {
+        externalizeDeps: {exclude: devLibraries},
         sourcemap: true,
         minify: false,
         rollupOptions: {
@@ -72,6 +71,8 @@ export default defineConfig(({mode}) => {
     },
     preload: {
       build: {
+        externalizeDeps: {exclude: devLibraries},
+        bytecode: true,
         rollupOptions: {
           external: [],
         },
@@ -81,7 +82,6 @@ export default defineConfig(({mode}) => {
           ...alias,
         },
       },
-      plugins: [externalizeDepsPlugin({exclude: devLibraries}), bytecodePlugin()],
     },
     renderer: {
       server: {
