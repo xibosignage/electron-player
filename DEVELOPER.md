@@ -23,12 +23,22 @@ A practical guide for developers setting up and working with the Xibo Electron P
 
 | Tool | Version | Notes |
 |------|---------|-------|
-| Node.js | 20 or 22 | Use 20 for Windows packaging, 22 for Linux |
+| Node.js | 22 or newer | Electron and `better-sqlite3` both require Node >= 22 |
 | npm | bundled with Node | No Yarn/pnpm |
 | Git | any recent | SSH key required (XLR is a git dependency) |
-| Electron | auto-installed | v35 via devDependencies |
+| Electron | auto-installed | Version pinned in `package.json` devDependencies |
+| Python | 3.6 or newer | Required to compile `better-sqlite3`. See below |
 
-**Windows only**: Install Visual Studio Build Tools (C++ workload) — required for `better-sqlite3` native bindings.
+`better-sqlite3` has no prebuilt binaries for the Electron versions this project targets, so it is
+compiled from source during `npm run rebuild`. That needs both a C++ compiler and Python, on every
+platform.
+
+**All platforms**: Install Python 3. On Windows, use the installer from
+[python.org](https://www.python.org/downloads/) with "Add python.exe to PATH" ticked; the Microsoft
+Store version does not work with node-gyp. After installing, restart your terminal or editor so it
+picks up the new `PATH`.
+
+**Windows only**: Install Visual Studio Build Tools (C++ workload), required for `better-sqlite3` native bindings.
 
 **Linux only**: `snapcraft` is required if packaging Snap.
 
@@ -57,13 +67,21 @@ xibo/
 ```bash
 cd electron-player
 npm install
-```
-
-If you see errors related to `better-sqlite3`, rebuild the native module:
-
-```bash
 npm run rebuild
 ```
+
+Both steps are required. `npm install` also downloads the Electron binary via a `postinstall` hook,
+since Electron no longer fetches it during a plain install.
+
+`npm run rebuild` compiles `better-sqlite3` against the current Electron version. It takes a few
+minutes and prints compiler output, which is expected. Skipping it lets the app start and then fail
+when it first opens the database, so run it after every `npm install` and after every Electron or
+Node version change.
+
+If it fails with `Could not find any Python installation to use`, check
+[Prerequisites](#1-prerequisites). If Python is installed and works in a fresh terminal but not in
+your editor, fully quit and reopen the editor: it passes its own copy of `PATH` to integrated
+terminals, and that copy is captured at launch.
 
 ### Build the layout renderer (first time only)
 
@@ -461,3 +479,29 @@ npm run make   # produces installer in out/make/
 ```
 
 Windows builds must be made on Windows; Linux builds on Linux.
+
+### Upgrading Electron
+
+Electron only supports the latest three major versions, so this needs doing periodically. Check the
+[release schedule](https://releases.electronjs.org/schedule) for what is still supported.
+
+```bash
+npm install electron@<major>   # bump the version
+npm install                    # required: see below
+npm run rebuild                # recompile better-sqlite3 for the new version
+npm run build
+```
+
+The bare `npm install` on the second line is not redundant. npm skips the project's `postinstall`
+hook when you install a named package, so `npm install electron@<major>` swaps the package without
+downloading the new binary. The build then fails with `[vite:bytecode] Electron uninstall`, which
+gives no hint about the cause. A plain `npm install` afterwards triggers the hook. Running
+`npx install-electron --no` directly has the same effect.
+
+Two other things may need attention when moving to a new major:
+
+- **`node-abi`**, overridden in `package.json`, maps Electron versions to build identifiers. If
+  `npm run rebuild` fails with `Could not detect abi for version <x> and runtime electron`, raise
+  that override to a version that lists the new release.
+- **`better-sqlite3`** must support the V8 version Electron ships. If the rebuild fails with C++
+  errors referencing `v8::`, the library needs upgrading rather than the build fixing.
