@@ -84,6 +84,24 @@ export class RegisterDisplay {
     this.settings = doc.display;
   }
 
+  /**
+   * Find the actual response key for a setting name. The CMS capitalizes the first
+   * letter of every setting element name (PHP's `ucfirst()`) when the display's
+   * clientType is 'windows' — a compatibility shim for the legacy .NET client's XML
+   * deserializer. This player reports clientType 'windows' on Windows builds (see
+   * docs/CLIENT-TYPE.md), so responses may use either casing depending on CMS version;
+   * falling back to the capitalized variant keeps settings working either way.
+   */
+  private resolveSettingKey(setting: string): string {
+    const settings = this.settings as Record<string, unknown>;
+    if (settings[setting]) {
+      return setting;
+    }
+
+    const capitalized = setting.charAt(0).toUpperCase() + setting.slice(1);
+    return settings[capitalized] ? capitalized : setting;
+  }
+
   getSetting(setting: string, defaultValue: unknown) {
     if (!this.settings) {
       return defaultValue;
@@ -94,17 +112,19 @@ export class RegisterDisplay {
       value: defaultValue,
     };
 
-    if (Boolean(this.settings[setting])) {
-      if (Boolean(this.settings[setting][0]._)) {
+    const key = this.resolveSettingKey(setting);
+
+    if (Boolean(this.settings[key])) {
+      if (Boolean(this.settings[key][0]._)) {
         settingValue.source = '_';
-        settingValue.value = this.settings[setting][0]._;
+        settingValue.value = this.settings[key][0]._;
       } else {
         settingValue.source = '0';
-        settingValue.value = this.settings[setting][0];
+        settingValue.value = this.settings[key][0];
       }
-    } else if (Boolean(this.settings['$'][setting])) {
+    } else if (Boolean(this.settings['$'][key])) {
       settingValue.source = '$';
-      settingValue.value = this.settings['$'][setting];
+      settingValue.value = this.settings['$'][key];
     }
     
     if (setting === 'collectInterval' ||
