@@ -34,7 +34,8 @@
     "electron-devtools-installer": "^4.0.0",
     "electron-vite": "^5.0.0",
     "eslint": "^8.56.0",
-    "eslint-config-google": "^0.14.0"
+    "eslint-config-google": "^0.14.0",
+    "node-gyp": "^12.2.0"
   },
   "dependencies": {
     "@electron-toolkit/eslint-config": "^1.0.2",
