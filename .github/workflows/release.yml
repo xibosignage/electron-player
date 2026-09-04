@@ -98,11 +98,15 @@ jobs:
       - name: 'Setup MSVC Developer Command Prompt'
         uses: ilammy/msvc-dev-cmd@v1
 
+      - name: 'Configure node-gyp for Visual Studio 2022'
+        run: |
+          npm config set msvs_version 2022
+          npm config set vs_installation_preference latest
+        shell: powershell
+
       - name: 'Install Dependencies'
         run: npm ci --verbose
         shell: powershell
-        env:
-          npm_config_msvs_version: 2022
 
       - name: 'Build Windows Package'
         run: npm run make
