@@ -74,9 +74,11 @@ import { registerLocalCommands } from './command/localCommands';
 import { scheduleCriteriaManager } from '../shared/scheduleCriteria/scheduleCriteriaManager';
 import { geoLocationManager } from './common/geoLocationManager';
 import { xmdsMakeScreenshot } from '../shared/utils/xmdsUtil';
+import { ensureScreenshotDir, FaultChannel } from '../shared/utils/screenshotDirectory';
+import { isWayland } from '../shared/utils/displayEnvironment';
 import { DefaultLayout } from './xmds/response/schedule/events/defaultLayout';
 import { OverlayLayout } from './xmds/response/schedule/events/overlayLayout';
-import { Faults } from '../shared/faults/Faults';
+import { Faults, FaultCodes } from '../shared/faults/Faults';
 import Ssp from './common/ssp';
 import SspLayout from './xmds/response/schedule/events/sspLayout';
 import { performCmsTransfer } from './cms/transferCms';
@@ -154,6 +156,14 @@ const consoleMain = createExtendedConsole({
   getLogLevel: () => config.getSetting('logLevel', 'error'),
 });
 const faults = new Faults(db);
+
+// The screenshot code lives in shared/ and cannot import this Faults instance without a
+// circular import, so it is handed this channel to raise and clear faults through.
+const faultChannel: FaultChannel = {
+  report: (code: FaultCodes, reason: string, expires?: string) =>
+    faults.emitter.emit('message', { code, reason, expires }),
+  clear: (code: FaultCodes) => faults.clearByCode(code),
+};
 
 // Replace global console in main
 (globalThis as any).console = consoleMain;
@@ -627,7 +637,7 @@ const initXmrEventHandlers = async function () {
     xmds.collectNow();
   });
   xmr.on('screenShot', async () => {
-    await xmdsMakeScreenshot(xmds, config.getSetting('screenShotSize', 0) ?? 0);
+    await xmdsMakeScreenshot(xmds, config.getSetting('screenShotSize', 0) ?? 0, faultChannel);
     await xmds.notifyStatus();
   });
 
@@ -844,7 +854,7 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
     xmr.start(xmrWebSocketAddress, config.getSetting('xmrCmsKey', 'n/a'));
     
     const makeScreenshot = async () => {
-      await xmdsMakeScreenshot(xmds, config.getSetting('screenShotSize', 0) ?? 0);
+      await xmdsMakeScreenshot(xmds, config.getSetting('screenShotSize', 0) ?? 0, faultChannel);
       await xmds.notifyStatus();
     };
     const screenshotRequested = data.getSetting('screenShotRequested', 0);
@@ -1471,6 +1481,13 @@ const init = async (win: BrowserWindow) => {
     config,
     appConfig,
   });
+
+  // On Wayland the player cannot capture the screen itself, so a user supplied task
+  // writes screenshots into this directory for us to submit. Create it up front and log
+  // the path, so it does not have to be guessed at when setting that task up.
+  if (isWayland()) {
+    console.log(`[MAIN] init > Screenshots will be read from ${ensureScreenshotDir()}`);
+  }
 
   // Set window to fullscreen
   // If dimension and position settings are all "0"
