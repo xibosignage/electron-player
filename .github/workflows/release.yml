@@ -100,8 +100,8 @@ jobs:
 
       - name: 'Configure node-gyp for Visual Studio 2022'
         run: |
-          npm config set msvs_version 2022
-          npm config set vs_installation_preference latest
+          npm config set msvs_version 2022 --global
+          npm config set vs_installation_preference latest --global
         shell: powershell
 
       - name: 'Install Dependencies'
