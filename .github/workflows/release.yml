@@ -92,9 +92,17 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: 'Setup MSBuild'
+        uses: microsoft/setup-msbuild@v2
+        
+      - name: 'Setup MSVC Developer Command Prompt'
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: 'Install Dependencies'
-        run: npm ci
+        run: npm ci --verbose
         shell: powershell
+        env:
+          npm_config_msvs_version: 2022
 
       - name: 'Build Windows Package'
         run: npm run make
