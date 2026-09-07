@@ -38,6 +38,18 @@ export type ProxyConfig = {
   password?: string;
 };
 
+/**
+ * Read a persisted CMS address/key, treating anything that isn't a usable string as unset.
+ *
+ * These are only ever meant to hold strings, but a bad RegisterDisplay parse once wrote
+ * xml2js attribute objects into config.json. A non-string here makes isConfigured() throw on
+ * .trim() and strands the player on the splash screen, so discard it and let the normal
+ * configuration flow take over.
+ */
+function readCmsField(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() !== '' ? value : undefined;
+}
+
 export class Config {
   // Environment
   readonly platform: string;
@@ -117,8 +129,8 @@ export class Config {
       let data = await fs.readFile(this.savePath);
       data = JSON.parse(data);
       this.hardwareKey = data.hardwareKey ?? (await machineId()).substring(0, 40);
-      this.cmsUrl = data.cmsUrl;
-      this.cmsKey = data.cmsKey;
+      this.cmsUrl = readCmsField(data.cmsUrl);
+      this.cmsKey = readCmsField(data.cmsKey);
       this.xmrChannel = data.xmrChannel ?? randomUUID();
       this.macAddress = data.macAddress || this.getMacAddress();
       this.pendingCmsTransfer = data.pendingCmsTransfer ?? null;
@@ -199,10 +211,7 @@ export class Config {
   };
 
   isConfigured() {
-    const isCmsUrlSet = this.cmsUrl !== undefined && this.cmsUrl !== null && this.cmsUrl.trim() !== '';
-    const isCmsKeySet = this.cmsKey !== undefined && this.cmsKey !== null && this.cmsKey.trim() !== '';
-
-    return isCmsUrlSet && isCmsKeySet;
+    return readCmsField(this.cmsUrl) !== undefined && readCmsField(this.cmsKey) !== undefined;
   }
 
   isLicensed() {

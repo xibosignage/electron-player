@@ -22,6 +22,26 @@ import xml2js from 'xml2js';
 import { CommandsCollection } from '../../../shared/command/commandManager';
 
 /**
+ * Text content of a single settings node, or undefined when the node carries no value.
+ *
+ * xml2js only puts an element's text in `_` when the element *also* has attributes; a
+ * text-only element parses to a bare string instead. An element with attributes but no text —
+ * `<newCmsAddress type="string"/>`, which is how the CMS renders an unset string setting —
+ * parses to `{ $: { type: 'string' } }` with no `_` at all, so reading the node itself hands
+ * callers the attribute object rather than a value.
+ */
+function nodeText(node: unknown): string | undefined {
+  if (node === undefined || node === null) return undefined;
+
+  if (typeof node === 'object') {
+    const text = (node as { _?: unknown })._;
+    return typeof text === 'string' ? text : undefined;
+  }
+
+  return String(node);
+}
+
+/**
  * Register Display Response.
  */
 export class RegisterDisplay {
@@ -114,17 +134,19 @@ export class RegisterDisplay {
 
     const key = this.resolveSettingKey(setting);
 
-    if (Boolean(this.settings[key])) {
-      if (Boolean(this.settings[key][0]._)) {
-        settingValue.source = '_';
-        settingValue.value = this.settings[key][0]._;
-      } else {
-        settingValue.source = '0';
-        settingValue.value = this.settings[key][0];
-      }
-    } else if (Boolean(this.settings['$'][key])) {
+    const node = Array.isArray(this.settings[key]) ? this.settings[key][0] : this.settings[key];
+    const text = nodeText(node);
+    const attribute = this.settings['$']?.[key];
+
+    // An element that exists but carries no text means the CMS has no value for this setting,
+    // so fall through to the attribute and then to the default rather than reporting the empty
+    // node as a value.
+    if (text !== undefined && text !== '') {
+      settingValue.source = 'element';
+      settingValue.value = text;
+    } else if (attribute !== undefined && attribute !== '') {
       settingValue.source = '$';
-      settingValue.value = this.settings['$'][key];
+      settingValue.value = attribute;
     }
     
     if (setting === 'collectInterval' ||

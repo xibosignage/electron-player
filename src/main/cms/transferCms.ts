@@ -42,6 +42,14 @@ export interface CmsTransferDeps {
 
 let cmsTransferInProgress = false;
 
+/**
+ * A CMS address/key we're willing to transfer to. A transfer purges the library and
+ * re-registers, so the target has to be a real, non-blank string before any of that starts.
+ */
+export function isValidCmsTarget(value: unknown): value is string {
+  return typeof value === 'string' && value.trim() !== '';
+}
+
 /** Time-boxed best-effort flush of any queued logs/stats to the CMS we're about to leave. */
 async function flushToOldCms(deps: Pick<CmsTransferDeps, 'xmds' | 'db' | 'popStats'>) {
   const { xmds, db, popStats } = deps;
@@ -83,13 +91,30 @@ async function flushToOldCms(deps: Pick<CmsTransferDeps, 'xmds' | 'db' | 'popSta
  * config.pendingCmsTransfer if a previous attempt was interrupted mid-transfer.
  */
 export async function performCmsTransfer(newCmsUrl: string, newCmsKey: string, deps: CmsTransferDeps) {
+  const { config, xmds, manager, mainWindow, db, popStats, setPendingScheduleRefresh } = deps;
+
+  // Never start the destructive path on a target we can't use. An unset newCmsAddress in the
+  // RegisterDisplay response used to arrive here as an xml2js attribute object, which was
+  // truthy at the call site and got persisted into config as a transfer target.
+  if (!isValidCmsTarget(newCmsUrl) || !isValidCmsTarget(newCmsKey)) {
+    console.error('[CmsTransfer] Ignoring transfer request with an invalid CMS address/key', {
+      newCmsUrl,
+      newCmsKey,
+    });
+
+    // Clear any such target already on disk so it isn't retried on every boot.
+    if (config.pendingCmsTransfer) {
+      await config.clearPendingCmsTransfer();
+    }
+
+    return;
+  }
+
   if (cmsTransferInProgress) {
     console.debug('[CmsTransfer] Transfer already in progress, ignoring duplicate request');
     return;
   }
   cmsTransferInProgress = true;
-
-  const { config, xmds, manager, mainWindow, db, popStats, setPendingScheduleRefresh } = deps;
 
   const oldCmsUrl = config.cmsUrl;
   const oldCmsKey = config.cmsKey;
