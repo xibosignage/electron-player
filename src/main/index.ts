@@ -78,7 +78,7 @@ import { OverlayLayout } from './xmds/response/schedule/events/overlayLayout';
 import { Faults } from '../shared/faults/Faults';
 import Ssp from './common/ssp';
 import SspLayout from './xmds/response/schedule/events/sspLayout';
-import { performCmsTransfer } from './cms/transferCms';
+import { isValidCmsTarget, performCmsTransfer } from './cms/transferCms';
 
 /**
  * Extract the layout `code` attribute from an XLF file without fully parsing it.
@@ -1144,8 +1144,19 @@ const mainFunctions = {
     // If a CMS transfer was interrupted (e.g. by a crash) before it could be confirmed, resume
     // targeting the new CMS from the very first boot cycle onwards.
     if (config.pendingCmsTransfer) {
-      config.cmsUrl = config.pendingCmsTransfer.cmsUrl;
-      config.cmsKey = config.pendingCmsTransfer.cmsKey;
+      const pending = config.pendingCmsTransfer;
+
+      if (isValidCmsTarget(pending.cmsUrl) && isValidCmsTarget(pending.cmsKey)) {
+        config.cmsUrl = pending.cmsUrl;
+        config.cmsKey = pending.cmsKey;
+      } else {
+        // Nothing to resume towards, and pointing at it would leave the player unable to
+        // collect. Drop it so this boot proceeds against the CMS we're already configured for.
+        console.error('[Main] Discarding pending CMS transfer with an invalid address/key', {
+          pending,
+        });
+        await config.clearPendingCmsTransfer();
+      }
     }
 
     if (!xmds) {
