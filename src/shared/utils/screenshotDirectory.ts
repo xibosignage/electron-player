@@ -37,21 +37,24 @@ interface LoadedScreenshot {
   modifiedAt: Date;
 }
 
+/** Name of the screenshot directory within the library */
+export const SCREENSHOT_DIR_NAME = 'screenshots';
+
 /**
  * Directory the player reads screenshots from on Wayland, where it cannot capture the
  * screen itself and something the user has set up writes them instead.
- *
- * Sits alongside the media library rather than inside it, because purge and purgeAll
- * operate on the library and would delete it.
  *
  * @returns The absolute path to the screenshot directory
  */
 export function getScreenshotDir(): string {
   const userDataPath = app.getPath('userData');
 
-  return isSnap()
-    ? join(getPlayerDataDir(userDataPath), 'xibo_screenshots')
-    : join(app.getPath('documents'), 'xibo_screenshots');
+  // Mirrors how config.ts resolves the library
+  const library = isSnap()
+    ? join(getPlayerDataDir(userDataPath), 'xibo_library')
+    : join(app.getPath('documents'), 'xibo_library');
+
+  return join(library, SCREENSHOT_DIR_NAME);
 }
 
 /**
