@@ -123,15 +123,32 @@ faultsBC.addEventListener('message', (event) => {
   window.playerAPI.reportFault(faultData);
 });
 
-const runConfigHandler = async (config: ConfigData) => {
+/**
+ * Callback into the main process, resolved once and shared by everything that needs to
+ * re-enter main's startup path — first-boot registration and the config page reopened
+ * from the nav bar both use it.
+ */
+let mainCallback: ((...args: any[]) => Promise<any>) | null = null;
+
+const resolveMainCallback = async () => {
+  if (mainCallback !== null) {
+    return mainCallback;
+  }
+
   const { callbackName } = await window.playerAPI.requestCallback();
-  const mainCallback = async (...args) => {
+  mainCallback = async (...args) => {
     return await window.playerAPI.invokeCallback(callbackName, ...args);
   };
 
+  return mainCallback;
+};
+
+const runConfigHandler = async (config: ConfigData) => {
+  const callback = await resolveMainCallback();
+
   // Show the configure view
   console.log('onConfigure: show configure view');
-  const configHandler = new ConfigHandler(config, mainCallback);
+  const configHandler = new ConfigHandler(config, callback);
 
   configHandler.init();
 
@@ -323,6 +340,9 @@ window.playerAPI.onConfigure(async (config: ConfigData) => {
   if (!config.cmsUrl) {
     runConfigHandler(config);
   } else {
+    // Reached after first-boot registration completes, so this is the point the nav bar
+    // becomes useful. Safe to call again if the player booted configured.
+    initNavBar();
     startApp();
   }
 });
@@ -428,6 +448,12 @@ const hideStatusWindowFn = (reason: string) => {
   console.debug('[Renderer::hideStatusWindow] Hiding status window', { reason });
   $('#status').hide();
   window.playerAPI.notifyStatusWindowVisibility(false);
+
+  // Bring the nav bar back, so closing the status window doesn't leave the screen with
+  // no way back into it.
+  if (navBarEnabled) {
+    showNavBar();
+  }
 };
 
 const showStatusWindowFn = (timeout: number) => {
@@ -438,6 +464,9 @@ const showStatusWindowFn = (timeout: number) => {
     clearTimeout(statusWindowHideTimer);
     statusWindowHideTimer = null;
   }
+
+  // Get the nav bar out of the way — it is fixed across the top, over the status window.
+  hideNavBar();
 
   window.playerAPI.notifyStatusWindowVisibility(true);
   $('#status').show();
@@ -490,8 +519,127 @@ const onStatusWindowKeydown = (event: KeyboardEvent) => {
     return;
   }
 
+  // The config page owns the screen while it is open, and it has text inputs of its own.
+  if ($('#config').is(':visible')) {
+    return;
+  }
+
   console.debug('[Renderer] showStatusWindow event triggered by keypress "i"');
   showStatusWindowFn(60); // Show for 60 seconds
+};
+
+/** How long the nav bar stays on screen after the last cursor movement, in seconds. */
+const NAV_BAR_IDLE_TIMEOUT = 5;
+
+/** Don't re-arm the hide timer more often than this while the cursor is moving. */
+const NAV_BAR_MOUSE_THROTTLE_MS = 250;
+
+let navBarHideTimer: ReturnType<typeof setTimeout> | null = null;
+let navBarLastReveal = 0;
+
+/** False until initNavBar() runs, which it only does on a configured player. */
+let navBarEnabled = false;
+
+/** The config page reopened from the nav bar, kept so repeat opens reuse one instance. */
+let navBarConfigHandler: ConfigHandler | null = null;
+
+const hideNavBar = () => {
+  if (navBarHideTimer !== null) {
+    clearTimeout(navBarHideTimer);
+    navBarHideTimer = null;
+  }
+
+  $('#nav-bar').addClass('nav-bar--hidden');
+};
+
+/**
+ * Reveals the nav bar and arms a fresh idle timer.
+ *
+ * Suppressed while the status window or the config page is open: the bar exists only to
+ * launch those two screens, and it is fixed across the top where it would sit over them.
+ */
+const showNavBar = () => {
+  if ($('#status').is(':visible') || $('#config').is(':visible')) {
+    return;
+  }
+
+  if (navBarHideTimer !== null) {
+    clearTimeout(navBarHideTimer);
+  }
+
+  $('#nav-bar').removeClass('nav-bar--hidden');
+
+  navBarHideTimer = setTimeout(() => {
+    hideNavBar();
+  }, NAV_BAR_IDLE_TIMEOUT * 1000);
+};
+
+/**
+ * mousemove fires far more often than the idle timer needs re-arming, and this runs on
+ * low-powered signage hardware, so throttle the work.
+ */
+const onNavBarMouseMove = () => {
+  const now = Date.now();
+
+  if (now - navBarLastReveal < NAV_BAR_MOUSE_THROTTLE_MS) {
+    return;
+  }
+
+  navBarLastReveal = now;
+  showNavBar();
+};
+
+/**
+ * Reopens the CMS configuration page from the nav bar. Playback keeps running behind it.
+ */
+const openConfigPage = async () => {
+  if ($('#config').is(':visible')) {
+    return;
+  }
+
+  hideNavBar();
+
+  // Read the config fresh rather than reusing window.config, which was loaded at boot
+  // and may predate a CMS-pushed change.
+  const config = await window.apiHandler.getConfig();
+  const callback = await resolveMainCallback();
+
+  if (navBarConfigHandler === null) {
+    navBarConfigHandler = new ConfigHandler(config, callback);
+  } else {
+    navBarConfigHandler.config = config;
+  }
+
+  await navBarConfigHandler.open({
+    onClose: () => {
+      showNavBar();
+    },
+  });
+};
+
+/**
+ * Wires the on-screen nav bar and reveals it once for the startup showing.
+ *
+ * Only called on a configured player: during first-boot registration the config page
+ * already owns the screen and there is nothing for the bar to launch.
+ */
+const initNavBar = () => {
+  navBarEnabled = true;
+
+  document.removeEventListener('mousemove', onNavBarMouseMove);
+  document.addEventListener('mousemove', onNavBarMouseMove);
+
+  $('#nav-status').off('click').on('click', () => {
+    console.debug('[Renderer] showStatusWindow triggered from the nav bar');
+    showStatusWindowFn(60); // Show for 60 seconds
+  });
+
+  $('#nav-config').off('click').on('click', () => {
+    console.debug('[Renderer] config page triggered from the nav bar');
+    openConfigPage();
+  });
+
+  showNavBar();
 };
 
 const init = async () => {
@@ -509,13 +657,12 @@ const init = async () => {
   if (!config.isConfigured) {
     runConfigHandler(config);
   } else {
-    const { callbackName } = await window.playerAPI.requestCallback();
-    const mainCallback = async (...args) => {
-      return await window.playerAPI.invokeCallback(callbackName, ...args);
-    };
+    initNavBar();
+
+    const callback = await resolveMainCallback();
 
     // Run mainCallback
-    await mainCallback({ context: 'renderer' });
+    await callback({ context: 'renderer' });
 
     console.debug('[RENDERER] > startApp(): Called mainCallback');
     await startApp();
