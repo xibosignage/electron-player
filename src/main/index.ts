@@ -493,6 +493,43 @@ const configureIpc = (win) => {
   });
 };
 
+/**
+ * Keys that open the status window from a remote control.
+ *
+ * Only remote keys belong here. The "i" shortcut stays in the renderer because
+ * before-input-event cannot tell whether the user is typing into a text field, and "i"
+ * would otherwise fire while a CMS address is being typed on the config screen.
+ */
+const STATUS_WINDOW_OPEN_KEYS = ['info', 'help'];
+
+/**
+ * Opens the status window when a remote's Info or Help key is pressed.
+ *
+ * Handled here rather than in the renderer because keydown events do not cross iframe
+ * boundaries, and XLR plays every widget inside an iframe. Once focus is inside a playing
+ * layout a renderer listener never sees the key, whereas before-input-event receives it
+ * whichever frame has focus.
+ */
+const configureRemoteInput = (win: BrowserWindow) => {
+  win.webContents.on('before-input-event', (_event, input) => {
+    // Ignore auto-repeat so holding the key down doesn't spam the IPC channel.
+    if (input.type !== 'keyDown' || input.isAutoRepeat) {
+      return;
+    }
+
+    if (!STATUS_WINDOW_OPEN_KEYS.includes(input.key.toLowerCase())) {
+      return;
+    }
+
+    if (!win.isVisible()) {
+      return;
+    }
+
+    console.debug('[MAIN::configureRemoteInput] - Showing status window', { key: input.key });
+    win.webContents.send('showStatusWindow');
+  });
+};
+
 const configureExpress = () => {
   createFileServer(config, mainWindow, faults, handleTrigger);
 };
@@ -1445,6 +1482,9 @@ const mainFunctions = {
 const init = async (win: BrowserWindow) => {
   // Configure IPC
   configureIpc(win);
+
+  // Remote control keys that open the status window
+  configureRemoteInput(win);
 
   // TODO: Configure a new folder for local files.
   configureFileManager();

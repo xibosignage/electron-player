@@ -113,7 +113,7 @@ export interface PlayerAPI {
   onUpdateLoop: (callback: (layouts: InputLayoutType[]) => void) => void;
   onUpdateUniqueLayouts: (callback: (layouts: InputLayoutType[]) => void) => void;
   onUpdateOverlays: (callback: (overlays: InputLayoutType[]) => void) => void;
-  onShowStatusWindow: (callback: (timeout: number) => void) => void;
+  onShowStatusWindow: (callback: (timeout?: number) => void) => void;
   onTriggerWebhook: (callback: (payload: { triggerCode: string; widgetId?: string }) => void) => void;
   onNavigateToLayoutCode: (callback: (layoutCode: string) => void) => void;
   onXlrExpireWidget: (callback: (widgetId: string) => void) => void;

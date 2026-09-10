@@ -80,7 +80,9 @@ export async function registerLocalCommands({
    * then automatically hides it.
    */
   commandManager.registerCommand('showStatusWindow', async (timeout) => {
-    const seconds = Number(timeout) || 60;
+    // A missing or non-numeric timeout becomes NaN here, which the renderer resolves to its
+    // default duration.
+    const seconds = Number(timeout);
 
     if (win.isVisible()) {
       console.log('[CommandManager::showStatusWindow] - Showing status window');

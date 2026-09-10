@@ -47,6 +47,12 @@ form, input, button, label, a {
     background: #565656;
     box-shadow: 3px 4px 5px 0 #8885;
     box-sizing: border-box;
+    /*
+     * Above everything XLR paints. Normal layout containers declare z-index 1,
+     * overlay layouts 999 and the action controller 1001, so without an explicit
+     * value here live content paints over the status window.
+     */
+    z-index: 1500;
 }
 
 #status-content {
@@ -82,6 +88,71 @@ form, input, button, label, a {
 
 #status-close:hover, #status-close:focus {
     background: #000000a6;
+}
+
+/*
+ * On-screen navigation bar.
+ *
+ * Overlays playback so someone standing at the display can reach the
+ * configuration page and the status window without a keyboard. Revealed at
+ * startup and on cursor movement, hidden again once the cursor goes idle
+ * (see showNavBar/hideNavBar in renderer.ts).
+ */
+#nav-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    box-sizing: border-box;
+    background: #000000d9;
+    color: white;
+    /*
+     * body is a window drag region, so the bar has to opt out or a click on it
+     * drags the frameless window instead of pressing the button.
+     */
+    -webkit-app-region: no-drag;
+    transition: transform .2s ease, opacity .2s ease;
+}
+
+#nav-bar.nav-bar--hidden {
+    transform: translateY(-100%);
+    opacity: 0;
+    /* Never intercept clicks aimed at playback while hidden. */
+    pointer-events: none;
+}
+
+.nav-bar__brand {
+    font-size: 1rem;
+    font-weight: 500;
+}
+
+.nav-bar__spacer {
+    flex: 1 1 auto;
+}
+
+#nav-bar button {
+    padding: 8px 18px;
+    border: none;
+    border-radius: 30px;
+    background: #565656;
+    color: white;
+    font-family: 'Maven Pro', sans-serif;
+    font-size: .95rem;
+    cursor: pointer;
+}
+
+#nav-bar button:hover {
+    background: #0E70F6;
+}
+
+#nav-bar button:focus-visible {
+    outline: 2px solid #0E70F6;
+    outline-offset: 2px;
 }
 
 .layout {
@@ -401,6 +472,41 @@ input[type=submit]:disabled {
     cursor: pointer;
 }
 
+.btn--secondary {
+    background-color: #565656;
+}
+
+/*
+ * Claim review: the confirmation step before an activation code claimed from the nav bar
+ * is allowed to move an already-registered display to a different CMS.
+ */
+.claim-review__cms {
+    display: grid;
+    row-gap: 12px;
+    margin: 8px 0 0;
+    text-align: center;
+}
+
+.claim-review__cms dt {
+    font-size: .8rem;
+    color: #BBBBBB;
+}
+
+.claim-review__cms dd {
+    margin: 4px 0 0;
+    overflow-wrap: anywhere;
+}
+
+.claim-review__actions {
+    display: flex;
+    column-gap: 12px;
+    margin-top: 8px;
+}
+
+.claim-review__actions .btn {
+    width: 120px;
+}
+
 .checkbox input[type="checkbox"] {
     display: none;
 }
@@ -490,6 +596,46 @@ form p {
     display: none;
     margin: 0 auto;
     max-width: 1280px;
+}
+
+/*
+ * The configuration page reopened from the nav bar sits over live playback.
+ * The normal centred column has no background of its own, so in this mode it
+ * goes full-bleed and opaque and holds its content at the old width with
+ * padding instead. XLR keeps playing behind it, untouched.
+ */
+#config.config--overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1200;
+    max-width: none;
+    padding: 0 max(0px, calc((100vw - 1280px) / 2));
+    box-sizing: border-box;
+    background: #1D1D1D;
+}
+
+#config-close {
+    position: fixed;
+    top: 8px;
+    right: 8px;
+    z-index: 1300;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: #565656;
+    color: white;
+    font-size: 24px;
+    line-height: 36px;
+    cursor: pointer;
+}
+
+#config-close:hover, #config-close:focus {
+    background: #0E70F6;
 }
 
 #config-loader {

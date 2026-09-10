@@ -28,6 +28,8 @@
     </head>
     <body>
         <div class="page-1 layout" id="config" style="display: none;">
+            <button type="button" id="config-close" style="display: none;"
+                title="Close (Esc)" aria-label="Close configuration">&times;</button>
             <div class="top-header">
                 <h3>Choose how to connect your CMS</h3>
                 <span class="toggle-config">
@@ -195,6 +197,27 @@
                         Retry
                     </button>
                 </div>
+                <!-- Claim review Container -->
+                <!-- Shown when an activation code minted from the nav bar is claimed, and
+                     the CMS that claimed it is not the one this display already uses. -->
+                <div class="claim-review inactive-layout" id="claim-review" style="display: none;">
+                    <h1 id="claim-review-title">Move this display to another CMS?</h1>
+                    <p id="claim-review-message" style="text-align: center; font-size: small;"></p>
+                    <dl class="claim-review__cms">
+                        <div>
+                            <dt>Currently connected to</dt>
+                            <dd id="claim-review-current"></dd>
+                        </div>
+                        <div id="claim-review-new-row">
+                            <dt>Claimed by</dt>
+                            <dd id="claim-review-new"></dd>
+                        </div>
+                    </dl>
+                    <div class="claim-review__actions">
+                        <button type="button" class="btn" id="claim-review-accept">Connect</button>
+                        <button type="button" class="btn btn--secondary" id="claim-review-cancel">Cancel</button>
+                    </div>
+                </div>
                 <!-- No connection Container-->
                 <div class="no-network inactive-layout" style="display: none;">
                     <img src="/assets/images/no-wifi.svg" style="width: 100px" />
@@ -213,6 +236,14 @@
             <button type="button" id="status-close"
                 title="Close (Esc, Backspace or Enter)" aria-label="Close status window">&times;</button>
             <div id="status-content" tabindex="0"></div>
+        </div>
+        <div id="nav-bar" class="nav-bar--hidden" aria-label="Player navigation">
+            <span class="nav-bar__brand">Xibo Player</span>
+            <span class="nav-bar__spacer"></span>
+            <button type="button" id="nav-config"
+                title="Open the player configuration page">Configuration</button>
+            <button type="button" id="nav-status"
+                title="Open the status window (i)">Status</button>
         </div>
         <script type="module" src="/src/renderer.ts"></script>
     </body>
