@@ -456,8 +456,18 @@ const hideStatusWindowFn = (reason: string) => {
   }
 };
 
-const showStatusWindowFn = (timeout: number) => {
-  console.debug('[Renderer::onShowStatusWindow]', { timeout });
+/**
+ * How long the status window stays open, in seconds, when the caller supplies no usable
+ * duration of its own.
+ */
+const STATUS_WINDOW_DEFAULT_TIMEOUT = 60;
+
+const showStatusWindowFn = (timeout?: number) => {
+  // Anything zero or below would close the window the moment it opened, so fall back.
+  // Checked at runtime because the value can arrive over IPC as null or NaN.
+  const seconds = Number(timeout) > 0 ? Number(timeout) : STATUS_WINDOW_DEFAULT_TIMEOUT;
+
+  console.debug('[Renderer::onShowStatusWindow]', { timeout, seconds });
 
   // Cancel any in-flight hide timer so a second show doesn't cut off updates early.
   if (statusWindowHideTimer !== null) {
@@ -477,8 +487,8 @@ const showStatusWindowFn = (timeout: number) => {
   $('#status-content').trigger('focus');
 
   statusWindowHideTimer = setTimeout(() => {
-    hideStatusWindowFn('timeout of ' + timeout + ' seconds elapsed');
-  }, timeout * 1000);
+    hideStatusWindowFn('timeout of ' + seconds + ' seconds elapsed');
+  }, seconds * 1000);
 };
 
 /**
@@ -525,7 +535,7 @@ const onStatusWindowKeydown = (event: KeyboardEvent) => {
   }
 
   console.debug('[Renderer] showStatusWindow event triggered by keypress "i"');
-  showStatusWindowFn(60); // Show for 60 seconds
+  showStatusWindowFn();
 };
 
 /** How long the nav bar stays on screen after the last cursor movement, in seconds. */
