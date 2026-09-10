@@ -80,20 +80,9 @@ jobs:
           snap: ${{ env.SNAP_PATH }}
           release: edge
 
-  # Publishes an SBOM (software bill of materials) alongside the installers: a
-  # machine-readable inventory of every third-party component in this release.
-  # It lets a security or licence question about an already-shipped build be
-  # answered from the release itself, rather than by guessing which versions
-  # happened to be current at the time, and is required for sale into the EU
-  # under the Cyber Resilience Act. Mirrors the approach taken in xibo-cms.
-  #
-  # Deliberately a separate job rather than steps appended to build-linux: if
-  # the scan or the upload ever fails, the installer jobs are untouched and the
-  # release still publishes normally.
-  #
-  # Linux only. The npm tree is platform-independent apart from optional native
-  # prebuilds, so a second near-identical SBOM would only raise questions about
-  # which of the two is authoritative.
+  # Generates a software bill of materials and attaches it to the release, so
+  # the third-party contents of a shipped build can be looked up later. Kept as
+  # a separate job so a failure here can't block the installer uploads.
   sbom:
     runs-on: ubuntu-latest
 
@@ -107,15 +96,12 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      # node_modules has to be present. It is what the npm tree is resolved
-      # from, and where the bundled Electron native libraries are found.
+      # node_modules is what gets scanned, so it has to be installed first.
       - name: 'Install Dependencies'
         run: npm ci
 
-      # Two invocations, as the action emits a single format per run. CycloneDX
-      # is what auditors and scanning tools consume; the Syft native format
-      # retains more detail. Exclusions are read from .syft.yaml at the repo
-      # root, which keeps build output and vendored CI config out of the list.
+      # Two invocations, as the action emits a single format per run.
+      # Exclusions are read from .syft.yaml.
       - name: 'Generate SBOM (CycloneDX)'
         uses: anchore/sbom-action@v0
         with:
@@ -134,9 +120,7 @@ jobs:
           upload-artifact: false
           upload-release-assets: false
 
-      # An SBOM that silently catalogues nothing still parses as valid, and is
-      # worse than no SBOM at all because it reads as "this release contains no
-      # third-party code". Fail loudly instead of attaching a misleading file.
+      # An empty SBOM still parses as valid, so check it before uploading.
       - name: 'Verify SBOM'
         run: |
           CDX="xibo-player-${{ github.event.release.tag_name }}.cdx.json"
@@ -149,7 +133,6 @@ jobs:
             fi
           done
 
-          # Expect several hundred. The tree was 451 npm packages at v4.0.9.
           COUNT=$(grep -o '"pkg:npm/' "$CDX" | wc -l)
           echo "npm components found: $COUNT"
           if [ "$COUNT" -lt 100 ]; then
