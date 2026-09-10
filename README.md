@@ -135,6 +135,39 @@ These configuration files are auto-generated on the first run. You can then edit
 
 ---
 
+### Screenshots on Linux (Wayland)
+
+Wayland does not allow an application to capture the screen without the user approving a dialog, and that dialog cannot be suppressed. On an unattended sign there is nobody to accept it, so the player does not capture the screen on Wayland.
+
+Instead it submits the newest image found in a `screenshots` folder, and you provide something to keep that folder up to date. X11 sessions capture directly and need no setup.
+
+#### 1. Find the folder
+
+The player creates it on startup, inside the media library:
+
+**DEB** - `$HOME/Documents/xibo_library/screenshots`
+
+**Snap** - `$HOME/snap/xibo-player/common/player-data/xibo_library/screenshots`
+
+The exact path is written to the player log on startup. The Documents location follows your XDG user directories, so it can differ.
+
+#### 2. Set up a task to write screenshots there
+
+Any tool and any scheduler will do. The player only looks at the folder contents, never at how they got there. Most desktops provide their own screenshot tool, such as Spectacle on KDE Plasma or `grim` on Sway and Hyprland.
+
+Replacing the same file each time is recommended, rather than adding a new one, so the folder does not grow indefinitely. Writing to a temporary file and moving it into place is also worth doing, as a move is atomic and the player can then never read a partially written file.
+
+#### 3. How the player uses the folder
+
+- The newest image by modification time is submitted. Filenames are not used, so name them however you like
+- Files that are not images are ignored
+- Nothing is ever deleted, so the last screenshot keeps being submitted until a newer one appears
+- Screenshots are excluded from the Local Player API file server and cannot be downloaded over the network
+
+When a screenshot is requested, if the folder is empty or the newest image has not been updated for some time, a fault is raised against the display in the CMS.
+
+---
+
 ### Local Player API
 
 The player runs a local HTTP server on port **9696** (configurable in Display Settings). Sources on the same device can reach it at `http://localhost:9696`. WAN connections can optionally be configured to allow access from other devices on the network; if not enabled, external requests are denied.
