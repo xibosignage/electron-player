@@ -1,0 +1,23 @@
+# Syft configuration, used by the 'sbom' job in .github/workflows/release.yml.
+#
+# The scan targets the repository rather than the packaged output in out/, so
+# that it catalogues both the npm dependency tree and the native libraries
+# Electron ships inside node_modules/electron/dist (ffmpeg, ANGLE, SwiftShader,
+# Vulkan). Scanning the packaged app instead would lose the npm metadata, since
+# node_modules is bundled into app.asar by that point.
+#
+# Exclusion patterns must start with './', '*/' or '**/'; Syft errors out
+# otherwise. They are honoured on Linux but silently ignored on Windows, where
+# resolved paths use backslashes, so a local Windows run reports roughly 60
+# extra components. The SBOM is generated on the Linux runner, so this affects
+# local testing only.
+exclude:
+  # Build output. Both hold a packaged copy of the app, which would otherwise
+  # duplicate every component already catalogued from source.
+  - ./out/**
+  - ./dist/**
+  # Dependencies ship their own CI config inside their published npm tarballs,
+  # which Syft catalogues as GitHub Actions components. Those describe our
+  # dependencies' build pipelines rather than anything the player ships. This
+  # excludes our own .github for the same reason.
+  - ./**/.github/**

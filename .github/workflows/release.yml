@@ -80,6 +80,92 @@ jobs:
           snap: ${{ env.SNAP_PATH }}
           release: edge
 
+  # Publishes an SBOM (software bill of materials) alongside the installers: a
+  # machine-readable inventory of every third-party component in this release.
+  # It lets a security or licence question about an already-shipped build be
+  # answered from the release itself, rather than by guessing which versions
+  # happened to be current at the time, and is required for sale into the EU
+  # under the Cyber Resilience Act. Mirrors the approach taken in xibo-cms.
+  #
+  # Deliberately a separate job rather than steps appended to build-linux: if
+  # the scan or the upload ever fails, the installer jobs are untouched and the
+  # release still publishes normally.
+  #
+  # Linux only. The npm tree is platform-independent apart from optional native
+  # prebuilds, so a second near-identical SBOM would only raise questions about
+  # which of the two is authoritative.
+  sbom:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
+
+      - name: 'Setup Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # node_modules has to be present. It is what the npm tree is resolved
+      # from, and where the bundled Electron native libraries are found.
+      - name: 'Install Dependencies'
+        run: npm ci
+
+      # Two invocations, as the action emits a single format per run. CycloneDX
+      # is what auditors and scanning tools consume; the Syft native format
+      # retains more detail. Exclusions are read from .syft.yaml at the repo
+      # root, which keeps build output and vendored CI config out of the list.
+      - name: 'Generate SBOM (CycloneDX)'
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: xibo-player-${{ github.event.release.tag_name }}.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: 'Generate SBOM (Syft native)'
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: syft-json
+          output-file: xibo-player-${{ github.event.release.tag_name }}.syft.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      # An SBOM that silently catalogues nothing still parses as valid, and is
+      # worse than no SBOM at all because it reads as "this release contains no
+      # third-party code". Fail loudly instead of attaching a misleading file.
+      - name: 'Verify SBOM'
+        run: |
+          CDX="xibo-player-${{ github.event.release.tag_name }}.cdx.json"
+          SYFT="xibo-player-${{ github.event.release.tag_name }}.syft.json"
+
+          for f in "$CDX" "$SYFT"; do
+            if [ ! -s "$f" ]; then
+              echo "::error::$f was not created. The 'Generate SBOM' step above produced no file."
+              exit 1
+            fi
+          done
+
+          # Expect several hundred. The tree was 451 npm packages at v4.0.9.
+          COUNT=$(grep -o '"pkg:npm/' "$CDX" | wc -l)
+          echo "npm components found: $COUNT"
+          if [ "$COUNT" -lt 100 ]; then
+            echo "::error::Only $COUNT npm components found, expected several hundred. The scan did not work. Check the 'Generate SBOM' steps above."
+            exit 1
+          fi
+
+      - name: 'Upload SBOM to Release'
+        run: |
+          gh release upload ${{ github.event.release.tag_name }} \
+            "xibo-player-${{ github.event.release.tag_name }}.cdx.json" \
+            "xibo-player-${{ github.event.release.tag_name }}.syft.json" \
+            --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build-windows:
     runs-on: windows-latest
     steps:
