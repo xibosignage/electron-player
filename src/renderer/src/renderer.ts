@@ -28,6 +28,7 @@ import DefaultLayout from './layout/defaultLayout';
 
 import { ConfigHandler } from './ConfigHandler';
 import { ConfigData, SspAdData } from '@shared/types';
+import { htmlPackageDirName } from '@shared/htmlPackage';
 import logo from './assets/images/logo.png';
 import { DataConnectorManager } from './dataConnector/dataConnectorManager';
 
@@ -283,6 +284,9 @@ export const startApp = async () => {
 
   const xlrOptions: Partial<OptionsType> = {
     appHost: APP_HOST,
+    // Extracted HTML Packages live under the library directory, which the local
+    // file server already serves as static content.
+    htmlPackageUrl: APP_HOST + htmlPackageDirName + '/',
     platform: ConsumerPlatform.ELECTRON, // TODO: XLR should support "electron" as a type (as well as webOS, Tizen, etc)
     config: {
       cmsUrl: config.cmsUrl ?? window.location.origin,

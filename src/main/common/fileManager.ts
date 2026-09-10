@@ -9,6 +9,13 @@ import { FileStore } from "./fileStore";
 import { Config } from "../config/config";
 import { State } from "./state";
 import { LocalFile, RequiredFile } from "./types";
+import {
+    extractPackage,
+    htmlPackageDir,
+    isHtmlPackage,
+    removeAllPackages,
+    removePackage,
+} from "./htmlPackage";
 
 const state = new State();
 const config = new Config(app, process.platform, state);
@@ -65,6 +72,21 @@ export async function downloadAndSaveFile(
 
         fs.writeFileSync(options.localPath, fileData);
         size = fs.statSync(options.localPath).size;
+
+        // An HTML Package is not playable as a downloaded archive — it has to be
+        // extracted before the renderer can point an iframe at it. Treat a
+        // failed extraction as a failed download so the next collection retries.
+        if (isHtmlPackage(file.saveAs)) {
+            const extracted = extractPackage(
+                xiboLibDir,
+                file.saveAs as string,
+                options.localPath,
+            );
+
+            if (!extracted) {
+                throw new Error('Failed to extract HTML package ' + file.saveAs);
+            }
+        }
 
         const localFile: FileManagerFileType = {
             ...file,
@@ -137,6 +159,19 @@ export async function downloadFile(file: FileManagerFileType) {
                 fileName: file.saveAs,
                 method: 'FileManager::downloadFile',
             });
+
+            // The archive is unchanged, but its extracted copy may not be there
+            // — a library cleared by hand, or an interrupted extraction. Put it
+            // back rather than serving a package directory that does not exist.
+            if (isHtmlPackage(file.saveAs) &&
+                !fs.existsSync(htmlPackageDir(xiboLibDir, file.saveAs as string))
+            ) {
+                console.log('[FileManager] Re-extracting HTML package with no extracted copy:', {
+                    fileName: file.saveAs,
+                    method: 'FileManager::downloadFile',
+                });
+                extractPackage(xiboLibDir, file.saveAs as string, localPath);
+            }
 
             // Keep metadata columns (e.g. code) in sync without re-downloading.
             if (file.code !== undefined && existing.code !== file.code) {
@@ -365,6 +400,11 @@ export function purge(purgeList: PurgeItemType[]) {
             }
         }
 
+        // An HTML Package also has its extracted directory to clear.
+        if (isHtmlPackage(item.storedAs)) {
+            removePackage(xiboLibDir, item.storedAs);
+        }
+
         // File is gone from disk (either just deleted, or was never there), safe to remove DB record.
         store.deleteByStoredAs(item.storedAs);
 
@@ -405,6 +445,9 @@ export async function purgeAll() {
             // File is confirmed gone from disk (deleted just now, or was never stored), safe to remove DB record
             store.deleteByStoredAs(file.name);
         }
+
+        // Drop every extracted HTML Package along with the archives.
+        removeAllPackages(xiboLibDir);
 
         if (failed.length > 0) {
             console.error('[FileManager] purgeAll: some files could not be deleted from disk and were kept in the database', {
