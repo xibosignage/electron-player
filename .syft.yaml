@@ -1,0 +1,13 @@
+# Syft configuration, used by the 'sbom' job in .github/workflows/release.yml.
+#
+# Patterns must start with './', '*/' or '**/'. They are silently ignored on
+# Windows, where resolved paths use backslashes, so a local run on Windows
+# reports extra components.
+exclude:
+  # Build output, which holds a packaged copy of the app and would duplicate
+  # everything already catalogued from source.
+  - ./out/**
+  - ./dist/**
+  # Dependencies ship their own CI config inside their npm tarballs, which Syft
+  # catalogues as GitHub Actions components.
+  - ./**/.github/**
