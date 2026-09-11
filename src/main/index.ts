@@ -1606,9 +1606,11 @@ app.whenReady().then(() => {
   });
 
   // Install dev tools extension.
-  installExtension(JQUERY_DEBUGGER)
-    .then((ext) => console.log(`Added Extension:  ${ext.name}`))
-    .catch((err) => console.log('An error occurred: ', err));
+  if (is.dev) {
+    installExtension(JQUERY_DEBUGGER)
+      .then((ext) => console.log(`Added Extension:  ${ext.name}`))
+      .catch((err) => console.log('An error occurred: ', err));
+  }
 
   // Start with the desktop session on real installs, as the legacy player's desktop entry did.
   if (!is.dev) {
