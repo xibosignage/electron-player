@@ -34,6 +34,9 @@ export enum FaultCodes {
     FaultPicturePropertySetFailed = 6003,
     FaultPicturePropertyInvalidValue = 6004,
     FaultPicturePropertyValueOutOfRange = 6005,
+
+    FaultScreenshotStale = 7000,
+    FaultScreenshotMissing = 7001,
 }
 
 export interface FaultsEvents {
@@ -109,6 +112,22 @@ export class Faults {
             this._invalidateCache();
         } catch (err) {
             console.warn(`[Faults::clearDB] - Failed to clear faults DB (caller: ${caller})`, err);
+        }
+    }
+
+    /**
+     * Clear every fault with the given code, for conditions the player can see have been
+     * resolved. Faults otherwise persist until they expire, which would leave the CMS
+     * reporting a problem that has already fixed itself.
+     *
+     * @param code The fault code to clear
+     */
+    clearByCode(code: FaultCodes) {
+        try {
+            this.db.deleteFaultsByCode(String(code));
+            this._invalidateCache();
+        } catch (err) {
+            console.warn('[Faults::clearByCode] - Failed to clear faults', { code, err });
         }
     }
 

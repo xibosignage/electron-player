@@ -29,6 +29,9 @@ import { Config } from './config/config';
 import { Faults } from '../shared/faults/Faults';
 import { scheduleCriteriaManager } from '../shared/scheduleCriteria/scheduleCriteriaManager';
 import { realtimeDataStore } from './dataConnector/realtimeDataStore';
+import { resolve, sep } from 'path';
+
+import { SCREENSHOT_DIR_NAME } from '../shared/utils/screenshotDirectory';
 
 const cors = (corsImport as any).default ?? corsImport;
 const port = 9696;
@@ -68,12 +71,38 @@ export async function createFileServer(
 
   // Optional: list all files if /files/ is accessed directly
   server.get('/files', (_req, res) => {
-    const files = fsSync.readdirSync(xiboLibDir);
+    const files = fsSync.readdirSync(xiboLibDir).filter(name => name !== SCREENSHOT_DIR_NAME);
     res.json({
       files,
       count: files.length,
       message: 'Use /files/<filename> to access individual files',
     });
+  });
+
+  // Keep screenshots off the network. Compares the resolved path, since matching the URL
+  // prefix can be bypassed. Must come before the static handler
+  const screenshotsDir = resolve(xiboLibDir, SCREENSHOT_DIR_NAME);
+
+  server.use('/files', (req, res, next) => {
+    let requested: string;
+
+    try {
+      requested = resolve(xiboLibDir, '.' + decodeURIComponent(req.path));
+    } catch {
+      // Malformed percent encoding
+      return res.sendStatus(400);
+    }
+
+    // Windows paths are case insensitive, so the comparison has to be too
+    const [target, blocked] = process.platform === 'win32'
+      ? [requested.toLowerCase(), screenshotsDir.toLowerCase()]
+      : [requested, screenshotsDir];
+
+    if (target === blocked || target.startsWith(blocked + sep)) {
+      return res.sendStatus(404);
+    }
+
+    return next();
   });
 
   server.use('/files', express.static(xiboLibDir));

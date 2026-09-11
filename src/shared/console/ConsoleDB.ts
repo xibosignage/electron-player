@@ -222,6 +222,24 @@ export class ConsoleDB {
     this.db.prepare('DELETE FROM logs').run();
   }
 
+  /**
+   * Remove every fault carrying the given code, for conditions that resolve themselves.
+   * Once cleared the fault stops being reported, and the CMS drops it on the next
+   * collection because it is no longer in the submitted list.
+   *
+   * @param code The fault code to clear
+   */
+  deleteFaultsByCode(code: string) {
+    if (!code) {
+      return;
+    }
+
+    const result = this.db
+      .prepare(`DELETE FROM logs WHERE category = 'Fault' AND code = ?`)
+      .run(code);
+    this._count = Math.max(0, this._count - result.changes);
+  }
+
   deleteLogsByCategory(logCategory: LogCategoryType) {
     if (!logCategory) {
       return;
