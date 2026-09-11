@@ -54,6 +54,8 @@ import {
   setIsPurging,
   findLayoutFileByCode,
   getFileByName,
+  isResourceUpToDate,
+  resourceFileName,
 } from './common/fileManager';
 import Schedule from './xmds/response/schedule/schedule';
 import ScheduleManager from './common/scheduleManager';
@@ -955,6 +957,13 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
           console.log('[Xmds::on("requiredFiles")] > Downloading: ' + file.saveAs)
           return await downloadFile((file as unknown) as FileManagerFileType);
         } else if (file.type === 'resource') {
+          // Resources carry no md5, so the CMS's updated timestamp is what decides
+          // whether ours is stale.
+          if (isResourceUpToDate(file)) {
+            console.debug('[Xmds::on("requiredFiles")] > Resource up to date, skipping: ' + resourceFileName(file));
+            return null;
+          }
+
           const resourceHtml = await xmds.getResource(file);
           return await downloadResourceFile((file as unknown) as FileManagerFileType, resourceHtml);
         } else if (file.type === 'widget') {
@@ -994,15 +1003,20 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
       purge(data.purge);
     }
 
-    // Count how many of the required files are present in local storage
+    // Count how many of the required files are present in local storage.
+    // Failed downloads keep their row, so exclude them by status or they count as downloaded.
     const inventory = getDownloadedFiles();
-    const inventoryNames = new Set(inventory.map(f => (f as { name: string }).name));
+    const inventoryNames = new Set(
+      inventory
+        .filter(f => (f as { status: string }).status !== 'failed')
+        .map(f => (f as { name: string }).name)
+    );
     config.state.requiredFilesCount = data.files.length;
 
     // Each file type is stored under a different name in the DB. Find which ones are not yet present
     const missingFiles = data.files.filter(file => {
       if (file.type === 'resource') {
-        return !inventoryNames.has(`layout_${file.layoutId}_region_${file.regionId}_media_${file.mediaId}.html`);
+        return !inventoryNames.has(resourceFileName(file));
       }
       if (file.type === 'widget') return !inventoryNames.has(`${file.id}.json`);
       return !inventoryNames.has(file.saveAs ?? '');
@@ -1012,7 +1026,7 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
 
     // Use the same filename that was looked up in the inventory so the name is meaningful
     config.state.missingFiles = missingFiles.map(file => {
-      if (file.type === 'resource') return `layout_${file.layoutId}_region_${file.regionId}_media_${file.mediaId}.html`;
+      if (file.type === 'resource') return resourceFileName(file);
       if (file.type === 'widget') return `${file.id}.json`;
       return file.saveAs ?? `${file.type}:${file.id}`;
     });
@@ -1335,7 +1349,7 @@ const mainFunctions = {
         for (const connector of connectors) {
           const file = getFileByName(connector.js);
 
-          if (!file || file.status !== 'success' || !file.localPath || !file.md5) {
+          if (!file || file.status === 'failed' || !file.localPath || !file.md5) {
             // Script not downloaded yet — it arrives via the normal
             // required-files flow; the next assessment tick will retry.
             console.debug('[MAIN::manager.on("dataConnectors")] > Connector script not ready, skipping', {

@@ -3,6 +3,7 @@ import fs from 'fs';
 import { join } from 'path';
 import { app } from "electron";
 import * as cheerio from 'cheerio';
+import { DateTime } from 'luxon';
 import 'dotenv/config';
 
 import { FileStore } from "./fileStore";
@@ -119,7 +120,7 @@ export async function downloadFile(file: FileManagerFileType) {
     // Check if file already exists
     if (fs.existsSync(localPath)) {
         const existing = store.db.prepare(`SELECT * FROM files WHERE name = ?`).get(file.saveAs) as FileManagerFileType | undefined;
-        if (existing && existing.status === 'success') {
+        if (existing && existing.status !== 'failed') {
             if (existing.md5 !== file.md5) {
                 // Update local file and file meta data
                 console.log(`[FileManager] Updating existing file: ${file.saveAs}`);
@@ -166,6 +167,76 @@ export function getFileByName(name: string): LocalFile | undefined {
     return store.db.prepare(`SELECT * FROM files WHERE name = ?`).get(name) as LocalFile | undefined;
 }
 
+/**
+ * Returns true if the named file downloaded successfully.
+ *
+ * Files that failed to download keep their row in the table, so the status is what
+ * decides. Only 'failed' rules a file out; 'updated' is as healthy as 'success'.
+ */
+export function isFileDownloaded(name: string): boolean {
+    const file = getFileByName(name);
+
+    return file !== undefined && file.status !== 'failed';
+}
+
+/**
+ * Returns true if any file is recorded as failed.
+ *
+ * Used to force a RequiredFiles refresh, since the CMS CRC does not change when a
+ * download fails here.
+ */
+export function hasFailedDownloads(): boolean {
+    return store.db.prepare(`SELECT 1 FROM files WHERE status = 'failed' LIMIT 1`).get() !== undefined;
+}
+
+/**
+ * The name a resource is stored under locally.
+ */
+export function resourceFileName(file: Pick<RequiredFile, 'layoutId' | 'regionId' | 'mediaId'>): string {
+    return `layout_${file.layoutId}_region_${file.regionId}_media_${file.mediaId}.html`;
+}
+
+/**
+ * Reads a lastDownloaded value from the files table.
+ */
+function parseLastDownloaded(value?: string): DateTime | null {
+    if (!value) {
+        return null;
+    }
+
+    const iso = DateTime.fromISO(value, { zone: 'utc' });
+
+    if (iso.isValid) {
+        return iso;
+    }
+
+    const sql = DateTime.fromSQL(value, { zone: 'utc' });
+
+    return sql.isValid ? sql : null;
+}
+
+/**
+ * Returns true if the cached resource is newer than the CMS last changed it.
+ *
+ * Resources carry no md5, so this timestamp is all there is to compare.
+ */
+export function isResourceUpToDate(file: RequiredFile): boolean {
+    const row = getFileByName(resourceFileName(file));
+
+    if (!row || row.status === 'failed') {
+        return false;
+    }
+
+    const updatedAt = Number(file.updated);
+    const cachedAt = parseLastDownloaded(row.lastDownloaded);
+
+    if (!Number.isFinite(updatedAt) || cachedAt === null) {
+        return false;
+    }
+
+    return cachedAt.toSeconds() > updatedAt;
+}
+
 export function localFileUrlFromFileName(fileName: string) {
     return encodeURIComponent(fileName);
 }
@@ -210,8 +281,7 @@ export function parseHtmlResourceLinks(resourceHtml: string) {
 }
 
 export async function downloadResourceFile(file: FileManagerFileType, resourceHtml: string) {
-    const resourceSaveAs = `layout_${file.layoutId}_region_${file.regionId}_media_${file.mediaId}`;
-    const saveAs = resourceSaveAs + '.html';
+    const saveAs = resourceFileName(file);
     const localPath = join(xiboLibDir, saveAs);
     let status: FileManagerFileType['status'] = 'success';
     let size = 0;
@@ -302,7 +372,7 @@ export async function downloadWidgetDataFile(file: FileManagerFileType, widgetDa
 
 export function findLayoutFileByCode(code: string): { layoutId: number; name: string } | null {
     const file = store.db.prepare(
-        `SELECT fileId, name FROM files WHERE type = 'layout' AND status = 'success' AND code = ? LIMIT 1`
+        `SELECT fileId, name FROM files WHERE type = 'layout' AND status != 'failed' AND code = ? LIMIT 1`
     ).get(code) as Pick<LocalFile, 'fileId' | 'name'> | undefined;
 
     if (!file) {

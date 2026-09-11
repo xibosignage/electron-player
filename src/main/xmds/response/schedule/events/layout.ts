@@ -1,4 +1,4 @@
-import { getFileByName, getLayoutFile } from "../../../../common/fileManager";
+import { isFileDownloaded, getLayoutFile } from "../../../../common/fileManager";
 import { criteria, CriteriaResponseType, CriteriaType } from "../criteria";
 import { ConsoleDB } from "../../../../../shared/console/ConsoleDB";
 
@@ -143,7 +143,7 @@ export class Layout implements LayoutInterface {
         // All dependant media files must also be present
         if (this.dependants.length > 0) {
             for (const dependant of this.dependants) {
-                if (!getFileByName(dependant)) {
+                if (!isFileDownloaded(dependant)) {
                     return false;
                 }
             }
