@@ -153,6 +153,10 @@ export class ConfigHandler {
         manualSubmitButton!.removeEventListener('click', this.handleManualSubmitButton);
         manualSubmitButton!.addEventListener('click', this.handleManualSubmitButton);
 
+        for (const field of ConfigHandler.manualFields) {
+            ConfigHandler.manualInput(field.name)?.addEventListener('input', this.onManualFieldInput);
+        }
+
         this.$claimReview = document.getElementById('claim-review');
         this.$claimReviewTitle = document.getElementById('claim-review-title');
         this.$claimReviewMessage = document.getElementById('claim-review-message');
@@ -173,26 +177,43 @@ export class ConfigHandler {
         this.setConfigDetails();
     }
 
+    /**
+     * The manual tab's fields, in validation order. Only the first problem is shown, so
+     * this is what decides which one.
+     */
+    private static readonly manualFields = [
+        { name: 'display-name', label: 'Display Name' },
+        { name: 'cms-address', label: 'CMS Address' },
+        { name: 'cms-key', label: 'CMS Key' },
+    ] as const;
+
+    private static manualInput(name: string) {
+        return <HTMLInputElement>document.getElementsByName(name)[0];
+    }
+
     readonly handleManualSubmitButton = (evt: Event) => {
         evt.preventDefault();
         const $submitBtn = evt.target as HTMLInputElement;
 
-        const cmsKey = (<HTMLInputElement>document.getElementsByName('cms-key')[0]).value;
-        const displayName = (<HTMLInputElement>document.getElementsByName('display-name')[0]).value;
-        const cmsUrl = (<HTMLInputElement>document.getElementsByName('cms-address')[0]).value;
+        const cmsKey = ConfigHandler.manualInput('cms-key').value.trim();
+        const displayName = ConfigHandler.manualInput('display-name').value.trim();
+        const cmsUrl = ConfigHandler.manualInput('cms-address').value.trim();
 
         // Nothing was edited, so there is nothing to register. Skip the round trip and
         // the reload it would trigger, and just go back to playback.
-        if (this.reopened && this.isSameCms(cmsUrl, cmsKey) && displayName === this.config.displayName) {
+        if (this.reopened && this.isSameCms(cmsUrl, cmsKey) && displayName === (this.config.displayName ?? '').trim()) {
             console.debug('[ConfigHandler] Submitted with no changes, closing without re-registering');
             this.close();
+            return;
+        }
+
+        if (!this.validateManualForm()) {
             return;
         }
 
         $submitBtn.disabled = true;
         this.$configPanelLoader?.style.setProperty('display', 'block');
         // this.$configPanelManual!.style.display = 'none';
-        this.$configPanelError!.textContent = '';
 
         // Check connection.
         this.config.cmsKey = cmsKey;
@@ -205,6 +226,65 @@ export class ConfigHandler {
                 this.$configPanelLoader?.style.setProperty('display', 'none');
                 this.$configPanelManual?.style.setProperty('display', 'grid');
             });
+    };
+
+    /**
+     * Reports the first problem with the manual tab, marking the field that caused it.
+     *
+     * @returns true when the form is safe to submit.
+     */
+    private validateManualForm() {
+        this.clearManualErrors();
+
+        for (const field of ConfigHandler.manualFields) {
+            const $input = ConfigHandler.manualInput(field.name);
+
+            if ($input.value.trim() === '') {
+                this.failManualField($input, `${field.label} is required.`);
+                return false;
+            }
+        }
+
+        const $cmsAddress = ConfigHandler.manualInput('cms-address');
+
+        if (!ConfigHandler.isValidCmsUrl($cmsAddress.value.trim())) {
+            this.failManualField($cmsAddress, 'CMS Address must include http:// or https://');
+            return false;
+        }
+
+        return true;
+    }
+
+    // True for an absolute address with an http or https scheme.
+    private static isValidCmsUrl(value: string) {
+        try {
+            const { protocol } = new URL(value);
+
+            return protocol === 'http:' || protocol === 'https:';
+        } catch {
+            return false;
+        }
+    }
+
+    private failManualField($input: HTMLInputElement, message: string) {
+        this.$configPanelError!.textContent = message;
+        $input.classList.add('input--invalid');
+        $input.focus();
+    }
+
+    private clearManualErrors() {
+        this.$configPanelError!.textContent = '';
+
+        for (const field of ConfigHandler.manualFields) {
+            ConfigHandler.manualInput(field.name)?.classList.remove('input--invalid');
+        }
+    }
+
+    // Drops a stale message once the user starts correcting the field it refers to.
+    private readonly onManualFieldInput = (event: Event) => {
+        (event.target as HTMLInputElement).classList.remove('input--invalid');
+
+        this.$configPanelError!.textContent = '';
     };
 
     async handleRegisterDisplayCallback() {
@@ -317,7 +397,7 @@ export class ConfigHandler {
      */
     private isSameCms(cmsUrl: string, cmsKey: string) {
         return ConfigHandler.normaliseCmsUrl(cmsUrl) === ConfigHandler.normaliseCmsUrl(this.config.cmsUrl)
-            && cmsKey === this.config.cmsKey;
+            && cmsKey.trim() === (this.config.cmsKey ?? '').trim();
     }
 
     /** Moves claimed CMS details onto the config, ready to register with. */
@@ -536,7 +616,7 @@ export class ConfigHandler {
         (<HTMLInputElement>document.getElementsByName('cms-address')[0]).value = this.config.cmsUrl ?? '';
         (<HTMLInputElement>document.getElementsByName('cms-key')[0]).value = this.config.cmsKey ?? '';
 
-        this.$configPanelError!.textContent = '';
+        this.clearManualErrors();
 
         // A way back to playback. Not offered during first-boot registration, where
         // there is nothing to go back to.
