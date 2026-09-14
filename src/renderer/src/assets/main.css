@@ -444,6 +444,11 @@ input[type="text"]:focus, input[type="password"]:focus {
     box-shadow: none;
 }
 
+/* Marks the field that blocked a manual configuration submit. */
+input[type="text"].input--invalid, input[type="password"].input--invalid {
+    border: 1px solid #ff4500;
+}
+
 input[type=submit] {
     width: 100px;
     padding: 10px;
