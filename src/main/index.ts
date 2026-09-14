@@ -558,7 +558,7 @@ const configureFileManager = () => {
 };
 
 let mainWindow: BrowserWindow;
-const createWindow = () => {
+const createWindow = async () => {
   mainWindow = new BrowserWindow({
     fullscreen: true,
     show: false,
@@ -590,19 +590,18 @@ const createWindow = () => {
 
   mainWindow.setMenuBarVisibility(false);
 
+  // Finish setting up main before the renderer starts loading.
+  await init(mainWindow);
+
   console.debug('[MAIN] > Loading renderer', {
     isDev: is.dev,
     ELECTRON_RENDERER_URL: process.env['ELECTRON_RENDERER_URL'],
   });
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL']).then(() => {
-      init(mainWindow);
-    });
+    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL']);
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html')).then(() => {
-      init(mainWindow);
-    });
+    mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
   }
 };
 
