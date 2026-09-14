@@ -31,6 +31,7 @@ import Schedule from "./response/schedule/schedule";
 import { LogsThreshold, RequiredFile } from '../common/types';
 import { ConsoleDB } from '../../shared/console/ConsoleDB';
 import { escapeStringForXml, submitLogsXmlString } from '../common/parser';
+import { hasFailedDownloads } from '../common/fileManager';
 import { AxiosErrorCodes, handleXmdsError } from '../common/error/XmdsError';
 import { commandManager } from '../../shared/command/commandManager';
 import { StateData } from '../common/state';
@@ -332,7 +333,9 @@ export class Xmds {
   }
 
   async requiredFiles(crc32: string) {
-      if (crc32 == null || crc32 != this.checkRf) {
+      // The CRC only tracks changes made in the CMS, so it stays the same when a download
+      // fails here. Failed downloads are checked separately, or they would never be retried.
+      if (crc32 == null || crc32 != this.checkRf || hasFailedDownloads()) {
       const method = 'requiredFiles';
 
       if (this.isRateLimited(method)) {

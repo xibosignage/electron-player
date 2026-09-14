@@ -50,6 +50,7 @@ export interface RequiredFile {
     regionId?: number;
     mediaId?: number;
     code?: string;
+    updated?: string;
     updateInterval?: number;
     width?: number;
     height?: number;
