@@ -80,6 +80,75 @@ jobs:
           snap: ${{ env.SNAP_PATH }}
           release: edge
 
+  # Generates a software bill of materials and attaches it to the release, so
+  # the third-party contents of a shipped build can be looked up later. Kept as
+  # a separate job so a failure here can't block the installer uploads.
+  sbom:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
+
+      - name: 'Setup Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # node_modules is what gets scanned, so it has to be installed first.
+      - name: 'Install Dependencies'
+        run: npm ci
+
+      # Two invocations, as the action emits a single format per run.
+      # Exclusions are read from .syft.yaml.
+      - name: 'Generate SBOM (CycloneDX)'
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: xibo-player-${{ github.event.release.tag_name }}.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: 'Generate SBOM (Syft native)'
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: syft-json
+          output-file: xibo-player-${{ github.event.release.tag_name }}.syft.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      # An empty SBOM still parses as valid, so check it before uploading.
+      - name: 'Verify SBOM'
+        run: |
+          CDX="xibo-player-${{ github.event.release.tag_name }}.cdx.json"
+          SYFT="xibo-player-${{ github.event.release.tag_name }}.syft.json"
+
+          for f in "$CDX" "$SYFT"; do
+            if [ ! -s "$f" ]; then
+              echo "::error::$f was not created. The 'Generate SBOM' step above produced no file."
+              exit 1
+            fi
+          done
+
+          COUNT=$(grep -o '"pkg:npm/' "$CDX" | wc -l)
+          echo "npm components found: $COUNT"
+          if [ "$COUNT" -lt 100 ]; then
+            echo "::error::Only $COUNT npm components found, expected several hundred. The scan did not work. Check the 'Generate SBOM' steps above."
+            exit 1
+          fi
+
+      - name: 'Upload SBOM to Release'
+        run: |
+          gh release upload ${{ github.event.release.tag_name }} \
+            "xibo-player-${{ github.event.release.tag_name }}.cdx.json" \
+            "xibo-player-${{ github.event.release.tag_name }}.syft.json" \
+            --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build-windows:
     runs-on: windows-latest
     steps:
