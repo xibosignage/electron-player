@@ -48,7 +48,12 @@ const apiHandler: ApiHandler = {
     const response = await ipcRenderer.invoke('xmds-try-register', config);
 
     if (!response.success && response.error) {
-      throw new Error(response.error.message);
+      // Main sends Errors, plain objects and bare strings, so read all three shapes.
+      const reason = typeof response.error === 'string'
+        ? response.error
+        : response.error.message;
+
+      throw new Error(reason || 'Could not connect to the CMS.');
     }
 
     return response.data;
