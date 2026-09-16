@@ -23,7 +23,7 @@
  * first thing to suspect: raise MAJOR instead and leave MINOR within 255.
  */
 const MSI_VERSION_MAJOR = 4;
-const MSI_VERSION_MINOR = 500;
+const MSI_VERSION_MINOR = 408;
 
 /**
  * Inherited from the legacy player's Advanced Installer project. This single

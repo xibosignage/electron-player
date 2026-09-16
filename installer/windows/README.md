@@ -13,14 +13,21 @@ signing is in `WINDOWS-PLAYER-CODE-SIGNING.md`.
 | `xibo-player.wxs` | The installer itself: product identity, upgrade rule, files, shortcuts |
 | `msi-config.cjs` | The product identity and version numbers, in one reviewable place |
 | `MakerMsi.cjs` | Electron Forge maker that runs `wix build` over the packaged app |
+| `licenseRtf.cjs` | Converts the repository `LICENSE` into the RTF the licence page needs |
 
 ## Building it
 
-Needs the .NET SDK and the WiX toolset, which is a .NET global tool:
+Needs the .NET SDK, the WiX toolset (a .NET global tool) and the WiX UI
+extension, which supplies the installer dialogs:
 
 ```
-dotnet tool install --global wix --version "[6.0.0,7.0.0)"
+dotnet tool install --global wix --version 6.0.0
+wix extension add -g WixToolset.UI.wixext/6.0.0
 ```
+
+Both versions must match. Asking for the extension without one resolves to the
+newest release, which is a later major and is rejected at build time. If the
+extension is missing the maker says so before WiX gets a chance to fail opaquely.
 
 Then, on Windows:
 
@@ -47,6 +54,24 @@ its own autostart entry, but only once it has launched. A silent upgrade with no
 signed in removes the legacy player's Start-up shortcut and would otherwise leave
 nothing to start the new one.
 
+## The dialogs
+
+The package exists to be deployed silently, where no dialog is ever shown. The UI is
+for the other case: somebody running the MSI by hand on a screen. It uses WiX's
+`WixUI_InstallDir` set — welcome, licence, install folder, confirm, progress, finish
+— chosen over the shorter `WixUI_Minimal` because it lets an administrator retarget
+the install folder, which matters on signage machines with a small system drive.
+
+The licence page shows the repository's own `LICENSE`, converted to RTF during the
+build rather than committed as a second copy, so the two cannot drift apart.
+
+`WixUI_InstallDir` sets `ARPNOMODIFY` itself. That is why `xibo-player.wxs` sets only
+`ARPNOREPAIR`: defining either twice is a build error, not a warning.
+
+The dialogs are unbranded. WiX's default banner and background bitmaps are generic;
+replacing them needs a 493x58 and a 493x312 image and the `WixUIBannerBmp` and
+`WixUIDialogBmp` variables.
+
 ## Not done yet
 
 - **Removing a per-user Squirrel install.** A screen that received the interim
@@ -54,12 +79,7 @@ nothing to start the new one.
   installed twice. A machine-wide MSI runs as SYSTEM and cannot reach a user's
   `%LOCALAPPDATA%`, so this belongs in the player's own first-run migration rather
   than in a custom action here.
-- **An icon.** `resources/` holds only `icon.png`; there is no `.ico`, so neither
-  the executable nor the Add/Remove Programs entry carries the Xibo icon.
-- **Installer UI.** Double-clicking the MSI installs it after the elevation prompt
-  with no confirmation step. That suits silent deployment, which is the point of
-  this package, but a `WixUI_Minimal` dialog set would be friendlier for manual
-  installs.
+- **Branded installer dialogs.** See above; the layout is WiX's stock one.
 - **The upgrade test.** Nothing here has been run against a fielded legacy install.
   Section 7 of `WINDOWS-PLAYER-PACKAGING.md` describes the test that proves the
   replacement, the version numbering and the display-identity migration together.

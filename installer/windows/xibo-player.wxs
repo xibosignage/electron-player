@@ -12,6 +12,8 @@
     ProductName     "Xibo Player"
     Manufacturer    "Xibo Signage Ltd"
     UpgradeCode     443E7578-7FEF-47E8-9078-04DDA8B96F3A
+    IconFile        resources/windows/icon.ico, the shared application icon
+    LicenseRtf      The repository LICENSE, converted to RTF at build time
 
   All five come from installer/windows/msi-config.cjs, which is where they are
   explained and where they should be changed.
@@ -21,7 +23,8 @@
   manufacturer identical is what lets this package replace a fielded legacy
   install in place rather than sitting beside it in Add/Remove Programs.
 -->
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
 
   <Package
     Name="$(var.ProductName)"
@@ -54,10 +57,43 @@
 
     <MediaTemplate EmbedCab="yes" />
 
-    <!-- Matches the legacy package: no Repair or Change in Add/Remove Programs. -->
+    <!--
+      Matches the legacy package: no Repair or Change in Add/Remove Programs.
+      ARPNOMODIFY is not set here because the WixUI_InstallDir dialog set below
+      already sets it, and defining it twice is a build error.
+    -->
     <Property Id="ARPNOREPAIR" Value="1" />
-    <Property Id="ARPNOMODIFY" Value="1" />
     <Property Id="ARPURLINFOABOUT" Value="https://xibosignage.com" />
+
+    <!--
+      Where the product landed, for inventory and deployment tools that read it
+      back. The legacy package reports one and the first build of this one did not,
+      which a test upgrade caught.
+
+      Set in the sequence rather than as a plain Property because INSTALLFOLDER is
+      not resolved until costing has run; declared as a Property it is silently
+      empty.
+    -->
+    <SetProperty Id="ARPINSTALLLOCATION" Value="[INSTALLFOLDER]" After="CostFinalize" />
+
+    <!--
+      The same icon the application itself carries, so the Add/Remove Programs
+      entry is recognisably the player rather than a blank Windows Installer box.
+    -->
+    <Icon Id="ProductIcon" SourceFile="$(var.IconFile)" />
+    <Property Id="ARPPRODUCTICON" Value="ProductIcon" />
+
+    <!--
+      This package is built to be deployed silently, where no dialog is ever
+      shown. The dialog set is for the other case: somebody running the MSI by
+      hand on a screen. WixUI_InstallDir is the set that lets them choose the
+      install folder, which matters on signage machines with a small system
+      drive, and it gives the confirmation step a bare package would skip.
+
+      Needs the WiX UI extension in the build: see installer/windows/README.md.
+    -->
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.LicenseRtf)" />
 
     <StandardDirectory Id="ProgramFiles6432Folder">
       <Directory Id="ManufacturerFolder" Name="$(var.Manufacturer)">

@@ -5,10 +5,32 @@ const path = require('node:path');
 
 const {MakerBase} = require('@electron-forge/maker-base');
 
+const {writeLicenseRtf} = require('./licenseRtf.cjs');
 const {MANUFACTURER, PRODUCT_NAME, UPGRADE_CODE, msiVersion} =
     require('./msi-config.cjs');
 
+const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
+
 const WXS_FILE = path.join(__dirname, 'xibo-player.wxs');
+const ICON_FILE =
+    path.join(PROJECT_ROOT, 'resources', 'windows', 'icon.ico');
+const LICENSE_FILE = path.join(PROJECT_ROOT, 'LICENSE');
+
+/**
+ * The dialog set comes from the WiX UI extension, which is a separate package
+ * and has to match the toolset's own major version.
+ */
+const UI_EXTENSION = 'WixToolset.UI.wixext';
+
+const UI_EXTENSION_HINT = [
+  `The ${UI_EXTENSION} extension is not in the WiX cache, so the installer`,
+  'dialogs cannot be built. Add it with:',
+  '',
+  `    wix extension add -g ${UI_EXTENSION}/6.0.0`,
+  '',
+  'The version must match the WiX toolset. Asking for it without a version',
+  'resolves to the newest release, which is a later major and is rejected.',
+].join('\n');
 
 /** Electron Forge architecture names mapped to the ones `wix build` accepts. */
 const WIX_ARCH = {
@@ -55,6 +77,23 @@ function resolveWix() {
   // Trimming each line makes splitting on the newline alone enough.
   const found = lookup.stdout.split('\n').find((line) => line.trim());
   return found ? found.trim() : null;
+}
+
+/**
+ * Check the WiX UI extension is cached.
+ *
+ * `wix extension list` reads the local cache and needs no network, so this is
+ * cheap enough to run on every build and turns an opaque compile failure into
+ * an instruction.
+ *
+ * @param {string} wix Path to the wix executable.
+ * @return {boolean} Whether the extension is available.
+ */
+function hasUiExtension(wix) {
+  const listed = spawnSync(wix, ['extension', 'list', '-g'], {encoding: 'utf8'});
+  if (listed.status !== 0) return false;
+
+  return listed.stdout.includes(UI_EXTENSION);
 }
 
 /**
@@ -110,8 +149,15 @@ class MakerMsi extends MakerBase {
     const outPath = path.resolve(makeDir, 'msi', targetArch);
     await this.ensureDirectory(outPath);
 
+    if (!hasUiExtension(wix)) throw new Error(`[maker-msi] ${UI_EXTENSION_HINT}`);
+
     const msiPath = path.join(
       outPath, `${packageJSON.name}-${packageJSON.version}-${arch}.msi`);
+
+    // Written beside the package rather than into the repository: it is build
+    // output, and regenerating it keeps it identical to the LICENSE in source.
+    const licenseRtf = writeLicenseRtf(
+      LICENSE_FILE, path.join(outPath, 'license.rtf'));
 
     // The two versions differ on purpose and the difference has bitten us before,
     // so state both wherever a build log will be read.
@@ -128,6 +174,9 @@ class MakerMsi extends MakerBase {
       '-define', `ProductName=${PRODUCT_NAME}`,
       '-define', `Manufacturer=${MANUFACTURER}`,
       '-define', `UpgradeCode=${UPGRADE_CODE}`,
+      '-define', `IconFile=${ICON_FILE}`,
+      '-define', `LicenseRtf=${licenseRtf}`,
+      '-ext', UI_EXTENSION,
       '-out', msiPath,
       '-nologo',
     ];

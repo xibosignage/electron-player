@@ -169,6 +169,11 @@ jobs:
       contents: write # gh release upload
       id-token: write # federated credential for Azure sign-in
 
+    env:
+      # The UI extension is a separate package that must match the toolset's own
+      # major version, so both are pinned to one value.
+      WIX_VERSION: '6.0.0'
+
     steps:
       - name: 'Checkout Repository'
         uses: actions/checkout@v5
@@ -182,12 +187,15 @@ jobs:
       - name: 'Setup MSVC Developer Command Prompt'
         uses: ilammy/msvc-dev-cmd@v1
 
-      # WiX is a .NET global tool. Pinned to the 6.x line so a new major release
-      # cannot change the installer's behaviour without a deliberate change here.
+      # WiX is a .NET global tool, pinned so the installer is reproducible. The UI
+      # extension supplies the dialogs shown when the MSI is run by hand; asking
+      # for it without a version resolves to a later major, which WiX rejects.
       - name: 'Install WiX Toolset'
         run: |
-          dotnet tool install --global wix --version "[6.0.0,7.0.0)"
+          dotnet tool install --global wix --version $env:WIX_VERSION
+          wix extension add -g WixToolset.UI.wixext/$env:WIX_VERSION
           wix --version
+          wix extension list -g
         shell: powershell
 
       - name: 'Install Dependencies'
@@ -204,10 +212,10 @@ jobs:
         run: npx electron-forge package --platform win32 --arch x64
         shell: powershell
 
-      # Signing is committed but switched off until Microsoft's organisation
-      # identity validation for Xibo Signage Ltd completes. Set the repository
-      # variable WINDOWS_SIGNING_ENABLED to 'true' to turn it on; until then the
-      # release still builds and publishes, unsigned.
+      # Signing runs unconditionally; the 'artifact-signing' environment on this
+      # job is what holds the credentials and gates access to them. A release cut
+      # before Microsoft's organisation identity validation completes will fail
+      # here rather than publish unsigned installers.
       - name: 'Azure Sign-in'
         uses: azure/login@v2
         with:

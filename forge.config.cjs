@@ -1,5 +1,36 @@
 const MakerMsi = require('./installer/windows/MakerMsi.cjs');
 
+/**
+ * Application icons, by the platform being built for.
+ *
+ * @electron/packager takes a single path with the extension left off and appends
+ * the platform's own, and rejects an array on Windows, so it cannot be given a
+ * whole set at once.
+ *
+ * Only Windows is listed. Linux is absent because packager does not use an icon
+ * there at all — a Linux app's icon comes from the .desktop file, which maker-deb
+ * writes from its own icon option below. macOS is absent because resources/ has
+ * no .icns; the darwin zip is a by-product, not a shipped player.
+ *
+ * The path is extension-less on purpose. Do not add one.
+ */
+const ICON_PATHS = {
+  win32: 'resources/windows/icon',
+};
+
+/**
+ * The platform Forge is building for: its --platform argument when given, and
+ * otherwise the machine running the build, which is what Forge itself defaults to.
+ *
+ * @return {string} A Node platform name.
+ */
+function targetPlatform() {
+  const flag = process.argv.indexOf('--platform');
+  return flag !== -1 && process.argv[flag + 1] ?
+    process.argv[flag + 1] :
+    process.platform;
+}
+
 module.exports = {
   packagerConfig: {
     ignore: [
@@ -14,7 +45,7 @@ module.exports = {
       "^/prime($|/)",
       "^/.snapcraft($|/)"
     ],
-    icon: 'resources/icon',
+    icon: ICON_PATHS[targetPlatform()],
   },
   rebuildConfig: {},
   makers: [
@@ -36,7 +67,7 @@ module.exports = {
       name: '@electron-forge/maker-deb',
       config: {
         options: {
-          icon: 'resources/icon.png',
+          icon: 'resources/linux/icons/512x512.png',
           maintainer: 'Xibo Signage Ltd',
           homepage: 'https://xibosignage.com',
         },
