@@ -81,9 +81,13 @@ the whole fleet at once.
    comes back online and no new display is created. This is the check that matters; everything
    else is secondary.
 3. **Plug connections.** Run `snap connections xibo-player` before and after the refresh.
-   Confirm every plug the new revision declares is actually connected. `browser-support` has
-   been deliberately dropped (the Chromium sandbox is already disabled via `--no-sandbox`)
-   because it is not auto-connected and an unconnected plug is a silent failure.
+   Confirm every plug the new revision declares is actually connected. `browser-support` must
+   be among them: Chromium will not start under strict confinement without it, and
+   `--no-sandbox` does not change that — dropping it is what broke 4.0.9. It auto-connects on
+   install and on refresh, since snapd only denies auto-connection for `allow-sandbox: true`.
+   `framebuffer` is the one plug here that is *not* auto-connected; it degrades rather than
+   fails, but connect it manually (`snap connect xibo-player:framebuffer`) on any device that
+   renders to `/dev/fb0`.
 4. **Resolved data paths.** Log `app.getPath('userData')`, `app.getPath('documents')` and
    `config.library` from the snap-installed build and check them against the table below.
    `app.getPath('documents')` under confinement is the uncertain one — the library must not

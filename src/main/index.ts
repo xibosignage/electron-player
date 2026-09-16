@@ -558,7 +558,7 @@ const configureFileManager = () => {
 };
 
 let mainWindow: BrowserWindow;
-const createWindow = () => {
+const createWindow = async () => {
   mainWindow = new BrowserWindow({
     fullscreen: true,
     show: false,
@@ -590,19 +590,18 @@ const createWindow = () => {
 
   mainWindow.setMenuBarVisibility(false);
 
+  // Finish setting up main before the renderer starts loading.
+  await init(mainWindow);
+
   console.debug('[MAIN] > Loading renderer', {
     isDev: is.dev,
     ELECTRON_RENDERER_URL: process.env['ELECTRON_RENDERER_URL'],
   });
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL']).then(() => {
-      init(mainWindow);
-    });
+    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL']);
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html')).then(() => {
-      init(mainWindow);
-    });
+    mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
   }
 };
 
@@ -1620,9 +1619,11 @@ app.whenReady().then(() => {
   });
 
   // Install dev tools extension.
-  installExtension(JQUERY_DEBUGGER)
-    .then((ext) => console.log(`Added Extension:  ${ext.name}`))
-    .catch((err) => console.log('An error occurred: ', err));
+  if (is.dev) {
+    installExtension(JQUERY_DEBUGGER)
+      .then((ext) => console.log(`Added Extension:  ${ext.name}`))
+      .catch((err) => console.log('An error occurred: ', err));
+  }
 
   // Start with the desktop session on real installs, as the legacy player's desktop entry did.
   if (!is.dev) {
