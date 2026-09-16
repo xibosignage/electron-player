@@ -31,6 +31,36 @@ function targetPlatform() {
     process.platform;
 }
 
+/**
+ * The prebuilt binary families better-sqlite3 ships. It carries one for every
+ * platform it supports, not just the one being built for.
+ */
+const PREBUILD_FAMILIES = ['darwin', 'linux', 'linuxmusl', 'win32'];
+
+/**
+ * An ignore pattern dropping every better-sqlite3 prebuilt binary that cannot run
+ * on the platform being built for.
+ *
+ * Worth keeping even though they are only a few megabytes each. Signing sweeps the
+ * package for .node files, and SignTool fails the whole build on a Mach-O or ELF
+ * file rather than skipping it, so a Windows release cannot be signed while they
+ * are present. Enabling asar would not help: native modules are unpacked to
+ * app.asar.unpacked and are still on disk to be found.
+ *
+ * @return {RegExp} Matched against paths relative to the project root.
+ */
+function foreignPrebuilds() {
+  const target = targetPlatform();
+
+  // A glibc Linux build and a musl one are both 'linux' to Node, and the player
+  // ships as both a .deb and a snap, so neither can be dropped.
+  const keep = target === 'linux' ? ['linux', 'linuxmusl'] : [target];
+  const drop = PREBUILD_FAMILIES.filter((family) => !keep.includes(family));
+
+  return new RegExp(
+    `^/node_modules/better-sqlite3/prebuilds/(${drop.join('|')})-`);
+}
+
 module.exports = {
   packagerConfig: {
     ignore: [
@@ -39,11 +69,12 @@ module.exports = {
       /.vscode/,
       /.idea/,
       /.github/,
-      "^/installer($|/)",
-      "^/parts($|/)",
-      "^/stage($|/)",
-      "^/prime($|/)",
-      "^/.snapcraft($|/)"
+      '^/installer($|/)',
+      '^/parts($|/)',
+      '^/stage($|/)',
+      '^/prime($|/)',
+      '^/.snapcraft($|/)',
+      foreignPrebuilds(),
     ],
     icon: ICON_PATHS[targetPlatform()],
   },
