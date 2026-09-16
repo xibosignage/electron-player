@@ -13,9 +13,12 @@ apps:
     extensions: [gnome]
     command: xibo-player --no-sandbox
     plugs:
-      # The Chromium sandbox is disabled above, so browser-support is not required and is
-      # deliberately omitted: it is not auto-connected, and an unconnected plug on refresh
-      # would silently break every migrated device.
+      # Required for Chromium to run under strict confinement at all, independently of the
+      # sandbox: oom_score_adj writes, /sys and /run/udev reads for GPU probing, and the
+      # seccomp entries the zygote needs. --no-sandbox does not remove the need for it, and
+      # dropping it stopped the player from starting in 4.0.9. Auto-connects on install and
+      # on refresh (snapd only denies auto-connection when allow-sandbox: true).
+      - browser-support
       - home
       - network
       - network-bind
