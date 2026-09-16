@@ -179,7 +179,7 @@ export class CommandManager {
       result = await handler(...command.commandParams);
 
       if (command.validationString) {
-        if (typeof result === 'string' && result === command.validationString) {
+        if (typeof result === 'string' && this.matchesValidationString(result, command.validationString)) {
           this.handleCommandSuccess(command);
         } else {
           this.handleCommandFailure(
@@ -192,6 +192,26 @@ export class CommandManager {
       }
     } catch (error) {
       this.handleCommandFailure(error, command);
+    }
+  }
+
+  /**
+   * Matches a command result against its validation string, which is treated as a regular
+   * expression. Patterns that cannot be parsed fall back to an exact comparison.
+   *
+   * @param result
+   * @param validationString
+   * @private
+   */
+  private matchesValidationString(result: string, validationString: string) {
+    try {
+      return new RegExp(validationString).test(result);
+    } catch {
+      console.debug('[CommandManager] Validation string is not a valid regular expression', {
+        validationString
+      });
+
+      return result === validationString;
     }
   }
 
