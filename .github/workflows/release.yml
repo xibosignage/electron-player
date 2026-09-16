@@ -162,6 +162,9 @@ jobs:
   build-windows:
     runs-on: windows-latest
 
+    environment:
+      name: 'artifact-signing'
+
     permissions:
       contents: write # gh release upload
       id-token: write # federated credential for Azure sign-in
@@ -206,7 +209,6 @@ jobs:
       # variable WINDOWS_SIGNING_ENABLED to 'true' to turn it on; until then the
       # release still builds and publishes, unsigned.
       - name: 'Azure Sign-in'
-        if: vars.WINDOWS_SIGNING_ENABLED == 'true'
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -214,12 +216,11 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: 'Sign Application Binaries'
-        if: vars.WINDOWS_SIGNING_ENABLED == 'true'
         uses: azure/artifact-signing-action@v2
         with:
           endpoint: ${{ vars.AZURE_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT_NAME }}
-          certificate-profile-name: ${{ vars.AZURE_SIGNING_CERT_PROFILE }}
+          signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_SIGNING_PROFILE }}
           files-folder: ${{ github.workspace }}\out\xibo-player-win32-x64
           files-folder-filter: exe,dll,node
           files-folder-recurse: true
@@ -235,12 +236,11 @@ jobs:
         shell: powershell
 
       - name: 'Sign Installers'
-        if: vars.WINDOWS_SIGNING_ENABLED == 'true'
         uses: azure/artifact-signing-action@v2
         with:
           endpoint: ${{ vars.AZURE_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT_NAME }}
-          certificate-profile-name: ${{ vars.AZURE_SIGNING_CERT_PROFILE }}
+          signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_SIGNING_PROFILE }}
           files-folder: ${{ github.workspace }}\out\make
           files-folder-filter: exe,msi
           files-folder-recurse: true
@@ -253,7 +253,6 @@ jobs:
       # Trusting the signing step's exit code is not enough; check the artefacts
       # that are actually about to be published.
       - name: 'Verify Installer Signatures'
-        if: vars.WINDOWS_SIGNING_ENABLED == 'true'
         run: |
           $installers = Get-ChildItem -Path "./out/make" -File -Recurse |
             Where-Object { $_.Extension -match "^\.(exe|msi)$" }
