@@ -10,6 +10,7 @@
     "dev": "electron-vite dev --watch --sourcemap --debug hmr --remote-debugging-port=9222 --outDir=dist --inspect src/main/index.ts",
     "package": "npm run build && electron-forge package",
     "make": "npm run build && electron-forge make",
+    "make:msi": "npm run build && electron-forge make --platform win32 --arch x64 --targets msi",
     "make:snap": "node scripts/set-snap-version.cjs && mkdir -p out/make/snap/x64/ && snapcraft pack --output out/make/snap/x64/",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "postinstall": "install-electron --no"
@@ -17,6 +18,7 @@
   "author": "Xibo Signage Ltd",
   "devDependencies": {
     "@electron-forge/cli": "^7.8.3",
+    "@electron-forge/maker-base": "^7.8.3",
     "@electron-forge/maker-deb": "^7.8.3",
     "@electron-forge/maker-rpm": "^7.8.3",
     "@electron-forge/maker-snap": "^7.9.0",

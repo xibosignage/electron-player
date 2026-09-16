@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows Installer authoring for the Xibo Electron player.
+
+  Built by installer/windows/MakerMsi.cjs, which supplies the preprocessor
+  variables below from the Electron Forge build:
+
+    AppDir          Absolute path to the packaged application directory
+                    (out/xibo-player-win32-x64), the output of `electron-forge package`.
+    ProductVersion  The MSI's own version, deliberately decoupled from the player's
+                    version in package.json.
+    ProductName     "Xibo Player"
+    Manufacturer    "Xibo Signage Ltd"
+    UpgradeCode     443E7578-7FEF-47E8-9078-04DDA8B96F3A
+    IconFile        resources/windows/icon.ico, the shared application icon
+    LicenseRtf      The repository LICENSE, converted to RTF at build time
+
+  All five come from installer/windows/msi-config.cjs, which is where they are
+  explained and where they should be changed.
+
+  The product identity is inherited from the legacy .NET player's Advanced
+  Installer project ("Xibo for Windows 4.aip"). Keeping the UpgradeCode, name and
+  manufacturer identical is what lets this package replace a fielded legacy
+  install in place rather than sitting beside it in Add/Remove Programs.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <Package
+    Name="$(var.ProductName)"
+    Manufacturer="$(var.Manufacturer)"
+    Version="$(var.ProductVersion)"
+    UpgradeCode="$(var.UpgradeCode)"
+    Scope="perMachine"
+    Language="1033"
+    Codepage="1252"
+    InstallerVersion="500"
+    Compressed="yes">
+
+    <SummaryInformation Description="Xibo Digital Signage Player" />
+
+    <!--
+      Removes any older version carrying the same UpgradeCode before installing
+      this one. That covers the legacy .NET player as well as earlier builds of
+      this package. Scheduled at the default afterInstallValidate, so the old
+      product is gone before the new files are laid down and a failure part way
+      through rolls the whole transaction back.
+
+      The legacy package owns nothing outside its own program folder, the Start
+      menu and the Start-up folder, so removing it leaves the player's settings
+      in %APPDATA%, its library in Documents and its hardwarekey file untouched.
+      That is what allows a migrated screen to come back as the same display.
+    -->
+    <MajorUpgrade
+      AllowSameVersionUpgrades="yes"
+      DowngradeErrorMessage="A newer version of [ProductName] is already installed. Setup will now exit." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!--
+      Matches the legacy package: no Repair or Change in Add/Remove Programs.
+      ARPNOMODIFY is not set here because the WixUI_InstallDir dialog set below
+      already sets it, and defining it twice is a build error.
+    -->
+    <Property Id="ARPNOREPAIR" Value="1" />
+    <Property Id="ARPURLINFOABOUT" Value="https://xibosignage.com" />
+
+    <!--
+      Where the product landed, for inventory and deployment tools that read it
+      back. The legacy package reports one and the first build of this one did not,
+      which a test upgrade caught.
+
+      Set in the sequence rather than as a plain Property because INSTALLFOLDER is
+      not resolved until costing has run; declared as a Property it is silently
+      empty.
+    -->
+    <SetProperty Id="ARPINSTALLLOCATION" Value="[INSTALLFOLDER]" After="CostFinalize" />
+
+    <!--
+      The same icon the application itself carries, so the Add/Remove Programs
+      entry is recognisably the player rather than a blank Windows Installer box.
+    -->
+    <Icon Id="ProductIcon" SourceFile="$(var.IconFile)" />
+    <Property Id="ARPPRODUCTICON" Value="ProductIcon" />
+
+    <!--
+      This package is built to be deployed silently, where no dialog is ever
+      shown. The dialog set is for the other case: somebody running the MSI by
+      hand on a screen. WixUI_InstallDir is the set that lets them choose the
+      install folder, which matters on signage machines with a small system
+      drive, and it gives the confirmation step a bare package would skip.
+
+      Needs the WiX UI extension in the build: see installer/windows/README.md.
+    -->
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.LicenseRtf)" />
+
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="ManufacturerFolder" Name="$(var.Manufacturer)">
+        <Directory Id="INSTALLFOLDER" Name="$(var.ProductName)" />
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="$(var.ProductName)" Level="1">
+      <ComponentGroupRef Id="ApplicationFiles" />
+      <ComponentGroupRef Id="ApplicationShortcuts" />
+    </Feature>
+
+  </Package>
+
+  <Fragment>
+    <!--
+      Every file in the packaged application, harvested at build time so new
+      Electron or dependency files are picked up without editing this file.
+
+      Squirrel.exe is excluded deliberately: electron-winstaller drops it into the
+      package directory when the per-user installer is built, and shipping a
+      per-user updater inside a machine-wide MSI would be actively misleading.
+    -->
+    <ComponentGroup Id="ApplicationFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(var.AppDir)\**">
+        <Exclude Files="$(var.AppDir)\Squirrel.exe" />
+      </Files>
+    </ComponentGroup>
+  </Fragment>
+
+  <Fragment>
+    <!-- Shortcut targets. Standard directories must be declared before they can be referenced. -->
+    <StandardDirectory Id="ProgramMenuFolder" />
+    <StandardDirectory Id="StartupFolder" />
+
+    <ComponentGroup Id="ApplicationShortcuts" Directory="INSTALLFOLDER">
+      <Component Id="Shortcuts" Guid="8B6F3A1C-2D4E-4F7A-9C10-5E8D2B4A6C31">
+        <!--
+          Harvested files have no stable ids to hang a shortcut off, and a component
+          needs a key path, so the shortcuts are anchored on a registry value of
+          their own. It doubles as a detection method: deployment tools can read
+          this key to confirm the player is installed and where.
+        -->
+        <RegistryValue
+          Root="HKLM"
+          Key="SOFTWARE\$(var.Manufacturer)\$(var.ProductName)"
+          Name="InstallFolder"
+          Type="string"
+          Value="[INSTALLFOLDER]"
+          KeyPath="yes" />
+
+        <Shortcut
+          Id="StartMenuShortcut"
+          Directory="ProgramMenuFolder"
+          Name="$(var.ProductName)"
+          Description="Xibo Digital Signage Player"
+          Target="[INSTALLFOLDER]xibo-player.exe"
+          WorkingDirectory="INSTALLFOLDER"
+          Advertise="no" />
+
+        <!--
+          The player writes its own HKCU Run entry on first launch, but only once
+          it has launched. A silent upgrade with nobody signed in would remove the
+          legacy player's Start-up shortcut and leave nothing to start the new one,
+          so the package places the Start-up entry itself.
+
+          Under a perMachine install StartupFolder resolves to the all-users Start-up
+          folder, so the player starts for whichever account signs in. The legacy
+          package could only do this for the installing user.
+        -->
+        <Shortcut
+          Id="StartupShortcut"
+          Directory="StartupFolder"
+          Name="$(var.ProductName)"
+          Description="Starts the Xibo Player when Windows starts"
+          Target="[INSTALLFOLDER]xibo-player.exe"
+          WorkingDirectory="INSTALLFOLDER"
+          Advertise="no" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+
+</Wix>
