@@ -149,8 +149,23 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # Windows ships two installers while the move to the MSI is in progress: the
+  # machine-wide MSI, which is the one that can replace the legacy .NET player and
+  # be deployed by Group Policy, and the existing per-user Squirrel .exe, which
+  # stays the supported method until the MSI has been proven in the field.
+  #
+  # The job is deliberately split into package / sign / make / sign rather than a
+  # single `npm run make`. Windows verifies the signature on the file being run,
+  # so the application's own binaries have to be signed BEFORE they are packed
+  # into an installer, and the installer signed after it is built. Signing the
+  # installer first and then changing its contents invalidates the signature.
   build-windows:
     runs-on: windows-latest
+
+    permissions:
+      contents: write # gh release upload
+      id-token: write # federated credential for Azure sign-in
+
     steps:
       - name: 'Checkout Repository'
         uses: actions/checkout@v5
@@ -160,33 +175,116 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-        
+
       - name: 'Setup MSVC Developer Command Prompt'
         uses: ilammy/msvc-dev-cmd@v1
+
+      # WiX is a .NET global tool. Pinned to the 6.x line so a new major release
+      # cannot change the installer's behaviour without a deliberate change here.
+      - name: 'Install WiX Toolset'
+        run: |
+          dotnet tool install --global wix --version "[6.0.0,7.0.0)"
+          wix --version
+        shell: powershell
 
       - name: 'Install Dependencies'
         run: npm ci
         shell: powershell
 
-      - name: 'Build Windows Package'
-        run: npm run make
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: 'Build Application Bundles'
+        run: npm run build
         shell: powershell
 
-      - name: 'Upload .exe to Release'
+      # Produces out/xibo-player-win32-x64/. Kept separate from `make` so the
+      # binaries can be signed in between.
+      - name: 'Package Application'
+        run: npx electron-forge package --platform win32 --arch x64
+        shell: powershell
+
+      # Signing is committed but switched off until Microsoft's organisation
+      # identity validation for Xibo Signage Ltd completes. Set the repository
+      # variable WINDOWS_SIGNING_ENABLED to 'true' to turn it on; until then the
+      # release still builds and publishes, unsigned.
+      - name: 'Azure Sign-in'
+        if: vars.WINDOWS_SIGNING_ENABLED == 'true'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: 'Sign Application Binaries'
+        if: vars.WINDOWS_SIGNING_ENABLED == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ vars.AZURE_SIGNING_CERT_PROFILE }}
+          files-folder: ${{ github.workspace }}\out\xibo-player-win32-x64
+          files-folder-filter: exe,dll,node
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: 'Xibo Digital Signage Player'
+          description-url: 'https://xibosignage.com'
+
+      # --skip-package reuses the directory signed above instead of rebuilding it.
+      - name: 'Build Installers'
+        run: npx electron-forge make --skip-package --platform win32 --arch x64
+        shell: powershell
+
+      - name: 'Sign Installers'
+        if: vars.WINDOWS_SIGNING_ENABLED == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ vars.AZURE_SIGNING_CERT_PROFILE }}
+          files-folder: ${{ github.workspace }}\out\make
+          files-folder-filter: exe,msi
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: 'Xibo Digital Signage Player'
+          description-url: 'https://xibosignage.com'
+
+      # Trusting the signing step's exit code is not enough; check the artefacts
+      # that are actually about to be published.
+      - name: 'Verify Installer Signatures'
+        if: vars.WINDOWS_SIGNING_ENABLED == 'true'
         run: |
-          # Robust search for either .exe or .msi files using standard PowerShell syntax
-          $PACKAGE_PATH = (Get-ChildItem -Path "./out/make" -File -Recurse | Where-Object { $_.Extension -match "\.(exe|msi)$" } | Select-Object -First 1).FullName
-          
-          if (-not $PACKAGE_PATH) {
+          $installers = Get-ChildItem -Path "./out/make" -File -Recurse |
+            Where-Object { $_.Extension -match "^\.(exe|msi)$" }
+
+          $unsigned = @()
+          foreach ($installer in $installers) {
+            $signature = Get-AuthenticodeSignature $installer.FullName
+            Write-Host "$($installer.Name): $($signature.Status)"
+            if ($signature.Status -ne "Valid") { $unsigned += $installer.Name }
+          }
+
+          if ($unsigned.Count -gt 0) {
+            Write-Error "Unsigned or invalidly signed installers: $($unsigned -join ', ')"
+            exit 1
+          }
+        shell: powershell
+
+      - name: 'Upload Installers to Release'
+        run: |
+          $installers = Get-ChildItem -Path "./out/make" -File -Recurse |
+            Where-Object { $_.Extension -match "^\.(exe|msi)$" }
+
+          if ($installers.Count -eq 0) {
             Write-Error "No installer file (.exe or .msi) found in ./out/make/"
             exit 1
           }
-          
-          Write-Host "Found package at: $PACKAGE_PATH"
-          # Quote the path to handle spaces
-          gh release upload ${{ github.event.release.tag_name }} "$PACKAGE_PATH" --clobber
+
+          foreach ($installer in $installers) {
+            Write-Host "Uploading $($installer.FullName)"
+            gh release upload ${{ github.event.release.tag_name }} "$($installer.FullName)" --clobber
+          }
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: powershell

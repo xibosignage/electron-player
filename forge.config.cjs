@@ -1,3 +1,5 @@
+const MakerMsi = require('./installer/windows/MakerMsi.cjs');
+
 module.exports = {
   packagerConfig: {
     ignore: [
@@ -6,6 +8,7 @@ module.exports = {
       /.vscode/,
       /.idea/,
       /.github/,
+      "^/installer($|/)",
       "^/parts($|/)",
       "^/stage($|/)",
       "^/prime($|/)",
@@ -15,6 +18,12 @@ module.exports = {
   },
   rebuildConfig: {},
   makers: [
+    // The machine-wide installer, and the only one that can replace the legacy
+    // .NET player. See installer/windows/ and WINDOWS-PLAYER-PACKAGING.md.
+    new MakerMsi({}, ['win32']),
+    // Squirrel installs for a single user and cannot be deployed by Group Policy
+    // or by any tool running as the computer. It stays the supported method until
+    // the MSI ships, and is then removed. No further work belongs on it.
     {
       name: '@electron-forge/maker-squirrel',
       config: {},
