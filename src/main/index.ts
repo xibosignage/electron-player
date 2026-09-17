@@ -207,6 +207,47 @@ let manager: ScheduleManager;
 let ssp: Ssp;
 let pendingScheduleRefresh = false;
 
+/**
+ * Builds the list of layouts XLR resolves the playback loop against.
+ */
+const buildScheduleLayouts = (currentSchedule: Schedule): InputLayoutType[] =>
+  [...currentSchedule.layouts, currentSchedule.defaultLayout, ...currentSchedule.overlays]
+    .reduce((arr: InputLayoutType[], item: Layout | DefaultLayout | OverlayLayout | SspLayout) => {
+      // SSP layout: no file on disk, send a placeholder so XLR can fire adRequest
+      if (item instanceof SspLayout) {
+        const sspLayoutItem = item as SspLayout;
+
+        return [...arr, sspLayoutItem];
+      }
+
+      const _layout = getLayoutFile(item.file) as LocalFile;
+
+      let _collection = [...arr];
+
+      if (_layout) {
+        const layoutItem: InputLayoutType = {
+          layoutId: item.file,
+          response: item.response,
+          path: _layout.name,
+          shortPath: _layout.name,
+          scheduleId: 'scheduleId' in item ? (item as Layout).scheduleId : -1,
+          shareOfVoice: 'shareOfVoice' in item ? (item as (Layout | OverlayLayout | SspLayout)).shareOfVoice : 0,
+          code: _layout.localPath ? extractLayoutCode(_layout.localPath) : undefined,
+        };
+
+        if (item instanceof OverlayLayout || 'isOverlay' in item) {
+          layoutItem.isOverlay = item.isOverlay as boolean;
+        }
+
+        _collection = [
+          ...arr,
+          layoutItem,
+        ];
+      }
+
+      return _collection;
+    }, []);
+
 // Memoized so the work below only ever runs once per process, no matter how many callers
 // invoke loadConfig(). It's called from two independent places — main's own boot (init())
 // and the renderer's boot script, via the 'load-config' IPC handler below — with no
@@ -476,6 +517,33 @@ const configureIpc = (win) => {
     return {
       callbackName: 'run',
     }
+  });
+
+  // Re-send the current loop so a reloaded renderer resumes playback instead of sitting on the splash
+  ipcMain.on('renderer-ready', () => {
+    // Nothing to restore until the first boot has built a schedule
+    if (!manager) {
+      return;
+    }
+
+    const layouts = manager.layouts;
+    const splashScreenOnly = layouts.length === 1 && layouts[0].file === 0;
+
+    // The renderer already comes up on the splash, so there is nothing to send
+    if (layouts.length === 0 || splashScreenOnly) {
+      return;
+    }
+
+    console.debug('[MAIN::renderer-ready] > Re-sending the current layout loop', {
+      count: layouts.length,
+    });
+
+    // XLR resolves the loop against this list, so it has to arrive first
+    if (schedule) {
+      win.webContents.send('update-unique-layouts', buildScheduleLayouts(schedule));
+    }
+
+    manager.emitter.emit('layouts', layouts);
   });
 
   ipcMain.handle('invoke-callback', async (_event, { callbackName, args }) => {
@@ -1052,43 +1120,7 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
     }
 
     // Update schedule of ScheduleManager
-    let scheduleLayouts =
-      [...schedule.layouts, schedule.defaultLayout, ...schedule.overlays]
-        .reduce((arr: InputLayoutType[], item: Layout | DefaultLayout | OverlayLayout | SspLayout) => {
-          // SSP layout: no file on disk, send a placeholder so XLR can fire adRequest
-          if (item instanceof SspLayout) {
-            const sspLayoutItem = item as SspLayout;
-
-            return [...arr, sspLayoutItem];
-          }
-
-          const _layout = getLayoutFile(item.file) as LocalFile;
-
-          let _collection = [...arr];
-
-          if (_layout) {
-            const layoutItem: InputLayoutType = {
-              layoutId: item.file,
-              response: item.response,
-              path: _layout.name,
-              shortPath: _layout.name,
-              scheduleId: 'scheduleId' in item ? (item as Layout).scheduleId : -1,
-              shareOfVoice: 'shareOfVoice' in item ? (item as (Layout | OverlayLayout | SspLayout)).shareOfVoice : 0,
-              code: _layout.localPath ? extractLayoutCode(_layout.localPath) : undefined,
-            };
-
-            if (item instanceof OverlayLayout || 'isOverlay' in item) {
-              layoutItem.isOverlay = item.isOverlay as boolean;
-            }
-
-            _collection = [
-              ...arr,
-              layoutItem,
-            ];
-          }
-
-          return _collection;
-        }, []);
+    const scheduleLayouts = buildScheduleLayouts(schedule);
 
     mainWindow.webContents.send('update-unique-layouts', scheduleLayouts);
 

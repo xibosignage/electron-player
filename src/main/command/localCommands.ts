@@ -64,15 +64,11 @@ export async function registerLocalCommands({
   });
 
   /**
-   * Refreshes the PWA page
+   * Refreshes the player, reloading the page and restarting playback.
    */
   commandManager.registerCommand('refresh', async () => {
-    console.alert(`Command refresh executed successfully`, {
-      shouldParse: false,
-      eventType: 'Command',
-      alertType: 'both',
-    });
-    window.location.reload();
+    console.log('[CommandManager::refresh] - Refreshing the player');
+    win.webContents.reload();
   });
 
   /**
