@@ -13,7 +13,7 @@ export async function registerLocalCommands({
 }) {
   /**
    * Executes an HTTP request based on parameters provided in the command string
-   * and returns the response as a string for validation.
+   * and returns the HTTP status code as a string for validation.
    */
   commandManager.registerCommand('http', async (url, contentType, requestConfigJson) => {
     let requestConfig;
@@ -40,27 +40,27 @@ export async function registerLocalCommands({
       headers['Content-Type'] = contentType;
     }
 
-    // Execute HTTP request
+    // Execute HTTP request. Error responses resolve instead of throwing so that their status
+    // code can be validated, leaving only network level failures to be thrown.
     const response = await axios({
       method: requestConfig.method || 'GET',
       url,
       headers,
-      data: requestConfig.body || undefined
+      data: requestConfig.body || undefined,
+      validateStatus: () => true,
+      timeout: 30_000
     });
 
     // Get the URL without query params for logging
     const requestUrl = url.split('?')[0];
 
     console.debug('[CommandManager] HTTP command completed', {
-      url: requestUrl
+      url: requestUrl,
+      status: response.status
     });
 
     // Always return a string for validation
-    if (typeof response.data === 'string') {
-      return response.data;
-    }
-
-    return JSON.stringify(response.data);
+    return String(response.status);
   });
 
   /**
