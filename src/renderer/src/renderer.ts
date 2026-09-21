@@ -331,6 +331,9 @@ export const startApp = async () => {
 
     initXlrEventHandlers();
     await xlr.playSchedules(response);
+
+    // XLR can receive layouts now, so ask main for the loop this renderer missed while loading
+    window.playerAPI.notifyRendererReady();
   });
 
   // Set global xlr for browser access
