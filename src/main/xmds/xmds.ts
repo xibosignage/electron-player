@@ -32,7 +32,7 @@ import { LogsThreshold, RequiredFile } from '../common/types';
 import { ConsoleDB } from '../../shared/console/ConsoleDB';
 import { escapeStringForXml, submitLogsXmlString } from '../common/parser';
 import { hasFailedDownloads } from '../common/fileManager';
-import { AxiosErrorCodes, handleXmdsError } from '../common/error/XmdsError';
+import { AxiosErrorCodes, describeRequestFailure, handleXmdsError } from '../common/error/XmdsError';
 import { commandManager } from '../../shared/command/commandManager';
 import { StateData } from '../common/state';
 import { GetWeather } from './response/getWeather';
@@ -65,6 +65,8 @@ export class Xmds {
   checkRf: string | null = null;
   checkSchedule: string | null = null;
 
+  private schemaVersionError: string | null = null;
+
   constructor(private config: Config) {
     // Emitter
     this.emitter = createNanoEvents<XmdsEvents>();
@@ -77,18 +79,34 @@ export class Xmds {
   async getSchemaVersion() {
     // Do we already have the schema version?
     if (!this.config.xmdsVersion || this.config.xmdsVersion <= 0) {
+      this.schemaVersionError = null;
+
       this.config.xmdsVersion = await axios.get(this.config.cmsUrl + '/xmds.php?what')
         .then(function (response) {
           // handle success
           return parseInt(response?.data || -1);
         })
-        .catch(function () {
+        .catch((error) => {
+          this.schemaVersionError = describeRequestFailure(error);
+
+          console.error('[Xmds::getSchemaVersion] Could not read the XMDS version', {
+            cmsUrl: this.config.cmsUrl,
+            code: error?.code,
+            status: error?.response?.status,
+            message: error?.message,
+          });
+
           return -1;
         });
     }
 
     return this.config.xmdsVersion;
   };
+
+  // Returns why the last getSchemaVersion() call failed, or null if it succeeded.
+  getSchemaVersionError() {
+    return this.schemaVersionError;
+  }
 
   async start(intervalTime: number) {
     this.collectIntervalTime = intervalTime;
@@ -314,7 +332,7 @@ export class Xmds {
       } else if (status === 429) {
         this.setRateLimit(method, headers['retry-after'] as string | undefined, () => this.registerDisplay(true));
       } else if (status >= 400) {
-        throw await handleXmdsError(data);
+        throw await handleXmdsError(data, status);
       }
     }).catch(error => {
       if (error instanceof AxiosError) {
@@ -955,8 +973,15 @@ export class Xmds {
 export async function validateAndRegister(xmdsInstance: Xmds) {
   try {
     const schemaVersion = await xmdsInstance.getSchemaVersion();
-    if (schemaVersion <= 0) {
-      return { success: false, error: 'Cannot reach that URL' };
+
+    // A CMS answers with a version number. Anything else, including a page of HTML that
+    // parses as NaN, means the address is not one.
+    if (!Number.isInteger(schemaVersion) || schemaVersion <= 0) {
+      return {
+        success: false,
+        error: new Error(xmdsInstance.getSchemaVersionError()
+          ?? 'That address did not return a CMS version. Check the CMS Address.'),
+      };
     }
 
     const xmdsRegister = await xmdsInstance.registerDisplay();
