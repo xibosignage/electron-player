@@ -303,8 +303,7 @@ ipcMain.handle('get-config', async (_event) => appConfig);
 ipcMain.handle('xmds-try-register', async (_event, _config) => {
   console.log('xmds-try-register: ', { _config });
   const configData = _config as ConfigData;
-  config.cmsUrl = configData.cmsUrl;
-  config.cmsKey = configData.cmsKey;
+  config.setCms(configData.cmsUrl, configData.cmsKey);
   config.displayName = configData.displayName;
 
   return await validateAndRegister(new Xmds(config));
@@ -1239,8 +1238,7 @@ const mainFunctions = {
       const pending = config.pendingCmsTransfer;
 
       if (isValidCmsTarget(pending.cmsUrl) && isValidCmsTarget(pending.cmsKey)) {
-        config.cmsUrl = pending.cmsUrl;
-        config.cmsKey = pending.cmsKey;
+        config.setCms(pending.cmsUrl, pending.cmsKey);
       } else {
         // Nothing to resume towards, and pointing at it would leave the player unable to
         // collect. Drop it so this boot proceeds against the CMS we're already configured for.

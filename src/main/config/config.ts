@@ -219,6 +219,19 @@ export class Config {
     // return this.licence.licensed;
   }
 
+  /**
+   * Points the player at a CMS, dropping the cached XMDS schema version whenever the
+   * address changes so getSchemaVersion() fetches it again from the new one.
+   */
+  setCms(cmsUrl: string | undefined, cmsKey: string | undefined) {
+    if (cmsUrl !== this.cmsUrl) {
+      this.xmdsVersion = undefined;
+    }
+
+    this.cmsUrl = cmsUrl;
+    this.cmsKey = cmsKey;
+  }
+
   async setPendingCmsTransfer(pending: { cmsUrl: string; cmsKey: string; requestedAt: string }) {
     this.pendingCmsTransfer = pending;
     await this.save();
