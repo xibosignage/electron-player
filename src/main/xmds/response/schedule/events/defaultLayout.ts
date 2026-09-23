@@ -1,4 +1,4 @@
-import { getLayoutFile } from "../../../../common/fileManager";
+import { getLayoutFile, isFileDownloaded } from "../../../../common/fileManager";
 
 export type DependentsFileType = {
     file: string[];
@@ -67,7 +67,21 @@ export class DefaultLayout implements DefaultLayoutInterface {
     }
 
     async isValid(): Promise<boolean> {
-        return Promise.resolve(true);
+        // Layout XLF must be present in the DB
+        if (!getLayoutFile(this.file)) {
+            return false;
+        }
+
+        // All dependant media files must also be present
+        if (this.dependents.length > 0) {
+            for (const dependant of this.dependents) {
+                if (!isFileDownloaded(dependant)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     isInterruptDurationSatisfied(): boolean {

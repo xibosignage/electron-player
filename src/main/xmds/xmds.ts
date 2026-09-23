@@ -623,6 +623,10 @@ export class Xmds {
           );
         }
 
+        // Allow the next interval tick to retry rather than staying
+        // permanently locked out by hasSubmittedLogs === false.
+        this.hasSubmittedLogs = null;
+
         return handleError(error, 'Unable to submit logs');
       });
   }
@@ -634,6 +638,7 @@ export class Xmds {
 
     if (logLevelCategory === 'Off') {
       console.debug('[Xmds::submitLogs] > Log level is off, skipping log submission');
+      return;
     }
 
     const logsCount = db.count();
