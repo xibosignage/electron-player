@@ -1628,6 +1628,19 @@ app.whenReady().then(() => {
   })
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const rendererUrl = process.env['ELECTRON_RENDERER_URL'];
+
+    // Set these headers on the player's own documents only, leaving third party responses
+    // (a site shown in a Webpage widget) with the headers their own server sent.
+    const isPlayerContent = details.url.startsWith('file://')
+      || details.url.startsWith('http://localhost:9696')
+      || (is.dev && Boolean(rendererUrl) && details.url.startsWith(rendererUrl as string));
+
+    if (!isPlayerContent) {
+      callback({});
+      return;
+    }
+
     callback({
       responseHeaders: {
         ...details.responseHeaders,
