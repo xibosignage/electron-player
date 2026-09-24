@@ -31,17 +31,23 @@ import Schedule from "./response/schedule/schedule";
 import { LogsThreshold, RequiredFile } from '../common/types';
 import { ConsoleDB } from '../../shared/console/ConsoleDB';
 import { escapeStringForXml, submitLogsXmlString } from '../common/parser';
-import { hasFailedDownloads } from '../common/fileManager';
+import { hasUndownloadedFiles } from '../common/fileManager';
 import { AxiosErrorCodes, describeRequestFailure, handleXmdsError } from '../common/error/XmdsError';
 import { commandManager } from '../../shared/command/commandManager';
 import { StateData } from '../common/state';
 import { GetWeather } from './response/getWeather';
 
+// The result of a CMS fetch.
+// rateLimited means the CMS asked us to wait, which is not the same as a failure.
+export type XmdsFetch<T> =
+  | { ok: true; data: T }
+  | { ok: false; rateLimited: boolean };
+
 interface XmdsEvents {
   collecting: () => void;
   collected: () => void;
   registered: (message: RegisterDisplay) => void;
-  requiredFiles: (object: RequiredFiles) => void;
+  requiredFiles: (object: RequiredFiles, verifyLocalFiles: boolean) => void;
   schedule: (object: Schedule) => void;
   submitLogs: () => void;
   reportFaults: () => void;
@@ -351,9 +357,15 @@ export class Xmds {
   }
 
   async requiredFiles(crc32: string) {
-      // The CRC only tracks changes made in the CMS, so it stays the same when a download
-      // fails here. Failed downloads are checked separately, or they would never be retried.
-      if (crc32 == null || crc32 != this.checkRf || hasFailedDownloads()) {
+      // Only check the disk on the first collection after startup, or when the CMS
+      // reports a change. Checking every file every time is slow, and a file only
+      // goes missing if someone deletes it.
+      const verifyLocalFiles = crc32 == null || crc32 != this.checkRf;
+
+      // The CMS checksum only changes when the CMS changes, so it stays the same when a
+      // download fails here. Missing files are checked separately, or they would never
+      // be retried.
+      if (verifyLocalFiles || hasUndownloadedFiles()) {
       const method = 'requiredFiles';
 
       if (this.isRateLimited(method)) {
@@ -381,7 +393,7 @@ export class Xmds {
             method: 'XMDS::requiredFiles',
           });
 
-          this.emitter.emit('requiredFiles', requiredFiles);
+          this.emitter.emit('requiredFiles', requiredFiles, verifyLocalFiles);
         })
         .catch((error: AxiosError) => {
           if (error.response?.status === 429) {
@@ -833,13 +845,13 @@ export class Xmds {
     });
   }
 
-  async getResource(file: RequiredFile) {
+  async getResource(file: RequiredFile): Promise<XmdsFetch<string>> {
     const method = 'getResource';
 
     // Skip request if method was recently rate limited (429)
     if (this.isRateLimited(method)) {
       console.debug('[Xmds::getResource] skipped due to rate limit');
-      return;
+      return { ok: false, rateLimited: true };
     }
 
     try {
@@ -866,23 +878,24 @@ export class Xmds {
           // Get the encoded XML
           const xml = rootDoc["SOAP-ENV:Envelope"]["SOAP-ENV:Body"][0]["ns1:GetResourceResponse"][0].resource[0]._;
 
-          return xml;
+          return { ok: true, data: xml } as XmdsFetch<string>;
         })
-        .catch((error: AxiosError) => {
+        .catch((error: AxiosError): XmdsFetch<string> => {
           console.error('[Xmds::getResource] > Error fetching resource XML: ', {
             error,
           });
 
-          if (error.response?.status === 429) {
-            // Handle 429 by setting cooldown and retrying this method later
-            this.setRateLimit(
-                method,
-                error.response.headers?.['retry-after'],
-                () => this.getResource(file)
-            );
+          const rateLimited = error.response?.status === 429;
+
+          if (rateLimited) {
+            // Start the cooldown but do not retry here. This only fetches the file,
+            // saving is done by the caller, so a retry would throw the file away.
+            this.setRateLimit(method, error.response?.headers?.['retry-after']);
           }
 
           handleError(error)
+
+          return { ok: false, rateLimited };
         });
     } catch (e) {
       console.error('[Xmds::getResource] > Error fetching resource XML: ', {
@@ -890,16 +903,18 @@ export class Xmds {
       });
 
       handleError(e);
+
+      return { ok: false, rateLimited: false };
     }
   }
   
-  async getData(widgetId: RequiredFile['id']) {
+  async getData(widgetId: RequiredFile['id']): Promise<XmdsFetch<string>> {
     const method = 'getData';
 
     // Skip request if method was recently rate limited (429)
     if (this.isRateLimited(method)) {
       console.debug('[Xmds::getData] skipped due to rate limit');
-      return;
+      return { ok: false, rateLimited: true };
     }
 
     try {
@@ -924,25 +939,24 @@ export class Xmds {
           // Get the encoded XML
           const xml = rootDoc["SOAP-ENV:Envelope"]["SOAP-ENV:Body"][0]["ns1:GetDataResponse"][0].data[0]._;
 
-          return xml;
+          return { ok: true, data: xml } as XmdsFetch<string>;
         })
-        .catch((error: AxiosError) => {
+        .catch((error: AxiosError): XmdsFetch<string> => {
           console.error('[Xmds::getData] > Error fetching data XML: ', {
             error,
           });
 
-          if (error.response?.status === 429) {
-            // Handle 429 by setting cooldown and retrying this method later
-            this.setRateLimit(
-                method,
-                error.response.headers?.['retry-after'],
-                () => this.getData(widgetId)
-            );
+          const rateLimited = error.response?.status === 429;
+
+          if (rateLimited) {
+            // Start the cooldown but do not retry here. This only fetches the data,
+            // saving is done by the caller, so a retry would throw the data away.
+            this.setRateLimit(method, error.response?.headers?.['retry-after']);
           }
 
           handleError(error, 'Unable to fetch data for widget with id ' + widgetId);
 
-          return false;
+          return { ok: false, rateLimited };
         });
     } catch (e) {
       console.error('[Xmds::getData] > Error fetching data XML: ', {
@@ -951,7 +965,7 @@ export class Xmds {
 
       handleError(e, 'Unable to fetch data for widget with id ' + widgetId);
 
-      return false;
+      return { ok: false, rateLimited: false };
     }
   }
   

@@ -97,7 +97,11 @@ export default class RequiredFiles {
         }
     }
 
-    async composeMediaInventory(isComplete: boolean = false): Promise<{ xmlString: string; files: RequiredFile[]; }> {
+    // Builds the media inventory report sent to the CMS.
+    // isDownloaded tells it whether the player actually has a given file.
+    async composeMediaInventory(
+      isDownloaded: (file: RequiredFile) => boolean,
+    ): Promise<{ xmlString: string; files: RequiredFile[]; }> {
       // Store xmlFileString for mediaInventory use
       const requiredFiles = await Promise.all(this.files.map((fileObj) => {
           return {
@@ -109,7 +113,7 @@ export default class RequiredFiles {
               md5: fileObj.md5 || '',
               path: fileObj.path || '',
               saveAs: fileObj.saveAs || '',
-            }, isComplete),
+            }, isDownloaded(fileObj)),
             copy: fileObj,
         };
       }));

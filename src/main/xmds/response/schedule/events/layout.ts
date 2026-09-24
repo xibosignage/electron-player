@@ -1,4 +1,4 @@
-import { isFileDownloaded, getLayoutFile } from "../../../../common/fileManager";
+import { isFileDownloaded, getLayoutFile, getMissingLayoutWidgetFiles } from "../../../../common/fileManager";
 import { criteria, CriteriaResponseType, CriteriaType } from "../criteria";
 import { ConsoleDB } from "../../../../../shared/console/ConsoleDB";
 
@@ -74,6 +74,9 @@ export class Layout implements LayoutInterface {
     interruptCommittedDuration: number;
     criteria?: CriteriaType[] | undefined;
 
+    // The last set of missing files logged, so the same one is not logged over and over.
+    private loggedMissingWidgetFiles = '';
+
     constructor(response: LayoutResponseType) {
         this.response = response;
         this.cyclePlayback = response.$.cyclePlayback === '1';
@@ -148,6 +151,27 @@ export class Layout implements LayoutInterface {
                 }
             }
         }
+
+        // Check the widget files the CMS listed for this layout
+        const missingWidgetFiles = getMissingLayoutWidgetFiles(this.file);
+
+        if (missingWidgetFiles.length > 0) {
+            // This runs every few seconds, so only log when the missing files change.
+            const missing = missingWidgetFiles.join(',');
+
+            if (missing !== this.loggedMissingWidgetFiles) {
+                this.loggedMissingWidgetFiles = missing;
+
+                console.debug('[Layout::isValid] > Widget files not downloaded', {
+                    layoutId: this.file,
+                    missingWidgetFiles,
+                });
+            }
+
+            return false;
+        }
+
+        this.loggedMissingWidgetFiles = '';
 
         return true;
     }
