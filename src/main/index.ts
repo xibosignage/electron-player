@@ -56,6 +56,12 @@ import {
   getFileByName,
   isResourceUpToDate,
   resourceFileName,
+  saveRequiredFilesList,
+  requiredFileName,
+  isDownloadedStatus,
+  isFileDownloaded,
+  isWidgetDataFresh,
+  markFileFailed,
 } from './common/fileManager';
 import Schedule from './xmds/response/schedule/schedule';
 import ScheduleManager from './common/scheduleManager';
@@ -784,13 +790,14 @@ const initXmrEventHandlers = async function () {
   xmr.on('dataUpdate', async (widgetId) => {
     console.debug('[XMR::dataUpdate] Updating widget data file', widgetId);
 
-    const widgetData = await xmds.getData(`${widgetId}`);
+    const result = await xmds.getData(`${widgetId}`);
 
-    if (!widgetData) {
+    if (!result.ok) {
       console.debug('[XMR::dataUpdate] No widget data received for widget ' + widgetId);
       return;
     }
 
+    const widgetData = result.data;
     const widgetDataKey = getWidgetDataKey(String(widgetId));
     const widgetLocalFile = getWidgetFile(widgetId);
 
@@ -860,18 +867,38 @@ const initXmrEventHandlers = async function () {
   });
 }
 
-async function dataWidgetUpdate(file: RequiredFile) {
-  console.debug('[MAIN] [dataWidgetUpdate] > Updating widget data file for widget ' + file.id);
-  const widgetData = await xmds.getData(file.id);
+// Fetches a widget's data from the CMS and saves it.
+// force skips the update interval check, for callers already spaced by it.
+// verifyLocalFile also checks the saved data is still on disk.
+async function dataWidgetUpdate(
+  file: RequiredFile,
+  options: { force?: boolean; verifyLocalFile?: boolean } = {},
+) {
+  const saveAs = `${file.id}.json`;
 
-  if (!widgetData) {
-    console.debug('[MAIN] [dataWidgetUpdate] > No widget data received for widget ' + file.id);
+  if (!options.force && isWidgetDataFresh(saveAs, file.updateInterval, options.verifyLocalFile)) {
+    console.debug('[MAIN] [dataWidgetUpdate] > Still within its update interval, skipping widget ' + file.id);
     return;
   }
 
-  console.debug('[MAIN] [dataWidgetUpdate] > Received updated widget data for widget ' + file.id, { widgetData });
+  console.debug('[MAIN] [dataWidgetUpdate] > Updating widget data file for widget ' + file.id);
+  const result = await xmds.getData(file.id);
 
-  return await downloadWidgetDataFile((file as unknown) as FileManagerFileType, widgetData, 'updated');
+  if (!result.ok) {
+    console.debug('[MAIN] [dataWidgetUpdate] > No widget data received for widget ' + file.id);
+
+    // Do not mark it failed: a cooldown ends by itself, and a failed refresh still
+    // leaves the old data in place.
+    if (!result.rateLimited && !isFileDownloaded(saveAs)) {
+      markFileFailed(saveAs);
+    }
+
+    return;
+  }
+
+  console.debug('[MAIN] [dataWidgetUpdate] > Received updated widget data for widget ' + file.id);
+
+  return await downloadWidgetDataFile((file as unknown) as FileManagerFileType, result.data, 'updated');
 }
 
 let screenshotIntervalId: NodeJS.Timeout | null = null;
@@ -990,11 +1017,17 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
     }
   });
 
-  xmds.on('requiredFiles', async (data) => {
+  xmds.on('requiredFiles', async (data, verifyLocalFiles) => {
     console.debug('[Xmds::on("requiredFiles")] > Required Files', {
       registerDisplay: data,
       shouldParse: false,
     });
+
+    // Save the list first, so the player knows what it is supposed to have.
+    // Only when the CMS reports a change, otherwise it is the same list we already have.
+    if (verifyLocalFiles) {
+      saveRequiredFilesList(data.files);
+    }
 
     // Start by saving the required files response, so we can replay it when we're offline.
     const libraryPath = config.getSetting('library');
@@ -1005,7 +1038,7 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
 
     // Set initial media inventory report
     await xmds.submitMediaInventory(
-      await data.composeMediaInventory()
+      await data.composeMediaInventory(file => isFileDownloaded(requiredFileName(file)))
     );
 
     // TODO: implement an Electron specific LibraryManager to keep track of and download these files.
@@ -1025,15 +1058,25 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
         } else if (file.type === 'resource') {
           // Resources carry no md5, so the CMS's updated timestamp is what decides
           // whether ours is stale.
-          if (isResourceUpToDate(file)) {
+          if (isResourceUpToDate(file, verifyLocalFiles)) {
             console.debug('[Xmds::on("requiredFiles")] > Resource up to date, skipping: ' + resourceFileName(file));
             return null;
           }
 
-          const resourceHtml = await xmds.getResource(file);
-          return await downloadResourceFile((file as unknown) as FileManagerFileType, resourceHtml);
+          const result = await xmds.getResource(file);
+
+          if (!result.ok) {
+            // Do not mark it failed while it is only waiting on a cooldown.
+            if (!result.rateLimited) {
+              markFileFailed(resourceFileName(file));
+            }
+
+            return null;
+          }
+
+          return await downloadResourceFile((file as unknown) as FileManagerFileType, result.data);
         } else if (file.type === 'widget') {
-          return dataWidgetUpdate(file);
+          return dataWidgetUpdate(file, { verifyLocalFile: verifyLocalFiles });
         } else {
           return null;
         }
@@ -1051,12 +1094,13 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
 
     // After all files have been processed, keep track of widget files and set up regular updates for them if required based on the updateInterval property.
     data.updateDataWidgets(async (file) => {
-      await dataWidgetUpdate(file);
+      // This timer is already spaced by the widget's update interval.
+      await dataWidgetUpdate(file, { force: true });
     });
 
     // Update media inventory as files are downloaded
     await xmds.submitMediaInventory(
-      await data.composeMediaInventory(true),
+      await data.composeMediaInventory(file => isFileDownloaded(requiredFileName(file))),
     );
 
     // Clean up files marked for purge
@@ -1070,32 +1114,19 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
     }
 
     // Count how many of the required files are present in local storage.
-    // Failed downloads keep their row, so exclude them by status or they count as downloaded.
+    // A file gets a row as soon as the CMS lists it, so check the status, not just the row.
     const inventory = getDownloadedFiles();
     const inventoryNames = new Set(
       inventory
-        .filter(f => (f as { status: string }).status !== 'failed')
+        .filter(f => isDownloadedStatus((f as { status: string }).status))
         .map(f => (f as { name: string }).name)
     );
     config.state.requiredFilesCount = data.files.length;
 
-    // Each file type is stored under a different name in the DB. Find which ones are not yet present
-    const missingFiles = data.files.filter(file => {
-      if (file.type === 'resource') {
-        return !inventoryNames.has(resourceFileName(file));
-      }
-      if (file.type === 'widget') return !inventoryNames.has(`${file.id}.json`);
-      return !inventoryNames.has(file.saveAs ?? '');
-    });
-    
-    config.state.downloadedFilesCount = data.files.length - missingFiles.length;
+    const missingFiles = data.files.filter(file => !inventoryNames.has(requiredFileName(file)));
 
-    // Use the same filename that was looked up in the inventory so the name is meaningful
-    config.state.missingFiles = missingFiles.map(file => {
-      if (file.type === 'resource') return resourceFileName(file);
-      if (file.type === 'widget') return `${file.id}.json`;
-      return file.saveAs ?? `${file.type}:${file.id}`;
-    });
+    config.state.downloadedFilesCount = data.files.length - missingFiles.length;
+    config.state.missingFiles = missingFiles.map(file => requiredFileName(file));
 
     await manager?.checkGlobalDependencies();
   });
@@ -1392,7 +1423,7 @@ const mainFunctions = {
         for (const connector of connectors) {
           const file = getFileByName(connector.js);
 
-          if (!file || file.status === 'failed' || !file.localPath || !file.md5) {
+          if (!file || !isDownloadedStatus(file.status) || !file.localPath || !file.md5) {
             // Script not downloaded yet — it arrives via the normal
             // required-files flow; the next assessment tick will retry.
             console.debug('[MAIN::manager.on("dataConnectors")] > Connector script not ready, skipping', {

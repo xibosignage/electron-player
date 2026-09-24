@@ -6,7 +6,7 @@ import * as cheerio from 'cheerio';
 import { DateTime } from 'luxon';
 import 'dotenv/config';
 
-import { FileStore } from "./fileStore";
+import { FileStore, ListedFile } from "./fileStore";
 import { Config } from "../config/config";
 import { State } from "./state";
 import { LocalFile, RequiredFile } from "./types";
@@ -25,9 +25,16 @@ const store = new FileStore(config.dbPath)
 
 export type FileManagerFileType =  RequiredFile & {
     localPath: string;
-    status: 'success' | 'failed' | 'skipped' | 'updated';
+    status: 'pending' | 'success' | 'failed' | 'skipped' | 'updated';
     lastDownloaded: string;
 };
+
+// True if the file has been downloaded.
+// Every file the CMS lists gets a row straight away, so having a row does not
+// mean the file arrived. Only the status says that.
+export function isDownloadedStatus(status?: string | null): boolean {
+    return status === 'success' || status === 'updated';
+}
 
 export type PurgeItemType = {
     id: number | null;
@@ -142,7 +149,7 @@ export async function downloadFile(file: FileManagerFileType) {
     // Check if file already exists
     if (fs.existsSync(localPath)) {
         const existing = store.db.prepare(`SELECT * FROM files WHERE name = ?`).get(file.saveAs) as FileManagerFileType | undefined;
-        if (existing && existing.status !== 'failed') {
+        if (existing && isDownloadedStatus(existing.status)) {
             if (existing.md5 !== file.md5) {
                 // Update local file and file meta data
                 console.log(`[FileManager] Updating existing file: ${file.saveAs}`);
@@ -195,7 +202,10 @@ export function getDownloadedFiles() {
 }
 
 export function getLayoutFile(layoutId: number): LocalFile | undefined {
-    return store.db.prepare(`SELECT * FROM files WHERE fileId = ? AND type = 'layout'`).get(String(layoutId)) as LocalFile | undefined;
+    return store.db.prepare(`
+        SELECT * FROM files
+        WHERE fileId = ? AND type = 'layout' AND status IN ('success', 'updated')
+    `).get(String(layoutId)) as LocalFile | undefined;
 }
 
 export function getFileByName(name: string): LocalFile | undefined {
@@ -204,24 +214,18 @@ export function getFileByName(name: string): LocalFile | undefined {
 
 /**
  * Returns true if the named file downloaded successfully.
- *
- * Files that failed to download keep their row in the table, so the status is what
- * decides. Only 'failed' rules a file out; 'updated' is as healthy as 'success'.
  */
 export function isFileDownloaded(name: string): boolean {
-    const file = getFileByName(name);
-
-    return file !== undefined && file.status !== 'failed';
+    return isDownloadedStatus(getFileByName(name)?.status);
 }
 
-/**
- * Returns true if any file is recorded as failed.
- *
- * Used to force a RequiredFiles refresh, since the CMS CRC does not change when a
- * download fails here.
- */
-export function hasFailedDownloads(): boolean {
-    return store.db.prepare(`SELECT 1 FROM files WHERE status = 'failed' LIMIT 1`).get() !== undefined;
+// True if any file the CMS asked for is still missing.
+// The CMS checksum does not change when a download fails here, so this is what
+// tells the player to ask for the file list again.
+export function hasUndownloadedFiles(): boolean {
+    return store.db.prepare(
+        `SELECT 1 FROM files WHERE status NOT IN ('success', 'updated') LIMIT 1`
+    ).get() !== undefined;
 }
 
 /**
@@ -229,6 +233,116 @@ export function hasFailedDownloads(): boolean {
  */
 export function resourceFileName(file: Pick<RequiredFile, 'layoutId' | 'regionId' | 'mediaId'>): string {
     return `layout_${file.layoutId}_region_${file.regionId}_media_${file.mediaId}.html`;
+}
+
+// The filename a required file is saved under.
+export function requiredFileName(file: RequiredFile): string {
+    if (file.type === 'resource') return resourceFileName(file);
+    if (file.type === 'widget') return `${file.id}.json`;
+
+    return file.saveAs ?? `${file.type}:${file.id}`;
+}
+
+// Saves the CMS file list, then clears out rows the CMS no longer asks for.
+//
+// A row is kept while its file is still on disk, so the player carries on playing
+// what it already has. Rows with no file behind them are deleted.
+//
+// Call this only when the CMS reports a change, or on the first collection after
+// startup. An unchanged list would just rewrite every row with the same values.
+export function saveRequiredFilesList(files: RequiredFile[]) {
+    if (files.length === 0) {
+        return;
+    }
+
+    const lastListedAt = new Date().toISOString();
+
+    const listed: ListedFile[] = files.map(file => ({
+        name: requiredFileName(file),
+        url: file.path ?? '',
+        fileId: String(file.id),
+        type: file.type,
+        fileType: file.fileType ?? '',
+        code: file.code ?? null,
+        listedMd5: file.md5 ?? '',
+        listedSize: Number(file.size) || 0,
+        listedUpdated: file.updated ?? null,
+        updateInterval: Number.isFinite(Number(file.updateInterval)) ? Number(file.updateInterval) : null,
+        layoutId: file.layoutId ?? null,
+    }));
+
+    store.saveListed(listed, lastListedAt);
+
+    for (const row of store.getNotListedAt(lastListedAt)) {
+        if (row.localPath && fs.existsSync(row.localPath)) {
+            continue;
+        }
+
+        store.deleteByStoredAs(row.name);
+
+        console.debug('[FileManager] Removed unlisted file record with no local file', {
+            name: row.name,
+            method: 'FileManager::saveRequiredFilesList',
+        });
+    }
+}
+
+// Marks a file as failed, which is what makes the player try it again later.
+export function markFileFailed(name: string) {
+    store.db.prepare(`
+        UPDATE files SET status = 'failed', localPath = '', lastDownloaded = NULL WHERE name = ?
+    `).run(name);
+}
+
+// True if the widget's data was downloaded recently enough to reuse.
+// Pass verifyLocalFile to also check the file is still on disk.
+export function isWidgetDataFresh(
+    name: string,
+    updateInterval?: number,
+    verifyLocalFile = false,
+): boolean {
+    const row = getFileByName(name);
+
+    if (!row || !isDownloadedStatus(row.status) || !updateInterval) {
+        return false;
+    }
+
+    if (verifyLocalFile && (!row.localPath || !fs.existsSync(row.localPath))) {
+        return false;
+    }
+
+    const cachedAt = parseLastDownloaded(row.lastDownloaded);
+
+    return cachedAt !== null && DateTime.utc() < cachedAt.plus({ minutes: Number(updateInterval) });
+}
+
+// The layout's widget files that are not downloaded yet.
+//
+// Returns nothing when no file list has been saved yet, so a player that has
+// never reached its CMS carries on playing what it has.
+export function getMissingLayoutWidgetFiles(layoutId: number): string[] {
+    const lastListedAt = store.getLatestListedAt();
+
+    if (lastListedAt === null) {
+        return [];
+    }
+
+    const missing: string[] = [];
+
+    for (const resource of store.getListedResourcesForLayout(layoutId, lastListedAt)) {
+        if (!isDownloadedStatus(resource.status)) {
+            missing.push(resource.name);
+        }
+
+        // The CMS does not tag widget data with a layout, so find it through the widget's HTML row.
+        const data = getFileByName(`${resource.fileId}.json`);
+
+        if (data !== undefined && !isDownloadedStatus(data.status)) {
+            missing.push(data.name);
+        }
+    }
+
+    return missing;
 }
 
 /**
@@ -250,15 +364,17 @@ function parseLastDownloaded(value?: string): DateTime | null {
     return sql.isValid ? sql : null;
 }
 
-/**
- * Returns true if the cached resource is newer than the CMS last changed it.
- *
- * Resources carry no md5, so this timestamp is all there is to compare.
- */
-export function isResourceUpToDate(file: RequiredFile): boolean {
+// True if our copy is newer than the CMS's last change to it.
+// Widget HTML has no md5, so the timestamp is all there is to compare.
+// Pass verifyLocalFile to also check the file is still on disk.
+export function isResourceUpToDate(file: RequiredFile, verifyLocalFile = false): boolean {
     const row = getFileByName(resourceFileName(file));
 
-    if (!row || row.status === 'failed') {
+    if (!row || !isDownloadedStatus(row.status)) {
+        return false;
+    }
+
+    if (verifyLocalFile && (!row.localPath || !fs.existsSync(row.localPath))) {
         return false;
     }
 
@@ -343,6 +459,8 @@ export async function downloadResourceFile(file: FileManagerFileType, resourceHt
     } catch (err) {
         console.error(`[FileManager] Error downloading resource ${saveAs}:`, err);
         status = 'failed';
+
+        markFileFailed(saveAs);
     }
 
     return file;
@@ -364,6 +482,7 @@ export async function downloadWidgetDataFile(file: FileManagerFileType, widgetDa
                 size,
                 status,
                 saveAs,
+                localPath,
                 path: localPath,
                 md5: '',
             });
@@ -400,6 +519,9 @@ export async function downloadWidgetDataFile(file: FileManagerFileType, widgetDa
     } catch (err) {
         console.error(`[FileManager] Error downloading widget data ${saveAs}:`, err);
         status = 'failed';
+
+        // The file on disk may be half written, so do not leave the row saying success.
+        markFileFailed(saveAs);
     }
 
     return file;
@@ -407,7 +529,7 @@ export async function downloadWidgetDataFile(file: FileManagerFileType, widgetDa
 
 export function findLayoutFileByCode(code: string): { layoutId: number; name: string } | null {
     const file = store.db.prepare(
-        `SELECT fileId, name FROM files WHERE type = 'layout' AND status != 'failed' AND code = ? LIMIT 1`
+        `SELECT fileId, name FROM files WHERE type = 'layout' AND status IN ('success', 'updated') AND code = ? LIMIT 1`
     ).get(code) as Pick<LocalFile, 'fileId' | 'name'> | undefined;
 
     if (!file) {
