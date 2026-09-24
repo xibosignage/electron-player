@@ -28,7 +28,7 @@ import { RegisterDisplay } from './response/registerDisplay';
 import { ErrorCodes, handleError } from "./error/error";
 import RequiredFiles from "./response/requiredFiles";
 import Schedule from "./response/schedule/schedule";
-import { LogsThreshold, RequiredFile } from '../common/types';
+import { LogsMaxStored, LogsThreshold, RequiredFile } from '../common/types';
 import { ConsoleDB } from '../../shared/console/ConsoleDB';
 import { escapeStringForXml, submitLogsXmlString } from '../common/parser';
 import { hasFailedDownloads } from '../common/fileManager';
@@ -638,8 +638,23 @@ export class Xmds {
 
     if (logLevelCategory === 'Off') {
       console.debug('[Xmds::submitLogs] > Log level is off, skipping log submission');
+
+      // Stop any backlog submission already in progress, it would otherwise keep submitting.
+      if (this.logsInterval !== undefined) {
+        clearInterval(this.logsInterval);
+        this.logsInterval = undefined;
+      }
+      this.hasSubmittedLogs = null;
+
+      // Nothing is written while logging is off, so drop what was left from before
+      // rather than keeping logs that will never be submitted.
+      db.deleteNonFaultLogs();
+
       return;
     }
+
+    // Cap the backlog so logs cannot build up while the CMS is unreachable.
+    db.pruneOldest(LogsMaxStored);
 
     const logsCount = db.count();
 

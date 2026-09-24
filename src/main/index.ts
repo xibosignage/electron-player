@@ -1665,7 +1665,10 @@ app.whenReady().then(() => {
           // from the renderer origin and the worker script from the local file server.
           // Without this, the worker is blocked (script-src is the fallback) and pdf.js
           // silently degrades to its main-thread fallback.
-          "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:9696; worker-src 'self' blob: http://localhost:9696; style-src 'self' 'unsafe-inline' http://localhost:9696; img-src 'self' http://localhost:9696 https://develop.xibo.co.uk data: blob: https:; connect-src 'self' http://localhost:9696 https:; media-src 'self' http://localhost:9696 blob: https:; frame-src 'self' http://localhost:9696 https: http:; font-src 'self' http://localhost:9696 http://localhost data:;",
+          // blob: on img-src/media-src: XLR can play media from in-memory blob: URLs.
+          // https: on script-src/style-src/font-src/connect-src: HTML widgets and packages served
+          // from the local file server load CDN scripts, stylesheets, web fonts and remote data.
+          "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:9696 https:; worker-src 'self' blob: http://localhost:9696; style-src 'self' 'unsafe-inline' http://localhost:9696 https:; img-src 'self' http://localhost:9696 data: blob: https:; connect-src 'self' http://localhost:9696 https:; media-src 'self' http://localhost:9696 blob: https:; frame-src 'self' http://localhost:9696 https: http:; font-src 'self' http://localhost:9696 data: https:;",
         ],
         // 'Access-Control-Allow-Origin': ['http://localhost:5173'],  // Allow any domain to access
         'Access-Control-Allow-Methods': ['GET, POST, PUT, DELETE, OPTIONS'],  // Allowed methods

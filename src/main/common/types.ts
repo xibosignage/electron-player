@@ -58,3 +58,5 @@ export interface RequiredFile {
 }
 
 export const LogsThreshold = 100;
+// Maximum number of non-Fault logs kept locally awaiting submission
+export const LogsMaxStored = 10000;
