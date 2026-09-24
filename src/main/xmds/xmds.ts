@@ -633,26 +633,6 @@ export class Xmds {
 
   async submitLogs(db: ConsoleDB) {
     console.debug('[Xmds::submitLogs] Submitting Logs to CMS');
-    const logLevel = this.config.getSetting('logLevel', 'error');
-    const logLevelCategory = logLevel.charAt(0).toUpperCase() + logLevel.slice(1);
-
-    if (logLevelCategory === 'Off') {
-      console.debug('[Xmds::submitLogs] > Log level is off, skipping log submission');
-
-      // Stop any backlog submission already in progress, it would otherwise keep submitting.
-      if (this.logsInterval !== undefined) {
-        clearInterval(this.logsInterval);
-        this.logsInterval = undefined;
-      }
-      this.hasSubmittedLogs = null;
-
-      // Nothing is written while logging is off, so drop what was left from before
-      // rather than keeping logs that will never be submitted.
-      db.deleteNonFaultLogs();
-
-      return;
-    }
-
     // Cap the backlog so logs cannot build up while the CMS is unreachable.
     db.pruneOldest(LogsMaxStored);
 

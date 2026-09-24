@@ -1659,16 +1659,13 @@ app.whenReady().then(() => {
       responseHeaders: {
         ...details.responseHeaders,
         'Content-Security-Policy': [
-          // worker-src: CMS widget bundles (bundle.min.js) embed pdf.js, which starts its
-          // worker by wrapping the script in a blob: URL whenever the worker source is not
-          // same-origin as the document — always true here, since the document is served
-          // from the renderer origin and the worker script from the local file server.
-          // Without this, the worker is blocked (script-src is the fallback) and pdf.js
-          // silently degrades to its main-thread fallback.
-          // blob: on img-src/media-src: XLR can play media from in-memory blob: URLs.
-          // https: on script-src/style-src/font-src/connect-src: HTML widgets and packages served
-          // from the local file server load CDN scripts, stylesheets, web fonts and remote data.
-          "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:9696 https:; worker-src 'self' blob: http://localhost:9696; style-src 'self' 'unsafe-inline' http://localhost:9696 https:; img-src 'self' http://localhost:9696 data: blob: https:; connect-src 'self' http://localhost:9696 https:; media-src 'self' http://localhost:9696 blob: https:; frame-src 'self' http://localhost:9696 https: http:; font-src 'self' http://localhost:9696 data: https:;",
+          // Permissive by design: the player renders arbitrary CMS content (widgets, HTML
+          // packages, embedded code) that may load scripts, styles, fonts, media, data and
+          // frames from any site, so no directive is narrowed. Every other directive falls
+          // back to default-src. `*` matches any http(s)/ws(s) origin, including the local
+          // file server, but not data: or blob:, so those are listed explicitly (blob: is
+          // needed for in-memory media and the pdf.js worker in CMS widget bundles).
+          "default-src * 'self' data: blob: 'unsafe-inline' 'unsafe-eval';",
         ],
         // 'Access-Control-Allow-Origin': ['http://localhost:5173'],  // Allow any domain to access
         'Access-Control-Allow-Methods': ['GET, POST, PUT, DELETE, OPTIONS'],  // Allowed methods

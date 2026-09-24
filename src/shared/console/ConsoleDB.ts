@@ -225,15 +225,6 @@ export class ConsoleDB {
   }
 
   /**
-   * Deletes all log entries except Faults, which are managed separately.
-   */
-  deleteNonFaultLogs() {
-    const result = this.db.prepare(`DELETE FROM logs WHERE category IS NOT 'Fault'`).run();
-    this._count = Math.max(0, this._count - result.changes);
-    this._recentLogs = [];
-  }
-
-  /**
    * Keeps at most `max` non-Fault log entries, deleting the oldest beyond that.
    */
   pruneOldest(max: number) {

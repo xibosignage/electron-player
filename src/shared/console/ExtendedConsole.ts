@@ -62,16 +62,15 @@ export function createExtendedConsole(
   const base = globalThis.console;
 
   const logToDB = (level: ConsoleLevel, ...data: any[]) => {
-    const logLevel = opts.getLogLevel ? opts.getLogLevel() : 'error';
+    const logLevel = String(opts.getLogLevel?.() ?? 'error').toLowerCase();
 
-    // When logging is completely disabled, stop here
-    if (logLevel === 'off') {
-      return;
-    }
-
-    // Determine whether this log should be written to the DB based on logLevel
-    const shouldWriteToDB =
-      !(['debug', 'info', 'log'].includes(level) && logLevel === 'error');
+    // Determine whether this log should be written to the DB based on logLevel.
+    // With logging switched off nothing is written, so nothing builds up waiting to be
+    // submitted. Faults are not logs (they are reported separately), so they are always kept.
+    const shouldWriteToDB = level === 'fault' || (
+      logLevel !== 'off' &&
+      !(['debug', 'info', 'log'].includes(level) && logLevel === 'error')
+    );
 
     if (db && shouldWriteToDB) {
       let logEntry = getLogEntryFromArgs(undefined, data) as LogEntry | undefined;
