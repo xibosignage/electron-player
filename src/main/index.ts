@@ -1322,6 +1322,20 @@ const mainFunctions = {
         }, []);
 
         console.debug('[MAIN::manager.on("layouts")] > Sending updated layout loop to renderer', { layouts: _layouts });
+
+        // XLR resolves the loop against this list, so it has to arrive first.
+        // On a fresh install the schedule arrives before any layout file has
+        // downloaded, so the buildScheduleLayouts() call in the 'schedule'
+        // handler skips every layout and XLR is left with an empty
+        // uniqueLayouts map. By the time the files land and the loop changes,
+        // nothing has re-sent that list, so XLR's getLayout() returns undefined
+        // for every entry in this loop and playback silently falls back to the
+        // splash - with no further loop change to recover from. Re-send it
+        // alongside the loop so the two always agree.
+        if (schedule) {
+          win.webContents.send('update-unique-layouts', buildScheduleLayouts(schedule));
+        }
+
         // Send updated layout loop to XLR
         win.webContents.send('update-loop', _layouts);
       });
@@ -1645,7 +1659,13 @@ app.whenReady().then(() => {
       responseHeaders: {
         ...details.responseHeaders,
         'Content-Security-Policy': [
-          "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:9696; style-src 'self' 'unsafe-inline' http://localhost:9696; img-src 'self' http://localhost:9696 https://develop.xibo.co.uk data: https:; connect-src 'self' http://localhost:9696 https://auth.signlicence.co.uk; media-src 'self' http://localhost:9696 https:; frame-src 'self' http://localhost:9696 https: http:; font-src 'self' http://localhost:9696 http://localhost data:;",
+          // Permissive by design: the player renders arbitrary CMS content (widgets, HTML
+          // packages, embedded code) that may load scripts, styles, fonts, media, data and
+          // frames from any site, so no directive is narrowed. Every other directive falls
+          // back to default-src. `*` matches any http(s)/ws(s) origin, including the local
+          // file server, but not data: or blob:, so those are listed explicitly (blob: is
+          // needed for in-memory media and the pdf.js worker in CMS widget bundles).
+          "default-src * 'self' data: blob: 'unsafe-inline' 'unsafe-eval';",
         ],
         // 'Access-Control-Allow-Origin': ['http://localhost:5173'],  // Allow any domain to access
         'Access-Control-Allow-Methods': ['GET, POST, PUT, DELETE, OPTIONS'],  // Allowed methods

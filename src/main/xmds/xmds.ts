@@ -28,7 +28,7 @@ import { RegisterDisplay } from './response/registerDisplay';
 import { ErrorCodes, handleError } from "./error/error";
 import RequiredFiles from "./response/requiredFiles";
 import Schedule from "./response/schedule/schedule";
-import { LogsThreshold, RequiredFile } from '../common/types';
+import { LogsMaxStored, LogsThreshold, RequiredFile } from '../common/types';
 import { ConsoleDB } from '../../shared/console/ConsoleDB';
 import { escapeStringForXml, submitLogsXmlString } from '../common/parser';
 import { hasFailedDownloads } from '../common/fileManager';
@@ -623,18 +623,18 @@ export class Xmds {
           );
         }
 
+        // Allow the next interval tick to retry rather than staying
+        // permanently locked out by hasSubmittedLogs === false.
+        this.hasSubmittedLogs = null;
+
         return handleError(error, 'Unable to submit logs');
       });
   }
 
   async submitLogs(db: ConsoleDB) {
     console.debug('[Xmds::submitLogs] Submitting Logs to CMS');
-    const logLevel = this.config.getSetting('logLevel', 'error');
-    const logLevelCategory = logLevel.charAt(0).toUpperCase() + logLevel.slice(1);
-
-    if (logLevelCategory === 'Off') {
-      console.debug('[Xmds::submitLogs] > Log level is off, skipping log submission');
-    }
+    // Cap the backlog so logs cannot build up while the CMS is unreachable.
+    db.pruneOldest(LogsMaxStored);
 
     const logsCount = db.count();
 
