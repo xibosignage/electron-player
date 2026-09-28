@@ -77,7 +77,7 @@ import { getWidgetDataKey, submitStatXmlString } from './common/parser';
 import { Layout } from './xmds/response/schedule/events/layout';
 import { ConfigData, MainCallbackType, DataConnectorPayload } from '../shared/types';
 import { realtimeDataStore } from './dataConnector/realtimeDataStore';
-import { commandManager } from '../shared/command/commandManager';
+import { commandManager, setMacroContext } from '../shared/command/commandManager';
 import { registerLocalCommands } from './command/localCommands';
 import { scheduleCriteriaManager } from '../shared/scheduleCriteria/scheduleCriteriaManager';
 import { geoLocationManager } from './common/geoLocationManager';
@@ -1510,6 +1510,14 @@ const mainFunctions = {
     await registerLocalCommands({
       xmds,
       win,
+    });
+
+    // Supply the values command strings resolve their macros and tags against. Read through
+    // getters rather than passed by value, so a command picks up tags refreshed by a later
+    // collection, and the position as it stands when the command fires.
+    setMacroContext({
+      getTags: () => config.displayTags,
+      getLocation: () => geoLocationManager.getCurrentLocation(),
     });
 
     // Bind event handlers

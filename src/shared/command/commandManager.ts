@@ -1,4 +1,5 @@
 import { Command } from "../../main/command/command";
+import { MacroContext, resolveSegment } from "./macroResolver";
 
 type CommandProps = {
   commandCode: string
@@ -22,6 +23,25 @@ export type CommandsCollection = {
 };
 
 /**
+ * Stands in until `setMacroContext()` is called, so a command carrying no placeholders
+ * still runs. One that does carry a tag fails rather than dispatching it unresolved.
+ */
+const UNSET_MACRO_CONTEXT: MacroContext = {
+  getTags: () => ({}),
+  getLocation: () => ({ latitude: null, longitude: null }),
+};
+
+let macroContext: MacroContext = UNSET_MACRO_CONTEXT;
+
+/**
+ * Supplies the values command strings resolve their macros and tags against. Called once
+ * during startup, from the process that owns the Display's configuration.
+ */
+export function setMacroContext(context: MacroContext) {
+  macroContext = context;
+}
+
+/**
  * Manages command handling and execution for the player.
  *
  * This class is responsible for parsing commands received from the CMS,
@@ -38,6 +58,9 @@ export type CommandsCollection = {
  * - `executeCommandByCode()` - executes a command using its CMS command code.
  * - `executeCommandByString()` - executes a command from a raw encoded string.
  * - `scheduleCommands()` - schedules commands to run at specific times.
+ *
+ * Macros and Display tags in a command string are resolved as the command is dispatched,
+ * rather than when it is parsed, so a resolved value is never stale.
  */
 export class CommandManager {
   private commands: {
@@ -168,15 +191,21 @@ export class CommandManager {
     let result: CommandResult;
 
     try {
+      // Resolve here rather than at parse time, so a macro carries the value it has at the
+      // moment the command is dispatched. Throwing leaves the command undispatched, which
+      // is the point: a placeholder that cannot be resolved must not reach the device.
+      const commandType = resolveSegment(command.commandType, macroContext);
+      const commandParams = command.commandParams.map((param) => resolveSegment(param, macroContext));
+
       // Lookup local command handler by commandType
-      const handler = this.registeredPlayerCommands[command.commandType];
+      const handler = this.registeredPlayerCommands[commandType];
 
       if (!handler) {
-        throw new Error(`Unsupported command type: ${command.commandType}`);
+        throw new Error(`Unsupported command type: ${commandType}`);
       }
 
       // Execute the command and pass the parameters, if any
-      result = await handler(...command.commandParams);
+      result = await handler(...commandParams);
 
       if (command.validationString) {
         if (typeof result === 'string' && this.matchesValidationString(result, command.validationString)) {
