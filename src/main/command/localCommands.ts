@@ -40,13 +40,27 @@ export async function registerLocalCommands({
       headers['Content-Type'] = contentType;
     }
 
+    // The CMS stores a JSON body as a string. Send it as an object so it goes out as JSON
+    // rather than being encoded a second time as a quoted string.
+    let data = requestConfig.body || undefined;
+
+    if (typeof data === 'string' && contentType === 'application/json') {
+      try {
+        data = JSON.parse(data);
+      } catch {
+        // Not JSON despite the content type, so send it unchanged rather than rejecting a
+        // body the target device may still accept.
+        console.debug('[CommandManager] HTTP command body is not valid JSON, sending as-is');
+      }
+    }
+
     // Execute HTTP request. Error responses resolve instead of throwing so that their status
     // code can be validated, leaving only network level failures to be thrown.
     const response = await axios({
       method: requestConfig.method || 'GET',
       url,
       headers,
-      data: requestConfig.body || undefined,
+      data,
       validateStatus: () => true,
       timeout: 30_000
     });
