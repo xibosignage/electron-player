@@ -155,10 +155,8 @@ export class Xmds {
     try {
       await this.registerDisplay();
     } catch (error) {
-      console.error('[Xmds::collect::registerDisplay] Error', {
-        error: error,
-        shouldParse: false,
-      });
+      // Errors are logged as summaries, so the details can go to the CMS log too
+      console.error('[Xmds::collect::registerDisplay] Error', { error });
       const err = handleError(error, 'Unable to register with the CMS.');
       console.log('XMDS::collect', err);
 
