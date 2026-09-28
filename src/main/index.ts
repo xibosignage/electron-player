@@ -63,6 +63,7 @@ import {
   isWidgetDataFresh,
   markFileFailed,
 } from './common/fileManager';
+import { runWithConcurrency } from './common/concurrency';
 import Schedule from './xmds/response/schedule/schedule';
 import ScheduleManager from './common/scheduleManager';
 import { migrateLegacyPlayer } from './migration/legacyPlayer';
@@ -1062,7 +1063,15 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
     // TODO: implement an Electron specific LibraryManager to keep track of and download these files.
     // Skip if 'purgeAll' is in progress
     if (!isPurging) {
-      await Promise.all(data.files.map(async (file) => {
+      // The CMS decides how many of these may run at once.
+      const maxConcurrentDownloads = config.getSetting('maxConcurrentDownloads', 2) as number;
+
+      console.debug('[Xmds::on("requiredFiles")] > Starting downloads', {
+        fileCount: data.files.length,
+        maxConcurrentDownloads,
+      });
+
+      await runWithConcurrency(data.files, maxConcurrentDownloads, async (file) => {
         // Skip if 'purgeAll' is in progress mid-iteration
         if (isPurging) {
           console.debug('[Xmds::on("requiredFiles")] > Skip downloading: ' + file.saveAs + ', purgeAll is in progress.');
@@ -1098,7 +1107,7 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
         } else {
           return null;
         }
-      }));
+      });
     }
 
     // After a purge all, re-emit the schedule event so update-unique-layouts is re-sent with

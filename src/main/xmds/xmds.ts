@@ -880,7 +880,7 @@ export class Xmds {
         })
         .catch((error: AxiosError): XmdsFetch<string> => {
           console.error('[Xmds::getResource] > Error fetching resource XML: ', {
-            error,
+            error: error.message,
           });
 
           const rateLimited = error.response?.status === 429;
@@ -897,7 +897,7 @@ export class Xmds {
         });
     } catch (e) {
       console.error('[Xmds::getResource] > Error fetching resource XML: ', {
-        e,
+        e: e instanceof Error ? e.message : String(e),
       });
 
       handleError(e);
@@ -941,7 +941,7 @@ export class Xmds {
         })
         .catch((error: AxiosError): XmdsFetch<string> => {
           console.error('[Xmds::getData] > Error fetching data XML: ', {
-            error,
+            error: error.message,
           });
 
           const rateLimited = error.response?.status === 429;
@@ -958,7 +958,7 @@ export class Xmds {
         });
     } catch (e) {
       console.error('[Xmds::getData] > Error fetching data XML: ', {
-        e,
+        e: e instanceof Error ? e.message : String(e),
       });
 
       handleError(e, 'Unable to fetch data for widget with id ' + widgetId);

@@ -258,6 +258,10 @@ export class Config {
     this.settings['sizeY'] = registerDisplay.getSetting('sizeY', 0);
     this.settings['sendCurrentLayoutAsStatusUpdate'] = registerDisplay.getSetting('sendCurrentLayoutAsStatusUpdate', false);
     this.settings['screenShotSize'] = Number(registerDisplay.getSetting('screenShotSize', 0)) || 0;
+    this.settings['maxConcurrentDownloads'] = Math.max(
+      1,
+      Number(registerDisplay.getSetting('maxConcurrentDownloads', 2)) || 2,
+    );
     this.displayTags = registerDisplay.getTags();
     this.settings['isRecordGeoLocationOnProofOfPlay'] = registerDisplay.getSetting('isRecordGeoLocationOnProofOfPlay', false) === '1';
     this.state.displayStatus = registerDisplay.status || 0;
