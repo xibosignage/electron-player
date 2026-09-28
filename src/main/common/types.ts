@@ -10,6 +10,8 @@ export type InputLayoutType = {
     cyclePlayback?: boolean;
     groupKey?: number;
     playCount?: number;
+    /** Scheduled duration in seconds, used by XLR to time the next layout's preload */
+    duration?: number;
 };
 
 export type MediaInventoryFileType = {

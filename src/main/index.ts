@@ -216,6 +216,13 @@ let pendingScheduleRefresh = false;
 /**
  * Builds the list of layouts XLR resolves the playback loop against.
  */
+// Scheduled layout duration in seconds, so XLR can time loading the next layout's
+// widgets shortly before this one ends. Undefined when the schedule gives none.
+const layoutDuration = (item: object): number | undefined => {
+  const duration = 'duration' in item ? Number((item as { duration: unknown }).duration) : NaN;
+  return Number.isFinite(duration) && duration > 0 ? duration : undefined;
+};
+
 const buildScheduleLayouts = (currentSchedule: Schedule): InputLayoutType[] =>
   [...currentSchedule.layouts, currentSchedule.defaultLayout, ...currentSchedule.overlays]
     .reduce((arr: InputLayoutType[], item: Layout | DefaultLayout | OverlayLayout | SspLayout) => {
@@ -239,6 +246,7 @@ const buildScheduleLayouts = (currentSchedule: Schedule): InputLayoutType[] =>
           scheduleId: 'scheduleId' in item ? (item as Layout).scheduleId : -1,
           shareOfVoice: 'shareOfVoice' in item ? (item as (Layout | OverlayLayout | SspLayout)).shareOfVoice : 0,
           code: _layout.localPath ? extractLayoutCode(_layout.localPath) : undefined,
+          duration: layoutDuration(item),
         };
 
         if (item instanceof OverlayLayout || 'isOverlay' in item) {
@@ -1345,6 +1353,7 @@ const mainFunctions = {
                 cyclePlayback: 'cyclePlayback' in item ? (item as Layout).cyclePlayback : undefined,
                 groupKey: 'groupKey' in item ? (item as Layout).groupKey : undefined,
                 playCount: 'playCount' in item ? (item as Layout).playCount : undefined,
+                duration: layoutDuration(item),
               },
             ];
           }
