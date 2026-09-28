@@ -22,6 +22,7 @@ import xml2js from 'xml2js';
 import { DateTime, DurationLike } from 'luxon';
 import { setExpiry } from '../../common/parser';
 import { FaultCodes } from '../../../shared/faults/Faults';
+import { errorSummary } from '../../../shared/console/errorSummary';
 // import {DurationLike} from "luxon";
 
 export enum ErrorCodes {
@@ -128,20 +129,19 @@ export function validateXml(xmlString: string, callback: (isValid: boolean, erro
 }
 
 export function handleError(error: any, message?: string) {
-  const { response, request, message: errMessage, status } = error;
+  const { response, request, message: errMessage, status } = error ?? {};
   let errorObject = {
     message: errMessage,
     status,
   };
 
-  console._log('[handleError]', {
-    error,
-    response,
-    request,
-    message,
-  })
+  // Log a summary: a failed request carries its whole config, request (with its
+  // socket) and response, which must not be dumped on every failed XMDS call.
+  const logData = { context: message, error: errorSummary(error) };
 
   if (response) {
+    console.debug('[handleError] CMS responded with an error', logData);
+
     let errResponse: Error = new Error(response.data, response.status);
     errResponse.parse();
 
@@ -154,13 +154,14 @@ export function handleError(error: any, message?: string) {
     // request sent but no response received
     errorObject.status = request.status;
 
-    console.error(errorObject.message);
+    console.error('[handleError] No response from the CMS', logData);
 
     return errorObject;
   } else {
-    errorObject.message = message;
-    console.error(errorObject.message);
-    console.debug({ error, errorObject });
+    // Keep the error's own message, e.g. a SOAP fault such as "This Display is not
+    // authorised."; the caller's message is only a fallback.
+    errorObject.message = errMessage || message;
+    console.error('[handleError]', logData);
     return errorObject;
   }
 }
