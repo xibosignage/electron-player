@@ -112,7 +112,7 @@ export async function downloadAndSaveFile(
 
         console.log(`[FileManager] Download successful: ${file.saveAs}`);
     } catch (err) {
-        console.error(`[FileManager] Error downloading ${file.saveAs}:`, err);
+        console.error(`[FileManager] Error downloading ${file.saveAs}:`, err instanceof Error ? err.message : String(err));
         status = 'failed';
 
         // Remove partially downloaded file if exists
@@ -457,7 +457,7 @@ export async function downloadResourceFile(file: FileManagerFileType, resourceHt
 
         console.log(`[FileManager] Download successful: ${saveAs}`);
     } catch (err) {
-        console.error(`[FileManager] Error downloading resource ${saveAs}:`, err);
+        console.error(`[FileManager] Error downloading resource ${saveAs}:`, err instanceof Error ? err.message : String(err));
         status = 'failed';
 
         markFileFailed(saveAs);
@@ -517,7 +517,7 @@ export async function downloadWidgetDataFile(file: FileManagerFileType, widgetDa
 
         console.log(`[FileManager] Download successful: ${saveAs}`);
     } catch (err) {
-        console.error(`[FileManager] Error downloading widget data ${saveAs}:`, err);
+        console.error(`[FileManager] Error downloading widget data ${saveAs}:`, err instanceof Error ? err.message : String(err));
         status = 'failed';
 
         // The file on disk may be half written, so do not leave the row saying success.

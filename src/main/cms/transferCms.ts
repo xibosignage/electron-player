@@ -200,7 +200,7 @@ export async function performCmsTransfer(newCmsUrl: string, newCmsKey: string, d
 
     console.error('[CmsTransfer] Transfer to new CMS failed, rolling back to previous CMS', {
       newCmsUrl,
-      err,
+      err: errMessage,
     });
 
     console.alert('CMS transfer failed: ' + errMessage, {

@@ -155,7 +155,8 @@ export class RegisterDisplay {
       setting === 'sizeX' ||
       setting === 'sizeY' ||
       setting === 'screenShotRequested' ||
-      setting === 'screenShotRequestInterval'
+      setting === 'screenShotRequestInterval' ||
+      setting === 'maxConcurrentDownloads'
     ) {
       settingValue.value = parseInt(String(settingValue.value));
     }
