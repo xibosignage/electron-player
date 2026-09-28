@@ -217,6 +217,13 @@ let pendingScheduleRefresh = false;
 /**
  * Builds the list of layouts XLR resolves the playback loop against.
  */
+// Scheduled layout duration in seconds, so XLR can time loading the next layout's
+// widgets shortly before this one ends. Undefined when the schedule gives none.
+const layoutDuration = (item: object): number | undefined => {
+  const duration = 'duration' in item ? Number((item as { duration: unknown }).duration) : NaN;
+  return Number.isFinite(duration) && duration > 0 ? duration : undefined;
+};
+
 const buildScheduleLayouts = (currentSchedule: Schedule): InputLayoutType[] =>
   [...currentSchedule.layouts, currentSchedule.defaultLayout, ...currentSchedule.overlays]
     .reduce((arr: InputLayoutType[], item: Layout | DefaultLayout | OverlayLayout | SspLayout) => {
@@ -240,6 +247,7 @@ const buildScheduleLayouts = (currentSchedule: Schedule): InputLayoutType[] =>
           scheduleId: 'scheduleId' in item ? (item as Layout).scheduleId : -1,
           shareOfVoice: 'shareOfVoice' in item ? (item as (Layout | OverlayLayout | SspLayout)).shareOfVoice : 0,
           code: _layout.localPath ? extractLayoutCode(_layout.localPath) : undefined,
+          duration: layoutDuration(item),
         };
 
         if (item instanceof OverlayLayout || 'isOverlay' in item) {
@@ -477,6 +485,16 @@ ipcMain.handle('execute-xlr-event', async (_event, { eventName, payload }: { eve
 // Called both by the 5-second interval (while visible) and immediately when the
 // window is first shown, so the window is never blank on open.
 const collectAndPushStatus = async (win: BrowserWindow) => {
+  // Read these from their sources on every refresh rather than copying them once at
+  // startup: on a fresh install the CMS, display name and XMR state all change after boot.
+  config.state.version = config.version ?? '';
+  config.state.cmsUrl = config.cmsUrl ?? '';
+  config.state.deviceName = config.displayName ?? '';
+  config.state.xmrConnected = xmr ? xmr.isConnected : null;
+  if (xmr?.lastMessageAt) {
+    config.state.lastXmrMessage = xmr.lastMessageAt;
+  }
+
   config.state.activeFaults = faults.getActiveFaults();
   config.state.pendingStatsCount = popStats.getCount();
   config.state.pendingLogsCount = db.count();
@@ -1354,6 +1372,7 @@ const mainFunctions = {
                 cyclePlayback: 'cyclePlayback' in item ? (item as Layout).cyclePlayback : undefined,
                 groupKey: 'groupKey' in item ? (item as Layout).groupKey : undefined,
                 playCount: 'playCount' in item ? (item as Layout).playCount : undefined,
+                duration: layoutDuration(item),
               },
             ];
           }

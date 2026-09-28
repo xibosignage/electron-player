@@ -265,6 +265,14 @@ export class Config {
     this.displayTags = registerDisplay.getTags();
     this.settings['isRecordGeoLocationOnProofOfPlay'] = registerDisplay.getSetting('isRecordGeoLocationOnProofOfPlay', false) === '1';
     this.state.displayStatus = registerDisplay.status || 0;
+    this.state.registrationCode = registerDisplay.code ?? '';
+    this.state.registrationMessage = registerDisplay.message ?? '';
+
+    // The CMS owns the display's name once it is registered; keep the local one if none is sent
+    const cmsDisplayName = registerDisplay.getSetting('displayName', null);
+    if (typeof cmsDisplayName === 'string' && cmsDisplayName.trim() !== '') {
+      this.displayName = cmsDisplayName;
+    }
 
     await this.saveCms();
   }

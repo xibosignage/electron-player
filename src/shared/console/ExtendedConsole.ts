@@ -4,6 +4,7 @@ import he from 'he';
 import type { ConsoleDB, LogEntry } from './ConsoleDB';
 import { flatLogObj, FlattenedObject, flattenObject, unflattenObject } from '../../main/common/parser';
 import { LogCategoryType } from '../loggerLib';
+import { sanitizeLogArgs } from './errorSummary';
 
 export interface ConfigAdapter {
   getConfig(): Promise<any> | any;
@@ -145,7 +146,9 @@ export function createExtendedConsole(
   }
 
   const wrap = (level: ConsoleLevel, nativeFn: (...args: any[]) => void) =>
-    (...args: any[]) => {
+    (...rawArgs: any[]) => {
+      // Errors are logged as summaries everywhere: printed, stored and sent to main
+      const args = sanitizeLogArgs(rawArgs);
       const logEntryIndex = args.findIndex(l => isLogEntry(l));
       let computedArgs: any[] = [];
 
@@ -185,7 +188,8 @@ export function createExtendedConsole(
   return extended;
 }
 
-export function serializeArgs(input: any[], level: ConsoleLevel): LogEntry {
+export function serializeArgs(rawInput: any[], level: ConsoleLevel): LogEntry {
+  const input = sanitizeLogArgs(rawInput);
   const log: LogEntry = {
     uid: uuidv4(),
     level: level ?? 'log',

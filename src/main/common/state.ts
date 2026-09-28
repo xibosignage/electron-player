@@ -83,6 +83,10 @@ export class State {
   activeCriteria: Record<string, {metric: string, value: any, ttl: number}>;
   cmsUrl: string;
   version: string;
+  // Status window only: why the display may not be showing content yet
+  xmrConnected: boolean | null;
+  registrationCode: string;
+  registrationMessage: string;
 
   constructor() {
     this.appVersionCode = -1;
@@ -93,6 +97,9 @@ export class State {
     this.deviceName = '';
     this.cmsUrl = '';
     this.version = '';
+    this.xmrConnected = null;
+    this.registrationCode = '';
+    this.registrationMessage = '';
     this.lanIpAddress = '';
     this.timeZone = DateTime.now().toFormat('z');
     this.currentLayoutId = 0;
@@ -190,13 +197,31 @@ export class State {
     return JSON.stringify(filteredData);
   }
 
+  /**
+   * The display's standing with the CMS, e.g. "READY - Display is active and ready to start."
+   * or "ADDED - ... awaiting Authorisation from an Administrator in the CMS". Content is only
+   * fetched once the display is authorised, so this explains an empty schedule.
+   */
+  registrationStatusText() {
+    if (!this.registrationCode && !this.registrationMessage) {
+      return 'Not registered yet';
+    }
+
+    return [this.registrationCode, this.registrationMessage].filter(Boolean).join(' - ');
+  }
+
   toHtml() {
     return '<h1 class="title">General Information</h1>'
       + '<p>Date: ' + DateTime.now().toISO() + '</p>'
       + '<p>Version: ' + this.version + '</p>'
       + '<p>Version Code: ' + this.appVersionCode + '</p>'
-      + '<p>Content Management System: ' + this.cmsUrl + '</p>'
-      + '<p>XMR Last Message: ' + this.lastXmrMessage.toISO() + '</p>'
+      + '<p>Content Management System: ' + (this.cmsUrl || 'Not configured') + '</p>'
+      + '<p>Display Status: ' + this.registrationStatusText() + '</p>'
+      + '<p>XMR: ' + (this.xmrConnected === null ? 'Not started' : this.xmrConnected ? 'Connected' : 'Not connected') + '</p>'
+      // The default is a year back, meaning no message has been received yet
+      + '<p>XMR Last Message: ' + (this.lastXmrMessage < DateTime.now().minus({ days: 364 })
+        ? 'None received'
+        : this.lastXmrMessage.toISO()) + '</p>'
       + '<p>LAN IP: ' + this.lanIpAddress + '</p>'
       + '<p>Latitude: ' + this.latitude + '</p>'
       + '<p>Longitude: ' + this.longitude + '</p>'
@@ -226,7 +251,10 @@ export class State {
       + '<p>Scheduled Layouts: ' + this.scheduleLoop + '</p>'
       + '<p>Valid Layouts: ' + (this.validLayoutIds.length === 0 ? 'None' : this.validLayoutIds.join(', ')) + '</p>'
       + '<p>Invalid Layouts: ' + (this.invalidLayoutIds.length === 0 ? 'None' : this.invalidLayoutIds.join(', ')) + '</p>'
-      + '<p>Next Schedule Update: ' + this.nextScheduleUpdate.toISO() + '</p>'
+      // Set when a collection finishes, so a time in the past means one is still running
+      // (the first one after install can take a while, as it downloads every file)
+      + '<p>Next Schedule Update: ' + this.nextScheduleUpdate.toISO()
+        + (this.nextScheduleUpdate < DateTime.now() ? ' (collection in progress)' : '') + '</p>'
       + '<p>Active Criteria: </p>'
       + (Object.keys(this.activeCriteria).length === 0
         ? '<p>None</p>'
