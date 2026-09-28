@@ -6,16 +6,40 @@
  * error text at all. An AxiosError is the opposite: its enumerable config,
  * request (a Node ClientRequest with its socket) and response are flattened in
  * full. Keep what helps diagnose the failure and nothing else.
+ *
+ * Stack traces are left out: logs reach the CMS, where users and customers can
+ * read them, and a stack exposes install paths and source file names.
  */
 
-const MAX_STACK_LINES = 5;
 const MAX_BODY_LENGTH = 300;
+
+// Home directories, which carry the local username: /home/<user>, /Users/<user>
+// (macOS), /root and <drive>:\Users\<user> (either slash). Matched as text because
+// the renderer cannot ask the OS for the home directory. The lookbehind skips URL
+// paths such as http://cms.example.com/home/..., where a hostname precedes the slash.
+// Windows first, so 'D:/Users/jo' is not caught by the '/Users/<user>' pattern.
+const HOME_DIR_PATTERNS: [RegExp, string][] = [
+  [/\b[A-Za-z]:[\\/]Users[\\/][^\\/\s'"`)]+/g, '~'],
+  [/(?<![\w.-])\/(?:home|Users)\/[^/\s'"`)]+(?=\/|\b)/g, '~'],
+  [/(?<![\w.-])\/root(?=\/)/g, '~'],
+];
+
+/**
+ * Replace home directory prefixes with `~`, e.g. an fs error's
+ * "open '/home/jo/Documents/xibo_library/1.jpg'" becomes
+ * "open '~/Documents/xibo_library/1.jpg'". Keeps which folder was involved
+ * without showing the username in logs that reach the CMS.
+ */
+export function redactPaths(text: string): string {
+  return HOME_DIR_PATTERNS.reduce((out, [pattern, replacement]) => out.replace(pattern, replacement), text);
+}
+
+const redact = <T>(value: T): T => (typeof value === 'string' ? redactPaths(value) as T : value);
 
 export type ErrorSummary = {
   name?: string;
   message?: string;
   code?: string | number;
-  stack?: string;
   // HTTP (axios) failures
   method?: string;
   url?: string;
@@ -57,33 +81,30 @@ export function errorSummary(err: unknown, depth = 0): ErrorSummary | string | R
       for (const [key, value] of Object.entries(err)) {
         if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) {
           fields[key] = typeof value === 'string' && value.length > MAX_BODY_LENGTH
-            ? value.slice(0, MAX_BODY_LENGTH) + '…'
-            : value;
+            ? redactPaths(value.slice(0, MAX_BODY_LENGTH)) + '…'
+            : redact(value);
         }
       }
       return fields;
     }
-    return typeof err === 'string' ? err : String(err);
+    return redactPaths(typeof err === 'string' ? err : String(err));
   }
 
   const e = err as any;
   const summary: ErrorSummary = {
     name: e.name,
-    message: e.message,
+    message: redact(e.message),
     code: e.code ?? e.errno,
-    stack: typeof e.stack === 'string'
-      ? e.stack.split('\n').slice(0, MAX_STACK_LINES).join('\n')
-      : undefined,
   };
 
   if (e.isAxiosError) {
     const method = e.config?.method;
     summary.method = method ? String(method).toUpperCase() : undefined;
-    summary.url = e.config?.url ?? e.config?.baseURL;
+    summary.url = redact(e.config?.url ?? e.config?.baseURL);
     summary.status = e.response?.status ?? e.status;
     summary.statusText = e.response?.statusText || undefined;
     // SOAP faults and CMS error messages come back in the body
-    summary.responseData = bodyText(e.response?.data);
+    summary.responseData = redact(bodyText(e.response?.data));
   }
 
   if (e.cause !== undefined && depth < 1) {
@@ -102,9 +123,17 @@ export function errorSummary(err: unknown, depth = 0): ErrorSummary | string | R
  * nested in plain objects or arrays (e.g. `{ error: err }`). Other values are
  * returned untouched, so the cost for ordinary log calls is a shallow walk.
  */
+// Object keys that, by convention, hold an error even when it is not an Error
+// instance, e.g. `throw { code, message }` logged as `{ error: err }`.
+const ERROR_KEYS = /^(error|err|e|reason|cause|exception)$/i;
+
 export function sanitizeLogArgs(args: any[]): any[] {
-  const walk = (value: any, depth: number): any => {
+  const walk = (value: any, depth: number, key?: string): any => {
     if (isErrorLike(value)) return errorSummary(value);
+    if (key !== undefined && ERROR_KEYS.test(key) && value !== null && typeof value === 'object' &&
+        !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype) {
+      return errorSummary(value);
+    }
     if (depth >= 3 || value === null || typeof value !== 'object') return value;
 
     if (Array.isArray(value)) {
@@ -123,7 +152,7 @@ export function sanitizeLogArgs(args: any[]): any[] {
 
     let out: Record<string, any> | undefined;
     for (const [key, item] of Object.entries(value)) {
-      const next = walk(item, depth + 1);
+      const next = walk(item, depth + 1, key);
       if (next !== item) {
         const copy: Record<string, any> = out ?? { ...value };
         copy[key] = next;
