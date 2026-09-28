@@ -484,6 +484,16 @@ ipcMain.handle('execute-xlr-event', async (_event, { eventName, payload }: { eve
 // Called both by the 5-second interval (while visible) and immediately when the
 // window is first shown, so the window is never blank on open.
 const collectAndPushStatus = async (win: BrowserWindow) => {
+  // Read these from their sources on every refresh rather than copying them once at
+  // startup: on a fresh install the CMS, display name and XMR state all change after boot.
+  config.state.version = config.version ?? '';
+  config.state.cmsUrl = config.cmsUrl ?? '';
+  config.state.deviceName = config.displayName ?? '';
+  config.state.xmrConnected = xmr ? xmr.isConnected : null;
+  if (xmr?.lastMessageAt) {
+    config.state.lastXmrMessage = xmr.lastMessageAt;
+  }
+
   config.state.activeFaults = faults.getActiveFaults();
   config.state.pendingStatsCount = popStats.getCount();
   config.state.pendingLogsCount = db.count();
