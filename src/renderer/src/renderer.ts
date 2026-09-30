@@ -606,6 +606,21 @@ const onNavBarMouseMove = () => {
   showNavBar();
 };
 
+// Main samples the cursor across the whole window, which also catches movement over widget
+// iframes that the document's own mousemove listener never sees.
+window.playerAPI.onCursorMoved(() => {
+  if (navBarEnabled) {
+    onNavBarMouseMove();
+  }
+});
+
+// A resize means the display profile's size changed in the CMS, so show the bar as at startup.
+window.addEventListener('resize', () => {
+  if (navBarEnabled) {
+    showNavBar();
+  }
+});
+
 /**
  * Reopens the CMS configuration page from the nav bar. Playback keeps running behind it.
  */

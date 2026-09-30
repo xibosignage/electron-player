@@ -93,6 +93,7 @@ const playerApi: PlayerAPI = {
   onUpdateUniqueLayouts: (callback) => ipcRenderer.on('update-unique-layouts', (_event, value) => callback(value)),
   onUpdateOverlays: (callback) => ipcRenderer.on('update-overlays', (_event, value) => callback(value)),
   onShowStatusWindow: (callback) => ipcRenderer.on('showStatusWindow', (_event, timeout) => callback(timeout)),
+  onCursorMoved: (callback) => ipcRenderer.on('cursor-moved', () => callback()),
   onTriggerWebhook: (callback) => ipcRenderer.on('trigger-webhook', (_event, payload) => callback(payload)),
   onNavigateToLayoutCode: (callback) => ipcRenderer.on('navigate-to-layout-code', (_event, layoutCode) => callback(layoutCode)),
   onXlrExpireWidget: (callback) => ipcRenderer.on('xlr-expire-widget', (_event, widgetId) => callback(widgetId)),
