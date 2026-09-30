@@ -11,3 +11,9 @@ exclude:
   # Dependencies ship their own CI config inside their npm tarballs, which Syft
   # catalogues as GitHub Actions components.
   - ./**/.github/**
+  # Build tooling that never ships. Excluded by path because the binary
+  # cataloguer cannot see npm's dev flag. Not node_modules/electron: that ships.
+  - ./node_modules/electron-winstaller/**
+  - ./node_modules/@electron/windows-sign/**
+  - ./node_modules/@esbuild/**
+  - ./node_modules/electron-vite/**
