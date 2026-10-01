@@ -1,8 +1,13 @@
 # Syft configuration, used by the 'sbom' job in .github/workflows/release.yml.
-#
+
+javascript:
+  # devDependencies never reach a packaged build. This is Syft's default, set
+  # explicitly so a change of default cannot quietly alter a published SBOM.
+  include-dev-dependencies: false
+
 # Patterns must start with './', '*/' or '**/'. They are silently ignored on
-# Windows, where resolved paths use backslashes, so a local run on Windows
-# reports extra components.
+# Windows, where resolved paths use backslashes, so a local run there reports
+# extra components.
 exclude:
   # Build output, which holds a packaged copy of the app and would duplicate
   # everything already catalogued from source.
