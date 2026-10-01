@@ -530,7 +530,7 @@ const collectAndPushStatus = async (win: BrowserWindow) => {
 
 const configureIpc = (win) => {
   ipcMain.on('open-child-window', (_event, url) => {
-    const view = new WebContentsView();
+    const view = new WebContentsView({ webPreferences: { devTools: is.dev } });
     win.contentView.addChildView(view);
     view.setBounds({ x: 0, y: 0, width: 800, height: 600 });
     view.webContents.loadURL(url);
@@ -763,6 +763,9 @@ const createWindow = async () => {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
       webSecurity: false,
+      // The default app menu still binds Ctrl+Shift+I with the menu bar hidden, so turn
+      // DevTools off entirely outside development.
+      devTools: is.dev,
     },
   });
 
