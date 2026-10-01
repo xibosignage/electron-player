@@ -120,6 +120,8 @@ export interface PlayerAPI {
   onXlrExtendWidgetDuration: (callback: (widgetId: string, duration: number) => void) => void;
   onXlrSetWidgetDuration: (callback: (widgetId: string, duration: number) => void) => void;
   onUpdateDisplayTags: (callback: (tags: Record<string, string>) => void) => void;
+  onUpdateMouseEnabled: (callback: (enabled: boolean) => void) => void;
+  onMouseMoved: (callback: () => void) => void;
   onUpdateDataConnectors: (callback: (connectors: DataConnectorPayload[]) => void) => void;
   // Fired when a classic (non-data-connector) widget's data file has been
   // re-downloaded. The renderer broadcasts this the same way a data
@@ -133,6 +135,7 @@ export interface PlayerAPI {
   initFaults: (faults: any[]) => void;
   notifyStatusWindowVisibility: (visible: boolean) => void;
   notifyRendererReady: () => void;
+  setCursorVisible: (visible: boolean) => void;
 
   // Broadcast channel for stats
   sendStatsBCMessage: (payload: any) => void;

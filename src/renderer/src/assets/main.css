@@ -24,13 +24,8 @@ body {
     overflow: hidden;
     width: 100%;
     min-height: 100vh;
-    -webkit-app-region: drag;
     background-color: #1D1D1D;
     font-family: 'Maven Pro', sans-serif;
-}
-
-form, input, button, label, a {
-    -webkit-app-region: no-drag;
 }
 
 #player_container {
@@ -111,11 +106,6 @@ form, input, button, label, a {
     box-sizing: border-box;
     background: #000000d9;
     color: white;
-    /*
-     * body is a window drag region, so the bar has to opt out or a click on it
-     * drags the frameless window instead of pressing the button.
-     */
-    -webkit-app-region: no-drag;
     transition: transform .2s ease, opacity .2s ease;
 }
 
@@ -590,6 +580,21 @@ form p {
     display: flex;
     justify-content: space-between;
     align-items: center;
+}
+
+/*
+ * The cursor is hidden unless the CMS has the mouse on or it is being moved (see
+ * updateCursor in renderer.ts). The config page keeps its cursor, as a player can land on
+ * it before the CMS has sent any settings.
+ */
+html.cursor-hidden,
+html.cursor-hidden body,
+html.cursor-hidden *:not(#config, #config *) {
+    cursor: none !important;
+}
+
+html.cursor-hidden #config {
+    cursor: auto;
 }
 
 .error {

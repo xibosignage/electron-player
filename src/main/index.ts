@@ -90,6 +90,7 @@ import { Faults, FaultCodes } from '../shared/faults/Faults';
 import Ssp from './common/ssp';
 import SspLayout from './xmds/response/schedule/events/sspLayout';
 import { isValidCmsTarget, performCmsTransfer } from './cms/transferCms';
+import { configureMouse, setMouseEnabled } from './common/mouse';
 
 /**
  * Extract the layout `code` attribute from an XLF file without fully parsing it.
@@ -961,6 +962,7 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
 
     const prevDisplayTags = JSON.stringify(config.displayTags);
     await config.setConfig(data);
+    setMouseEnabled(win, config.settings.enableMouse === true);
     // Only notify the renderer when tags actually change to avoid unnecessary updates.
     if (JSON.stringify(config.displayTags) !== prevDisplayTags) {
       win.webContents.send('update-display-tags', config.displayTags);
@@ -1622,6 +1624,9 @@ const init = async (win: BrowserWindow) => {
 
   // Remote control keys that open the status window
   configureRemoteInput(win);
+
+  // Cursor visibility in widget iframes, and mouse movement for the nav bar
+  configureMouse(win);
 
   // TODO: Configure a new folder for local files.
   configureFileManager();
