@@ -112,15 +112,9 @@
     <!--
       Every file in the packaged application, harvested at build time so new
       Electron or dependency files are picked up without editing this file.
-
-      Squirrel.exe is excluded deliberately: electron-winstaller drops it into the
-      package directory when the per-user installer is built, and shipping a
-      per-user updater inside a machine-wide MSI would be actively misleading.
     -->
     <ComponentGroup Id="ApplicationFiles" Directory="INSTALLFOLDER">
-      <Files Include="$(var.AppDir)\**">
-        <Exclude Files="$(var.AppDir)\Squirrel.exe" />
-      </Files>
+      <Files Include="$(var.AppDir)\**" />
     </ComponentGroup>
   </Fragment>
 
