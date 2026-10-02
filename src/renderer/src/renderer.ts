@@ -545,17 +545,21 @@ const onStatusWindowKeydown = (event: KeyboardEvent) => {
   showStatusWindowFn();
 };
 
-/** How long the nav bar stays on screen after the last cursor movement, in seconds. */
+/** How long the nav bar and cursor stay on screen after the last mouse movement, in seconds. */
 const NAV_BAR_IDLE_TIMEOUT = 5;
 
-/** Don't re-arm the hide timer more often than this while the cursor is moving. */
-const NAV_BAR_MOUSE_THROTTLE_MS = 250;
-
 let navBarHideTimer: ReturnType<typeof setTimeout> | null = null;
-let navBarLastReveal = 0;
 
 /** False until initNavBar() runs, which it only does on a configured player. */
 let navBarEnabled = false;
+
+/** The CMS "Enable Mouse" setting. While on the cursor shows at all times. */
+let mouseEnabled = false;
+
+/** True from a mouse movement until the mouse goes idle, which shows the cursor meanwhile. */
+let mouseActive = false;
+let mouseIdleTimer: ReturnType<typeof setTimeout> | null = null;
+let cursorVisible: boolean | null = null;
 
 /** The config page reopened from the nav bar, kept so repeat opens reuse one instance. */
 let navBarConfigHandler: ConfigHandler | null = null;
@@ -592,27 +596,22 @@ const showNavBar = () => {
 };
 
 /**
- * mousemove fires far more often than the idle timer needs re-arming, and this runs on
- * low-powered signage hardware, so throttle the work.
+ * Shows the cursor while the CMS has the mouse on, or while the mouse is being moved.
+ *
+ * The renderer's own document is styled here, and main is told so it can style the widget
+ * iframes (see src/main/common/mouse.ts).
  */
-const onNavBarMouseMove = () => {
-  const now = Date.now();
+const updateCursor = () => {
+  const visible = mouseEnabled || mouseActive;
 
-  if (now - navBarLastReveal < NAV_BAR_MOUSE_THROTTLE_MS) {
+  if (visible === cursorVisible) {
     return;
   }
 
-  navBarLastReveal = now;
-  showNavBar();
+  cursorVisible = visible;
+  document.documentElement.classList.toggle('cursor-hidden', !visible);
+  window.playerAPI.setCursorVisible(visible);
 };
-
-// Main samples the cursor across the whole window, which also catches movement over widget
-// iframes that the document's own mousemove listener never sees.
-window.playerAPI.onCursorMoved(() => {
-  if (navBarEnabled) {
-    onNavBarMouseMove();
-  }
-});
 
 // A resize means the display profile's size changed in the CMS, so show the bar as at startup.
 window.addEventListener('resize', () => {
@@ -620,6 +619,32 @@ window.addEventListener('resize', () => {
     showNavBar();
   }
 });
+
+/**
+ * Real mouse movement anywhere in the window, widget iframes included, as forwarded by main.
+ * Touches and the mouse events a page makes up for itself never arrive here, so interactive
+ * layouts don't keep bringing up the nav bar. Main also throttles these.
+ */
+const onMouseMoved = () => {
+  if (mouseIdleTimer !== null) {
+    clearTimeout(mouseIdleTimer);
+  }
+
+  mouseIdleTimer = setTimeout(() => {
+    mouseIdleTimer = null;
+    mouseActive = false;
+    updateCursor();
+  }, NAV_BAR_IDLE_TIMEOUT * 1000);
+
+  mouseActive = true;
+  updateCursor();
+
+  if (navBarEnabled) {
+    showNavBar();
+  }
+};
+
+window.playerAPI.onMouseMoved(onMouseMoved);
 
 /**
  * Reopens the CMS configuration page from the nav bar. Playback keeps running behind it.
@@ -658,9 +683,6 @@ const openConfigPage = async () => {
 const initNavBar = () => {
   navBarEnabled = true;
 
-  document.removeEventListener('mousemove', onNavBarMouseMove);
-  document.addEventListener('mousemove', onNavBarMouseMove);
-
   $('#nav-status').off('click').on('click', () => {
     console.debug('[Renderer] showStatusWindow triggered from the nav bar');
     showStatusWindowFn(60); // Show for 60 seconds
@@ -674,10 +696,23 @@ const initNavBar = () => {
   showNavBar();
 };
 
+/** Applies the CMS "Enable Mouse" setting. */
+const setMouseEnabled = (enabled: boolean) => {
+  mouseEnabled = enabled;
+  updateCursor();
+};
+
+window.playerAPI.onUpdateMouseEnabled((enabled) => {
+  console.debug('[Renderer::onUpdateMouseEnabled]', { enabled });
+  setMouseEnabled(enabled);
+});
+
 const init = async () => {
   const config = await window.apiHandler.loadConfig();
   console.debug('[RENDERER] init > config', config);
   window.config = config;
+
+  setMouseEnabled(config.settings?.enableMouse === true);
 
   document.removeEventListener('keydown', onStatusWindowKeydown); // Ensure we don't add multiple listeners
   document.addEventListener('keydown', onStatusWindowKeydown);

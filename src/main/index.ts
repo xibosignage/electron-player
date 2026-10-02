@@ -90,6 +90,7 @@ import { Faults, FaultCodes } from '../shared/faults/Faults';
 import Ssp from './common/ssp';
 import SspLayout from './xmds/response/schedule/events/sspLayout';
 import { isValidCmsTarget, performCmsTransfer } from './cms/transferCms';
+import { configureMouse, setMouseEnabled } from './common/mouse';
 
 /**
  * Extract the layout `code` attribute from an XLF file without fully parsing it.
@@ -634,43 +635,6 @@ const configureRemoteInput = (win: BrowserWindow) => {
   });
 };
 
-/** How often to sample the cursor position for the renderer's nav bar. */
-const CURSOR_POLL_INTERVAL_MS = 250;
-
-/**
- * Tells the renderer whenever the cursor moves over the window, so the nav bar can be revealed.
- *
- * The renderer's own mousemove listener misses movement over widgets, because those events go
- * to the widget's iframe rather than to the player's page. Sampling the system cursor position
- * from here sees the whole window, whatever is under the cursor.
- */
-const configureCursorTracking = (win: BrowserWindow) => {
-  let lastPoint = screen.getCursorScreenPoint();
-
-  const timer = setInterval(() => {
-    if (win.isDestroyed() || !win.isVisible()) {
-      return;
-    }
-
-    const point = screen.getCursorScreenPoint();
-    if (point.x === lastPoint.x && point.y === lastPoint.y) {
-      return;
-    }
-    lastPoint = point;
-
-    // In a windowed display the cursor can be moving elsewhere on the desktop
-    const bounds = win.getBounds();
-    const isOverWindow = point.x >= bounds.x && point.x < bounds.x + bounds.width &&
-      point.y >= bounds.y && point.y < bounds.y + bounds.height;
-
-    if (isOverWindow) {
-      win.webContents.send('cursor-moved');
-    }
-  }, CURSOR_POLL_INTERVAL_MS);
-
-  win.on('closed', () => clearInterval(timer));
-};
-
 const configureExpress = () => {
   createFileServer(config, mainWindow, faults, handleTrigger);
 };
@@ -1073,6 +1037,7 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
     const prevDisplayTags = JSON.stringify(config.displayTags);
     const prevGeometry = JSON.stringify(getWindowGeometry());
     await config.setConfig(data);
+    setMouseEnabled(win, config.settings.enableMouse === true);
 
     // Apply a changed offset/size from the display profile without waiting for a restart,
     // unless this is the first session after registering, which stays fullscreen.
@@ -1742,8 +1707,8 @@ const init = async (win: BrowserWindow) => {
   // Remote control keys that open the status window
   configureRemoteInput(win);
 
-  // Cursor movement anywhere over the window, for revealing the nav bar
-  configureCursorTracking(win);
+  // Cursor visibility in widget iframes, and mouse movement for the nav bar
+  configureMouse(win);
 
   // TODO: Configure a new folder for local files.
   configureFileManager();

@@ -114,14 +114,14 @@ export interface PlayerAPI {
   onUpdateUniqueLayouts: (callback: (layouts: InputLayoutType[]) => void) => void;
   onUpdateOverlays: (callback: (overlays: InputLayoutType[]) => void) => void;
   onShowStatusWindow: (callback: (timeout?: number) => void) => void;
-  // Fired by main when the cursor moves over the window, including over widget iframes.
-  onCursorMoved: (callback: () => void) => void;
   onTriggerWebhook: (callback: (payload: { triggerCode: string; widgetId?: string }) => void) => void;
   onNavigateToLayoutCode: (callback: (layoutCode: string) => void) => void;
   onXlrExpireWidget: (callback: (widgetId: string) => void) => void;
   onXlrExtendWidgetDuration: (callback: (widgetId: string, duration: number) => void) => void;
   onXlrSetWidgetDuration: (callback: (widgetId: string, duration: number) => void) => void;
   onUpdateDisplayTags: (callback: (tags: Record<string, string>) => void) => void;
+  onUpdateMouseEnabled: (callback: (enabled: boolean) => void) => void;
+  onMouseMoved: (callback: () => void) => void;
   onUpdateDataConnectors: (callback: (connectors: DataConnectorPayload[]) => void) => void;
   // Fired when a classic (non-data-connector) widget's data file has been
   // re-downloaded. The renderer broadcasts this the same way a data
@@ -135,6 +135,7 @@ export interface PlayerAPI {
   initFaults: (faults: any[]) => void;
   notifyStatusWindowVisibility: (visible: boolean) => void;
   notifyRendererReady: () => void;
+  setCursorVisible: (visible: boolean) => void;
 
   // Broadcast channel for stats
   sendStatsBCMessage: (payload: any) => void;

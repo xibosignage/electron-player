@@ -257,6 +257,9 @@ export class Config {
     this.settings['sizeX'] = registerDisplay.getSetting('sizeX', 0);
     this.settings['sizeY'] = registerDisplay.getSetting('sizeY', 0);
     this.settings['sendCurrentLayoutAsStatusUpdate'] = registerDisplay.getSetting('sendCurrentLayoutAsStatusUpdate', false);
+    // Off unless the CMS turns it on, as expected on a signage screen: the cursor then only
+    // shows while the mouse is being moved (see updateCursor in renderer.ts).
+    this.settings['enableMouse'] = registerDisplay.getSetting('enableMouse', '0') === '1';
     this.settings['screenShotSize'] = Number(registerDisplay.getSetting('screenShotSize', 0)) || 0;
     this.settings['maxConcurrentDownloads'] = Math.max(
       1,

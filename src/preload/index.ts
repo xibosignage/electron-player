@@ -93,13 +93,14 @@ const playerApi: PlayerAPI = {
   onUpdateUniqueLayouts: (callback) => ipcRenderer.on('update-unique-layouts', (_event, value) => callback(value)),
   onUpdateOverlays: (callback) => ipcRenderer.on('update-overlays', (_event, value) => callback(value)),
   onShowStatusWindow: (callback) => ipcRenderer.on('showStatusWindow', (_event, timeout) => callback(timeout)),
-  onCursorMoved: (callback) => ipcRenderer.on('cursor-moved', () => callback()),
   onTriggerWebhook: (callback) => ipcRenderer.on('trigger-webhook', (_event, payload) => callback(payload)),
   onNavigateToLayoutCode: (callback) => ipcRenderer.on('navigate-to-layout-code', (_event, layoutCode) => callback(layoutCode)),
   onXlrExpireWidget: (callback) => ipcRenderer.on('xlr-expire-widget', (_event, widgetId) => callback(widgetId)),
   onXlrExtendWidgetDuration: (callback) => ipcRenderer.on('xlr-extend-widget-duration', (_event, widgetId, duration) => callback(widgetId, duration)),
   onXlrSetWidgetDuration: (callback) => ipcRenderer.on('xlr-set-widget-duration', (_event, widgetId, duration) => callback(widgetId, duration)),
   onUpdateDisplayTags: (callback) => ipcRenderer.on('update-display-tags', (_event, tags) => callback(tags)),
+  onUpdateMouseEnabled: (callback) => ipcRenderer.on('update-mouse-enabled', (_event, enabled) => callback(enabled)),
+  onMouseMoved: (callback) => ipcRenderer.on('mouse-moved', () => callback()),
   onUpdateDataConnectors: (callback) => ipcRenderer.on('update-data-connectors', (_event, connectors) => callback(connectors)),
   onNotifyWidgetDataChanged: (callback) => ipcRenderer.on('notify-widget-data-changed', (_event, widgetId) => callback(widgetId)),
 
@@ -108,6 +109,7 @@ const playerApi: PlayerAPI = {
   initFaults: (faults) => ipcRenderer.send('initFaults', faults),
   notifyStatusWindowVisibility: (visible: boolean) => ipcRenderer.send('status-window-visibility', visible),
   notifyRendererReady: () => ipcRenderer.send('renderer-ready'),
+  setCursorVisible: (visible: boolean) => ipcRenderer.send('cursor-visibility', visible),
 
   // Broadcast channel for stats
   sendStatsBCMessage: (payload: any) => ipcRenderer.send('stats-bc-message', payload),

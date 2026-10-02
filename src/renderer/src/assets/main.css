@@ -582,6 +582,21 @@ form p {
     align-items: center;
 }
 
+/*
+ * The cursor is hidden unless the CMS has the mouse on or it is being moved (see
+ * updateCursor in renderer.ts). The config page keeps its cursor, as a player can land on
+ * it before the CMS has sent any settings.
+ */
+html.cursor-hidden,
+html.cursor-hidden body,
+html.cursor-hidden *:not(#config, #config *) {
+    cursor: none !important;
+}
+
+html.cursor-hidden #config {
+    cursor: auto;
+}
+
 .error {
     color: #ff4500;
     font-size: .85rem;
