@@ -157,7 +157,7 @@ export class Config {
       this.state.displayStatus = data.displayStatus ?? 2;
     } catch {
       // Probably the file doesn't exist.
-      this.displayName = this.platform + ' Unknown player';
+      this.displayName = this.getDefaultDisplayName();
       await this.saveCms();
     }
   };
@@ -297,6 +297,20 @@ export class Config {
     // RegisterDisplay::resolveSettingKey() (src/main/xmds/response/registerDisplay.ts)
     // tolerates.
     return this.platform === 'win32' ? 'windows' : 'linux';
+  }
+
+  /** Names a new display after the machine, so it is easy to find in the CMS. */
+  getDefaultDisplayName(): string {
+    try {
+      const hostname = os.hostname().trim();
+      if (hostname) {
+        return hostname;
+      }
+    } catch {
+      // Fall through to the generic name.
+    }
+
+    return this.platform + ' Unknown player';
   }
 
   getMacAddress(): string {
