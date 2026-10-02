@@ -650,10 +650,71 @@ const configureFileManager = () => {
   });
 };
 
+type WindowGeometry = { x: number, y: number, width: number, height: number };
+
+// Read directly from config.settings rather than config.getSetting(), which turns a 0 into null.
+const getWindowGeometry = (): WindowGeometry => ({
+  x: Number(config.settings.offsetX) || 0,
+  y: Number(config.settings.offsetY) || 0,
+  width: Number(config.settings.sizeX) || 0,
+  height: Number(config.settings.sizeY) || 0,
+});
+
+/**
+ * Applies the display profile's offset/size settings to the window. A missing or zero size means
+ * fullscreen, which is also what a new install gets before it has registered with the CMS.
+ */
+const applyWindowGeometry = (win: BrowserWindow) => {
+  const geometry = getWindowGeometry();
+
+  if (geometry.width <= 0 || geometry.height <= 0) {
+    console.debug('[MAIN] applyWindowGeometry > No size settings, setting window to fullscreen', geometry);
+    win.setFullScreen(true);
+    const { width, height } = screen.getDisplayMatching(win.getBounds()).size;
+    state.width = width;
+    state.height = height;
+    return;
+  }
+
+  console.debug('[MAIN] applyWindowGeometry > Setting window to custom dimensions and position', geometry);
+
+  // Leaving fullscreen or maximized is asynchronous on Linux and macOS, and restores the bounds
+  // the window had before, so wait for it to finish before applying ours. setBounds() does
+  // nothing while the window is maximized.
+  const setBounds = () => win.setBounds(geometry);
+  if (win.isFullScreen()) {
+    win.once('leave-full-screen', setBounds);
+    win.setFullScreen(false);
+  } else if (win.isMaximized()) {
+    win.once('unmaximize', setBounds);
+    win.unmaximize();
+  } else {
+    setBounds();
+  }
+
+  state.width = geometry.width;
+  state.height = geometry.height;
+};
+
+/**
+ * False when the player started with no display profile saved, i.e. a new install that has not
+ * registered yet. That first session stays fullscreen; the CMS size is saved and used from the
+ * next start.
+ */
+let hasSavedGeometry = false;
+
 let mainWindow: BrowserWindow;
 const createWindow = async () => {
+  // Load the saved display profile first so the window is created at its size. A hidden window
+  // created fullscreen may never get the leave-full-screen event on Linux, so resizing it
+  // afterwards is not reliable.
+  await loadConfig();
+  hasSavedGeometry = config.settings.sizeX !== undefined;
+  const geometry = getWindowGeometry();
+  const isFullScreen = geometry.width <= 0 || geometry.height <= 0;
+
   mainWindow = new BrowserWindow({
-    fullscreen: true,
+    ...(isFullScreen ? { fullscreen: true } : { ...geometry, fullscreen: false }),
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#000',
@@ -672,8 +733,21 @@ const createWindow = async () => {
     },
   });
 
+  // GNOME and some other window managers maximize a new window that is about the size of the
+  // monitor or larger, ignoring maximizable: false, and can do it after show() returns. A
+  // custom size from the display profile should never be maximized, so undo it when it happens.
+  mainWindow.on('maximize', () => {
+    const { width, height } = getWindowGeometry();
+    if (width > 0 && height > 0) {
+      console.debug('[MAIN] Window was maximized, restoring the display profile size');
+      applyWindowGeometry(mainWindow);
+    }
+  });
+
   mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
+    mainWindow.show();
+    // Apply again once shown, as some window managers place a new window themselves
+    applyWindowGeometry(mainWindow);
   })
 
   // Restore the restart-on-crash behaviour the legacy player got from its watchdog process.
@@ -961,8 +1035,16 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
     }
 
     const prevDisplayTags = JSON.stringify(config.displayTags);
+    const prevGeometry = JSON.stringify(getWindowGeometry());
     await config.setConfig(data);
     setMouseEnabled(win, config.settings.enableMouse === true);
+
+    // Apply a changed offset/size from the display profile without waiting for a restart,
+    // unless this is the first session after registering, which stays fullscreen.
+    if (hasSavedGeometry && JSON.stringify(getWindowGeometry()) !== prevGeometry) {
+      applyWindowGeometry(win);
+    }
+
     // Only notify the renderer when tags actually change to avoid unnecessary updates.
     if (JSON.stringify(config.displayTags) !== prevDisplayTags) {
       win.webContents.send('update-display-tags', config.displayTags);
@@ -1655,37 +1737,6 @@ const init = async (win: BrowserWindow) => {
   // the path, so it does not have to be guessed at when setting that task up.
   if (isWayland()) {
     console.log(`[MAIN] init > Screenshots will be read from ${ensureScreenshotDir()}`);
-  }
-
-  // Set window to fullscreen
-  // If dimension and position settings are all "0"
-  if (config.settings.offsetX === 0 &&
-    config.settings.offsetY === 0 &&
-    config.settings.sizeX === 0 &&
-    config.settings.sizeY === 0) {
-    console.debug('[MAIN] init > No offset or size settings, setting window to fullscreen');
-    // Set window to fullscreen
-    win.setFullScreen(true);
-    const { width, height } = screen.getPrimaryDisplay().size;
-    state.width = width;
-    state.height = height;
-  } else {
-    // Otherwise, set the window to the specified dimensions and position.
-    const offsetX = config.settings.offsetX ?? 0;
-    const offsetY = config.settings.offsetY ?? 0;
-    const sizeX = config.settings.sizeX || config.state.width;
-    const sizeY = config.settings.sizeY || config.state.height;
-
-    console.debug('[MAIN] init > Setting window to custom dimensions and position', {
-      offsetX,
-      offsetY,
-      sizeX,
-      sizeY,
-    });
-    win.setSize(sizeX, sizeY);
-    win.setPosition(offsetX, offsetY);
-    state.width = sizeX;
-    state.height = sizeY;
   }
 
   // // eslint-disable-next-line max-len

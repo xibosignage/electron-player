@@ -613,6 +613,13 @@ const updateCursor = () => {
   window.playerAPI.setCursorVisible(visible);
 };
 
+// A resize means the display profile's size changed in the CMS, so show the bar as at startup.
+window.addEventListener('resize', () => {
+  if (navBarEnabled) {
+    showNavBar();
+  }
+});
+
 /**
  * Real mouse movement anywhere in the window, widget iframes included, as forwarded by main.
  * Touches and the mouse events a page makes up for itself never arrive here, so interactive
