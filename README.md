@@ -1,27 +1,15 @@
 # Xibo Player Application for ElectronJS
 
-A cross-platform desktop digital signage player builth with Electron and Vite, designed for running Xibo layouts using the **Xibo Layout Renderer (XLR)**.
+A cross-platform desktop digital signage player built with Electron and Vite, designed for running Xibo layouts using the **Xibo Layout Renderer (XLR)**.
 
-The application cleanly separates business logic and layout rendering, and supports package for **Windows** and **Linux** (DEB and Snap).
+The application cleanly separates business logic and layout rendering, and is packaged for **Windows** (MSI) and **Linux** (DEB and Snap).
 
-### Features
-- **Main-process-driven architecture**
-    - Centralized business logic
-    - Configuration management
-    - XMDS communication
-    - Scheduling and playback orchestration
-- **Renderer powered by XLR**
-    - Uses the shared **Xibo Layout Renderer (XLR)** library
-    - Focused purely on layout rendering and playback
-    - No business logic leakage into the renderer
-- **Modern tooling**
-    - Electron + Vite for fast development and optimized builds
-    - TypeScript-first codebase
-- **Cross-platform packaging**
-    - Windows installer
-    - Linux
-        - `.deb`
-        - `.snap`
+### Documentation
+
+- [DEVELOPER.md](DEVELOPER.md) - development setup, architecture and common tasks
+- [installer/windows/README.md](installer/windows/README.md) - building the Windows MSI
+- [docs/UPGRADING-FROM-1.8.md](docs/UPGRADING-FROM-1.8.md) - migrating devices from the legacy Xibo Linux 1.8 player
+- [docs/UPGRADING-FROM-WINDOWS.md](docs/UPGRADING-FROM-WINDOWS.md) - migrating devices from the legacy Xibo Windows player
 
 ---
 
@@ -57,9 +45,9 @@ Responsibilities:
 ### Development
 
 #### Prerequisites
-- Node.js (LTS recommended)
+- Node.js 22 or newer
 - npm
-- Linux or WIndows development environment
+- Linux or Windows development environment
 
 #### Install Dependencies
 
@@ -81,57 +69,71 @@ This starts:
 
 ### Building and Packaging
 
-#### Build Application
+Installers are built on the platform they target: the MSI on Windows, the DEB and Snap on Linux.
+
+| Command | Output |
+|---|---|
+| `npm run build` | Compiled bundles in `dist/` |
+| `npm run package` | Unpacked app in `out/xibo-player-<platform>-x64/`, no installer |
+| `npm run make` | Installers for the current platform: the MSI on Windows, the DEB on Linux |
+| `npm run make:msi` | Windows MSI only, in `out/make/msi/x64/` |
+| `npm run make:snap` | Snap package, in `out/make/snap/x64/` |
+
+#### Windows (MSI)
 
 ```shell
-npm run build
+npm run make:msi
 ```
 
-#### Package for Windows
+Needs the .NET SDK and the WiX 6 toolset with its UI extension. See [installer/windows/README.md](installer/windows/README.md) for setup and for what must not change in the installer. Local builds are unsigned; release builds are signed by the release workflow.
 
-```shell
-npm run package
-```
-
-Generates:
-
-- Windows installer / executable
-
-#### Package for Linux
-
-##### DEB Package
+#### Linux (DEB)
 
 ```shell
 npm run make
 ```
 
-##### Snap Package
+The `.deb` is written to `out/make/deb/x64/`.
+
+#### Linux (Snap)
 
 ```shell
+npm run make
 npm run make:snap
 ```
+
+`make:snap` packs the app that `make` (or `package`) leaves in `out/xibo-player-linux-x64/`, so run that first. It needs `snapcraft`, and copies the version from `package.json` into `snap/snapcraft.yaml` before packing.
 
 ---
 
 ### Configuration
-There are two configuration files created used for Player and CMS.
+The player keeps two configuration files, both created on first run:
 
-For the player it will be in,
+- `config.json` - the player's identity and connection: hardware key, CMS address and key, proxy
+- `cms_config.json` - display name and the settings pushed by the CMS. It is overwritten on every collection, so do not edit it by hand
 
-**Windows** - `%APPDATA%/config.json` and `%APPDATA%/cms_config.json`
+| Install | Location |
+|---|---|
+| Windows | `%APPDATA%\xibo-player\` |
+| Linux (DEB) | `$HOME/.config/xibo-player/` |
+| Linux (Snap) | `$HOME/snap/xibo-player/current/.config/xibo-player/` |
 
-**Linux** - `$HOME/.config/xibo-player/config.json` and `$HOME/.config/xibo-player/cms_config.json`
-
-These configuration files are auto-generated on the first run. You can then edit/update the player config manually.
-
+The CMS address and key are normally entered on the Configuration page. They can also be set in `config.json` while the player is stopped. Leave the other fields as they are: `hardwareKey` is how the CMS recognises this display, and changing it registers the player as a new display.
 
 ```json
-// config.json
 {
-    "cmsUrl": "",
-    "cmsKey": ""
+  "hardwareKey": "…",
+  "xmrChannel": "…",
+  "cmsUrl": "https://cms.example.com",
+  "cmsKey": "yourserverkey",
+  "macAddress": "…",
+  "platform": "linux",
+  "pendingCmsTransfer": null,
+  "proxy": null
 }
 ```
+
+To route traffic through an HTTP proxy, set `proxy` to `{ "url": "http://proxy.example.com:8080", "username": "", "password": "" }`. The username and password are optional.
 
 ---
 
@@ -170,9 +172,17 @@ When a screenshot is requested, if the folder is empty or the newest image has n
 
 ### Local Player API
 
-The player runs a local HTTP server on port **9696** (configurable in Display Settings). Sources on the same device can reach it at `http://localhost:9696`. WAN connections can optionally be configured to allow access from other devices on the network; if not enabled, external requests are denied.
+The player runs a local HTTP server on port **9696**. The port is fixed and cannot be changed from Display Settings. Sources on the same device reach it at `http://localhost:9696`.
+
+The server listens on all network interfaces and allows cross-origin requests, so other devices on the network can reach every endpoint except `/fault`, which only accepts requests from the device itself. Use a firewall to block port 9696 if the player should not be reachable from the network.
 
 The API follows the endpoint contract defined in [xibo-interactive-control](https://github.com/xibosignage/xibo-interactive-control).
+
+#### `GET /files` and `GET /files/<name>`
+
+Serves the media library to the layout renderer. `/files` returns a JSON listing of the library, and `/files/<name>` returns a single file. The `screenshots` folder is excluded from both.
+
+---
 
 #### `GET /info`
 
@@ -181,7 +191,7 @@ Returns basic, non-sensitive player information.
 **Response: `200 OK`**
 ```json
 {
-  "version": "4.0.0",
+  "version": "4.0.12",
   "displayName": "Lobby Display",
   "hardwareKey": "xxxx",
   "screenWidth": 1920,
@@ -198,7 +208,7 @@ Returns basic, non-sensitive player information.
 
 #### `POST /trigger`
 
-Passes a trigger code to the layout renderer. Optionally targets a specific widget by ID; omit `id` to apply the trigger globally.
+Passes a trigger code to the current layout's actions and to any schedule-level Action event with the same trigger code. Optionally targets a specific widget by ID; omit `id` to apply the trigger globally.
 
 **Request body**
 ```json
@@ -225,7 +235,9 @@ Expires the specified widget immediately, advancing the region to the next media
 { "id": 1 }
 ```
 
-**Response: `200 OK`** — `{ "success": true }`
+**Responses**
+- `200 OK` — `{ "success": true }`
+- `400 Bad Request` — `{ "success": false, "error": "id is required" }`
 
 ---
 
@@ -243,7 +255,9 @@ Adds seconds to the widget's remaining duration.
 | `id` | Yes | Target widget ID |
 | `duration` | Yes | Seconds to add to the remaining duration |
 
-**Response: `200 OK`** — `{ "success": true }`
+**Responses**
+- `200 OK` — `{ "success": true }`
+- `400 Bad Request` — `{ "success": false, "error": "id is required and duration must be a valid number" }`
 
 ---
 
@@ -261,19 +275,22 @@ Sets the widget's duration to the given value in seconds.
 | `id` | Yes | Target widget ID |
 | `duration` | Yes | New duration in seconds |
 
-**Response: `200 OK`** — `{ "success": true }`
+**Responses**
+- `200 OK` — `{ "success": true }`
+- `400 Bad Request` — `{ "success": false, "error": "id is required and duration must be a valid number" }`
 
 ---
 
 #### `GET /realtime`
 
-Returns data from the player's real-time data store for the given key.
+Returns data that a data connector has published to the player's real-time data store for the given key.
 
 **Query parameter**: `?dataKey=myKey`
 
 **Responses**
-- `200 OK` — JSON contents for the key, or empty body if no data exists for that key
-- `400 Bad Request` — if `dataKey` is not provided
+- `200 OK` — JSON contents for the key
+- `400 Bad Request` — `{ "success": false, "error": "dataKey is required" }`
+- `404 Not Found` — `{ "success": false, "error": "No data for dataKey" }`, when nothing has been published for the key
 
 ---
 
@@ -300,13 +317,14 @@ Updates the schedule criteria used for dynamic layout selection. Sending the sam
 
 **Responses**
 - `200 OK` — `{ "success": true, "updated": 3 }`
-- `400 Bad Request` — `{ "success": false, "error": "metric and value are required" }`
+- `400 Bad Request` — `{ "success": false, "error": "criteriaUpdates must be an array" }`
+- `400 Bad Request` — `{ "success": false, "error": "metric and value are required" }`. Entries before the invalid one have already been applied
 
 ---
 
 #### `POST /fault`
 
-Raises a player fault. Only accessible from localhost.
+Raises a player fault, which is reported to the CMS. Only accessible from the device itself.
 
 If `key` contains `_`, the part after the underscore is parsed as the widget ID and the fault is raised with widget context. Otherwise the fault is raised without widget context.
 
@@ -327,4 +345,7 @@ If `key` contains `_`, the part after the underscore is parsed as the widget ID 
 | `reason` | Yes | Human-readable description |
 | `ttl` | Yes | Seconds before the fault expires |
 
-**Response: `200 OK`** — `{ "success": true }`
+**Responses**
+- `200 OK` — `{ "success": true }`
+- `400 Bad Request` — `{ "success": false, "error": "code, key, reason and ttl are required" }`
+- `403 Forbidden` — `{ "success": false, "error": "Forbidden" }`, when the request comes from another device
