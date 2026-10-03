@@ -3,11 +3,14 @@
 This document covers moving existing devices running the legacy **Xibo Windows player**
 (`xibosignage/xibo-dotnetclient`, WPF/.NET) onto this Electron player.
 
-Unlike the [Linux migration](./UPGRADING-FROM-1.8.md), there is no store-level trick (like a
-snap refresh under a shared package name) that delivers this player to a device automatically.
-**How the new installer actually reaches a device is a separate, unresolved decision** — see
-"Delivery mechanism" below. This document only covers what happens once the new player starts on
-a device that still has the legacy config sitting on disk, whichever way it got there.
+The player ships as a machine-wide MSI that carries the legacy player's product identity, so
+installing it **upgrades the legacy install in place**: Windows removes the legacy player and
+installs this one as a newer version of the same product. See "Delivery" below. Unlike the
+[Linux migration](./UPGRADING-FROM-1.8.md), nothing reaches a device by itself; the MSI still has
+to be deployed, by hand or by a deployment tool.
+
+The rest of this document covers what happens once the new player starts on a device that still
+has the legacy config on disk.
 
 The legacy player's on-disk config format has been stable across its releases — this migration
 was verified against both its `master` branch (current, `4 R407.2` at time of writing) and its
@@ -80,8 +83,11 @@ A `ServerKey` equal to the shipped placeholder (`yourserverkey`) is treated as u
 means the device was never really configured beyond the shipped defaults, so there is no real
 identity to preserve.
 
-**The legacy files are never modified.** Nothing is moved, rewritten or deleted, so the legacy
-install is left intact if you need to roll back.
+**The legacy config files are never modified.** Nothing is moved, rewritten or deleted. The MSI
+upgrade does remove the legacy player's program files, so rolling back means uninstalling Xibo
+Player and then reinstalling the legacy MSI, which finds its settings, library and hardware key as
+it left them. Uninstall first: the two packages share an `UpgradeCode`, so the legacy MSI may
+refuse to install over the newer version.
 
 ---
 
@@ -89,46 +95,54 @@ install is left intact if you need to roll back.
 
 1. **The real migration, against a real CMS.** Install the current published legacy MSI (e.g.
    `xibo-client-v4-R407.2-win32-x86.msi`) on a clean Windows VM, register it, confirm the display
-   appears. Then run the new Electron player against the same user profile and confirm **the
-   same display** comes back online — not a new one.
+   appears. Then install the new MSI over it, sign in as the same user, and confirm:
+   - only one "Xibo Player" entry remains in Add/Remove Programs
+   - **the same display** comes back online, not a new one
 2. **Screensaver-mode devices.** If any fielded devices run the legacy player as `Xibo.scr`
    rather than the normal exe, confirm the `Xibo.xml` fallback picks up their settings.
-3. **Autostart.** Reboot and confirm the player comes back — this player uses
-   `app.setLoginItemSettings({ openAtLogin: true })` (`src/main/common/watchdog.ts`), Electron's
-   wrapper around the Windows `Run` registry key.
+3. **Autostart.** Reboot and confirm the player comes back, and that only one copy is running.
+   Two mechanisms start it: the MSI places a shortcut in the all-users Start-up folder, so the
+   player starts after a silent upgrade before it has ever run; and the player itself registers
+   an HKCU `Run` entry on first launch via `app.setLoginItemSettings({ openAtLogin: true })`
+   (`src/main/common/watchdog.ts`).
 4. **Proxy, if any device in the fleet uses one.** Verify a proxied device reaches its CMS after
    migrating. The legacy player stores proxy domain and port as separate fields; this migration
    joins them into one URL the same way the Linux migration normalises its single `domain` field.
 5. **A device with a placeholder or fallback hardware key**, if one exists in the fleet — confirm
    `legacy-config-incomplete` / an already-registered-under-the-fallback-value device both behave
    as expected (see the mapping notes above).
-6. **Staged rollout.** However delivery ends up working (see below), roll it out to a small
-   device group first.
+6. **Staged rollout.** Deploy the MSI to a small device group first.
 
 ---
 
-## Delivery mechanism — open, not solved here
+## Delivery
 
-The Linux migration works for free because the snap store publishes both players under the
-identical package name — an in-place snap refresh *is* the delivery mechanism. There is no
-Windows equivalent today: this player's `forge.config.cjs` uses `@electron-forge/maker-squirrel`
-with no custom identity, so it installs as a brand-new Squirrel app (`xibo-player`) under
-`%LocalAppData%\xibo-player` — a completely separate product, install path, and Add/Remove
-Programs entry from the legacy WPF app (which ships its own MSI).
+The MSI is built from [installer/windows/](../installer/windows/README.md) and reuses the legacy
+installer's `UpgradeCode`, product name and manufacturer. Windows Installer therefore treats it as
+a newer version of the legacy product and performs a **major upgrade**: the legacy player is
+removed and this one installed in a single transaction, under the same Add/Remove Programs entry.
+A failure part way through rolls the whole upgrade back.
 
-Publishing this Electron build will **not** silently replace the legacy install. Achieving a
-silent, same-identity swap needs one of:
+The legacy package owns nothing outside its program folder, the Start menu and the Start-up
+folder. Removing it leaves its settings in `%APPDATA%`, its library and its `hardwarekey` file in
+place, which is what the migration above reads on the player's first launch.
 
-- **MSI major upgrade** — package the new player as an MSI that reuses the legacy installer's
-  `UpgradeCode`, so `msiexec` performs a true in-place upgrade and keeps the same Add/Remove
-  Programs entry. Requires the legacy installer/WiX project (not in the open-source
-  `xibo-dotnetclient` repo — likely a separate internal deployment pipeline).
-- **Externally orchestrated replace** — RMM/GPO/SCCM silently uninstalls the legacy MSI and
-  installs the new Squirrel setup as two steps. The migration code in this repo doesn't care how
-  it got there, only that it runs before `config.load()` on first launch.
+The MSI installs per machine and can be deployed silently, by hand or by Group Policy, SCCM,
+Intune or any tool running as the computer:
 
-This needs resolving with whoever owns Windows fleet deployment before a wide rollout — it
-determines whether the migration path in this document ever actually runs in the field.
+```
+msiexec /i xibo-player-4.0.12-x64.msi /qn
+```
+
+Two caveats:
+
+- **The upgrade has not yet been tested against a fielded legacy install.** See "Not done yet" in
+  the [installer README](../installer/windows/README.md). Run pre-flight check 1 before a wide
+  rollout.
+- **Per-user Squirrel installs are not removed.** Earlier releases of this player shipped a
+  per-user `.exe` installer to `%LocalAppData%\xibo-player`. A device that received it keeps that
+  install after the MSI goes on, so the player is installed twice. Uninstall it from Add/Remove
+  Programs before or after deploying the MSI.
 
 ---
 

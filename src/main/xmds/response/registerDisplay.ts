@@ -108,8 +108,8 @@ export class RegisterDisplay {
    * Find the actual response key for a setting name. The CMS capitalizes the first
    * letter of every setting element name (PHP's `ucfirst()`) when the display's
    * clientType is 'windows' — a compatibility shim for the legacy .NET client's XML
-   * deserializer. This player reports clientType 'windows' on Windows builds (see
-   * docs/CLIENT-TYPE.md), so responses may use either casing depending on CMS version;
+   * deserializer. This player reports clientType 'windows' on Windows builds
+   * (Config.getXmdsPlayerType()), so responses may use either casing depending on CMS version;
    * falling back to the capitalized variant keeps settings working either way.
    */
   private resolveSettingKey(setting: string): string {
