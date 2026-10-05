@@ -999,6 +999,8 @@ async function dataWidgetUpdate(
 }
 
 let screenshotIntervalId: NodeJS.Timeout | null = null;
+// The interval the running screenshot timer was started with, in minutes.
+let screenshotIntervalMinutes = 0;
 const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: BrowserWindow) {
   // Bind to some events
   xmds.on('collecting', () => {
@@ -1100,26 +1102,28 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
       screenshotIntervalId,
     });
 
-    if (screenshotInterval === 0 && screenshotIntervalId !== null) {
-      console.debug('[Xmds::on("registered")] > Clearing existing screenshot interval before applying new one', {
-        screenshotIntervalId,
-      });
-      clearInterval(screenshotIntervalId);
-    }
-
-    const handleIntervalScreenshot = () => {
-      const screenshotIntervalInMinutes = (screenshotInterval * 60);
-      screenshotIntervalId = setInterval(async () => {
-        console.debug('[Xmds::on("registered")] > Regular screenshot request interval triggered, capturing desktop and taking screenshot', {
-          screenshotIntervalInMinutes: screenshotInterval,
+    // Registration happens on every collection, so only touch the timer when the CMS
+    // changes the interval. Starting one each time would leave every earlier timer running.
+    if (screenshotInterval !== screenshotIntervalMinutes) {
+      if (screenshotIntervalId !== null) {
+        console.debug('[Xmds::on("registered")] > Clearing the existing screenshot interval', {
+          screenshotIntervalId,
         });
+        clearInterval(screenshotIntervalId);
+        screenshotIntervalId = null;
+      }
 
-        await makeScreenshot();
-      }, screenshotIntervalInMinutes * 1000)
-    };
+      screenshotIntervalMinutes = screenshotInterval;
 
-    if (screenshotInterval > 0) {
-      handleIntervalScreenshot();
+      if (screenshotInterval > 0) {
+        screenshotIntervalId = setInterval(async () => {
+          console.debug('[Xmds::on("registered")] > Regular screenshot request interval triggered, capturing desktop and taking screenshot', {
+            screenshotIntervalInMinutes: screenshotInterval,
+          });
+
+          await makeScreenshot();
+        }, screenshotInterval * 60 * 1000);
+      }
     }
   });
 
@@ -1319,7 +1323,7 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
 
         console.debug('[Xmds::submitStats] Stats submitted to CMS');
         // If response succeeded, then delete pushed logs 
-        if (success) { 
+        if (success === true) { 
           console.log('[Xmds::submitStats] Deleting pushed stats, count = ' + stats.length);
 
           popStats.clearSubmitted(stats);
@@ -1371,9 +1375,23 @@ const initSspEventHandlers = async function () {
   }
 }
 
+// Set once the player has started, see mainFunctions.run().
+let playerStarted = false;
+
 const mainFunctions = {
   run: async ({ context }: MainCallbackType) => {
     const win = mainWindow;
+
+    // The renderer calls this every time it loads, and it reloads after a refresh command or
+    // a change of CMS. Starting again would register every event handler and timer a second
+    // time, so a later call only collects, which picks up a CMS that has just changed.
+    if (playerStarted) {
+      console.debug('[MAIN] mainFunctions.run() > Already started, collecting now', { context });
+      xmds.collectNow();
+      return;
+    }
+
+    playerStarted = true;
     // We are configured so continue starting the rest of the application.
     console.log('Configured.');
 

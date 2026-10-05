@@ -63,7 +63,7 @@ async function flushToOldCms(deps: Pick<CmsTransferDeps, 'xmds' | 'db' | 'popSta
       stats.forEach((stat) => { statsXmlString += submitStatXmlString(stat); });
 
       const success = await xmds.submitStats(statsXmlString);
-      if (success) {
+      if (success === true) {
         popStats.clearSubmitted(stats);
       }
     }

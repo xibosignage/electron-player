@@ -1,4 +1,5 @@
 import { SspAd } from "../sspAd";
+import { loopDuration } from "../../../../common/shareOfVoice";
 
 export default class SspLayout {
     ad: SspAd|null;
@@ -40,7 +41,7 @@ export default class SspLayout {
     }
 
     addCommittedInterruptDuration() {
-        this.interruptCommittedDuration += this.duration;
+        this.interruptCommittedDuration += loopDuration(this.duration);
     }
 
     isInterruptDurationSatisfied() {

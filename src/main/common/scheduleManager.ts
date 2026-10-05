@@ -13,6 +13,7 @@ import { geoLocationManager } from "./geoLocationManager";
 import { scheduleCriteriaManager } from "../../shared/scheduleCriteria/scheduleCriteriaManager";
 import { DataConnector } from "../xmds/response/schedule/events/dataConnector";
 import { Action } from "../xmds/response/schedule/events/action";
+import { loopDuration } from "./shareOfVoice";
 
 export type ScheduleLayoutsType = Layout | DefaultLayout | SspLayout;
 
@@ -182,6 +183,24 @@ export default class ScheduleManager {
 
         this.isAssessingLayouts = true;
 
+        // Always clear the flag: if it stayed set, every later assessment would be skipped and
+        // the screen would keep the current loop until the player restarts.
+        try {
+            await this.assessLayoutLoop();
+        } catch (error) {
+            console.error('[ScheduleManager::assessLayouts] > Assessment failed, keeping the current loop', {
+                error: error instanceof Error ? error.message : String(error),
+                method: 'Schedule: Manager: Assess',
+            });
+        } finally {
+            this.isAssessingLayouts = false;
+        }
+    }
+
+    /**
+     * Works out the layout loop from the current schedule and emits it if it changed.
+     */
+    private async assessLayoutLoop() {
         // If we don't have anything to assess, drop out straight away.
         let hasChanged = false;
         if (!this.schedule || (this.schedule.countLayouts() <= 0 && !this.schedule.defaultLayout)) {
@@ -192,7 +211,6 @@ export default class ScheduleManager {
             this.config.state.scheduleLoop = 'Splash only';
             this.layouts = [this.getSplash()];
             this.emitter.emit('layouts', [this.getSplash()]);
-            this.isAssessingLayouts = false;
             return;
         }
 
@@ -201,8 +219,8 @@ export default class ScheduleManager {
         let loop: ScheduleLayoutsType[] = [];
         let interruptLayouts: ScheduleLayoutsType[] = [];
 
-        // Do we have SSP
-        if (this.sspShareOfVoice > 0) {
+        // Do we have SSP? Without an average ad duration there is nothing to divide the hour by.
+        if (this.sspShareOfVoice > 0 && this.sspAverageDuration > 0) {
             const sspLayout = new SspLayout();
             sspLayout.duration = this.sspAverageDuration;
             sspLayout.shareOfVoice = this.sspShareOfVoice;
@@ -297,7 +315,7 @@ export default class ScheduleManager {
                 // Get the layout at this index
                 if (!interruptLayouts[index].isInterruptDurationSatisfied()) {
                     interruptLayouts[index].addCommittedInterruptDuration();
-                    interruptSecondsInHour += interruptLayouts[index].duration;
+                    interruptSecondsInHour += loopDuration(interruptLayouts[index].duration);
 
                     // Add this again
                     resolvedInterruptLayouts.push(interruptLayouts[index]);
@@ -306,7 +324,8 @@ export default class ScheduleManager {
                 index++;
             }
 
-            if (interruptSecondsInHour >= 3600) {
+            if (interruptSecondsInHour >= 3600 || layouts.length === 0) {
+                // Interrupts fill the hour, or there is nothing else to play between them.
                 loop = resolvedInterruptLayouts;
             } else {
                 // We should fill up the remaining time with normal layouts
@@ -317,8 +336,9 @@ export default class ScheduleManager {
                         index = 0;
                     }
 
-                    normalSecondsInHour -= layouts[index].duration;
+                    normalSecondsInHour -= loopDuration(layouts[index].duration);
                     resolvedNormalLayouts.push(layouts[index]);
+                    index++;
                 }
 
                 // Now we combine them together.
@@ -343,7 +363,7 @@ export default class ScheduleManager {
                             normalIndex = 0;
                         }
                         loop.push(resolvedNormalLayouts[normalIndex]);
-                        totalSecondsAllocated += resolvedNormalLayouts[normalIndex].duration;
+                        totalSecondsAllocated += loopDuration(resolvedNormalLayouts[normalIndex].duration);
                         normalIndex++;
                     }
 
@@ -352,7 +372,7 @@ export default class ScheduleManager {
                     // them all.
                     if (i % interruptPick == 0 && interruptIndex < resolvedInterruptLayouts.length) {
                         loop.push(resolvedInterruptLayouts[interruptIndex]);
-                        totalSecondsAllocated += resolvedInterruptLayouts[interruptIndex].duration;
+                        totalSecondsAllocated += loopDuration(resolvedInterruptLayouts[interruptIndex].duration);
                         interruptIndex++;
                     }
 
@@ -367,7 +387,7 @@ export default class ScheduleManager {
                         normalIndex = 0;
                     }
                     loop.push(resolvedNormalLayouts[normalIndex]);
-                    totalSecondsAllocated += resolvedNormalLayouts[normalIndex].duration;
+                    totalSecondsAllocated += loopDuration(resolvedNormalLayouts[normalIndex].duration);
                     normalIndex++;
                 }
             }
@@ -455,8 +475,6 @@ export default class ScheduleManager {
             allLayouts.push(defaultId + ' (D)' + (loopIds.has(defaultId) ? '' : '*'));
         }
         this.config.state.allLayoutIds = allLayouts.join(', ');
-
-        this.isAssessingLayouts = false;
     }
 
     /**
@@ -487,11 +505,27 @@ export default class ScheduleManager {
 
         this.isAssessingOverlays = true;
 
+        // Always clear the flag, for the same reason as in assessLayouts().
+        try {
+            await this.assessOverlayLoop();
+        } catch (error) {
+            console.error('[ScheduleManager::assessOverlays] > Assessment failed, keeping the current overlays', {
+                error: error instanceof Error ? error.message : String(error),
+                method: 'Schedule: Manager: Assess Overlays',
+            });
+        } finally {
+            this.isAssessingOverlays = false;
+        }
+    }
+
+    /**
+     * Works out the overlays from the current schedule and emits them if they changed.
+     */
+    private async assessOverlayLoop() {
         // If we don't have anything to assess, drop out straight away.
         let hasChanged = false;
         if (!this.schedule || (this.schedule && this.schedule.overlays.length === 0)) {
             this.overlays = [];
-            this.isAssessingOverlays = false;
             this.emitter.emit('overlays', this.overlays);
             return;
         }
@@ -523,7 +557,6 @@ export default class ScheduleManager {
                 method: 'Schedule: Manager: Assess Overlays',
             });
             this.overlays = [];
-            this.isAssessingOverlays = false;
             this.emitter.emit('overlays', this.overlays);
             return;
         } else {
@@ -549,8 +582,6 @@ export default class ScheduleManager {
         console.debug('[ScheduleManager::assessOverlays] > Assessment of overlays finished', {
             method: 'Schedule: Manager: Assess Overlays',
         });
-
-        this.isAssessingOverlays = false;
     }
 
     /**
@@ -815,9 +846,18 @@ export default class ScheduleManager {
 
         // Handle geofence logic if applicable
         if (layout.isGeoAware) {
-            // Extract the polygon from the layout's geoLocation
-            const geo = JSON.parse(layout.geoLocation);
-            const polygon = geo.geometry.coordinates[0];
+            // Extract the polygon from the layout's geoLocation. A fence that cannot be read
+            // cannot be checked, so the layout is left out rather than played everywhere.
+            let polygon;
+            try {
+                polygon = JSON.parse(layout.geoLocation).geometry.coordinates[0];
+            } catch {
+                console.warn('[ScheduleManager::evaluateLayout] > Unreadable geofence, skipping layout.', {
+                    layoutId: layout.file,
+                    method: 'Schedule: Manager: Assess'
+                });
+                return null;
+            }
 
             // Check if the device's current location falls inside thsse polygon
             const insidePolygon = geoLocationManager.isCurrentLocationInsidePolygon(polygon);

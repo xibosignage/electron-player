@@ -673,13 +673,14 @@ export class Xmds {
     }
   }
 
-  async submitStats(statsXmlString: string) {
+  // Resolves true only when the CMS confirms it stored the stats.
+  async submitStats(statsXmlString: string): Promise<boolean> {
     const method = 'submitStats';
 
     // Skip request if method was recently rate limited (429)
     if (this.isRateLimited(method)) {
       console.debug('[Xmds::submitStats] skipped due to rate limit');
-      return;
+      return false;
     }
 
     // Make a new request.
@@ -715,7 +716,10 @@ export class Xmds {
           );
         }
 
-        return handleError(error);
+        handleError(error);
+
+        // The CMS did not confirm it received these, so they must be kept for the next attempt.
+        return false;
       });
   }
 
