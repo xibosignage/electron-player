@@ -64,6 +64,7 @@ import {
   markFileFailed,
 } from './common/fileManager';
 import { runWithConcurrency } from './common/concurrency';
+import RequiredFiles from './xmds/response/requiredFiles';
 import Schedule from './xmds/response/schedule/schedule';
 import ScheduleManager from './common/scheduleManager';
 import { migrateLegacyPlayer } from './migration/legacyPlayer';
@@ -1127,7 +1128,8 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
     }
   });
 
-  xmds.on('requiredFiles', async (data, verifyLocalFiles) => {
+  // Saves the list, downloads what is missing and purges what the CMS no longer wants.
+  const processRequiredFiles = async (data: RequiredFiles, verifyLocalFiles: boolean) => {
     console.debug('[Xmds::on("requiredFiles")] > Required Files', {
       registerDisplay: data,
       shouldParse: false,
@@ -1247,6 +1249,45 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
     config.state.missingFiles = missingFiles.map(file => requiredFileName(file));
 
     await manager?.checkGlobalDependencies();
+  };
+
+  // One pass over the required files at a time. The collection that emits this does not wait
+  // for the downloads, so the next one can arrive while they are still running, and would
+  // start the same downloads again. A list that arrives then waits for the running pass to
+  // end. Only the newest waiting list is kept, since it is what the CMS wants now.
+  let requiredFilesRunning = false;
+  let waitingRequiredFiles: { data: RequiredFiles; verifyLocalFiles: boolean } | null = null;
+
+  xmds.on('requiredFiles', async (data, verifyLocalFiles) => {
+    if (requiredFilesRunning) {
+      console.debug('[Xmds::on("requiredFiles")] > Downloads still running, will process the new list after them');
+      waitingRequiredFiles = {
+        data,
+        // A list fetched because the CMS changed has to check the disk, even if a later one would not.
+        verifyLocalFiles: verifyLocalFiles || (waitingRequiredFiles?.verifyLocalFiles ?? false),
+      };
+      return;
+    }
+
+    requiredFilesRunning = true;
+    let next: typeof waitingRequiredFiles = { data, verifyLocalFiles };
+
+    try {
+      while (next) {
+        try {
+          await processRequiredFiles(next.data, next.verifyLocalFiles);
+        } catch (error) {
+          console.error('[Xmds::on("requiredFiles")] > Processing the required files failed', {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+
+        next = waitingRequiredFiles;
+        waitingRequiredFiles = null;
+      }
+    } finally {
+      requiredFilesRunning = false;
+    }
   });
 
   xmds.on('schedule', async (data) => {

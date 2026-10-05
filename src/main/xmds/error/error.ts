@@ -64,7 +64,11 @@ export class Error {
         });
         this.message = this.response;
         return;
-      } else {
+      }
+
+      // This runs in a callback nobody awaits, so anything thrown here would be an
+      // unhandled rejection. Every failure is caught and logged instead.
+      try {
         console.debug('Error::parse - Valid XML response', {
           response: this.response,
         });
@@ -77,12 +81,16 @@ export class Error {
           rootDoc,
         });
 
-        const fault = rootDoc['SOAP-ENV:Envelope']['SOAP-ENV:Body'][0]['SOAP-ENV:Fault'][0];
+        // An empty body, or a page from a proxy, parses as XML but is not a SOAP fault.
+        const fault = rootDoc?.['SOAP-ENV:Envelope']?.['SOAP-ENV:Body']?.[0]?.['SOAP-ENV:Fault']?.[0];
 
-        if (Boolean(fault)) {
-          this.code = fault['faultcode'][0];
-          this.message = fault['faultstring'][0];
+        if (!fault) {
+          this.message = this.response;
+          return;
         }
+
+        this.code = fault['faultcode']?.[0];
+        this.message = fault['faultstring']?.[0] ?? '';
 
         if (this.code && this.code === 'Receiver') {
           this.code = String(FaultCodes.FaultBadRequest);
@@ -98,6 +106,10 @@ export class Error {
           date: DateTime.now().toFormat('yyyy-MM-dd HH:mm:ss'),
           expires: setExpiry(expiryDuration),
           shouldParse: false,
+        });
+      } catch (error) {
+        console.error('Error::parse - Could not read the error response', {
+          error: errorSummary(error),
         });
       }
     });

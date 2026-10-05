@@ -185,7 +185,27 @@ export async function downloadAndSaveFile(
     return file;
 }
 
-export async function downloadFile(file: FileManagerFileType) {
+// Downloads in progress, by file name.
+const downloadsInProgress = new Map<string, Promise<FileManagerFileType>>();
+
+// Downloads a file unless it is already downloading, in which case it waits for that download
+// instead of starting a second copy of the same file.
+export function downloadFile(file: FileManagerFileType): Promise<FileManagerFileType> {
+    const name = file.saveAs as string;
+    const inProgress = downloadsInProgress.get(name);
+
+    if (inProgress) {
+        console.debug(`[FileManager] Already downloading ${name}, waiting for it`);
+        return inProgress;
+    }
+
+    const download = downloadFileIfNeeded(file).finally(() => downloadsInProgress.delete(name));
+    downloadsInProgress.set(name, download);
+
+    return download;
+}
+
+async function downloadFileIfNeeded(file: FileManagerFileType) {
     const localPath = join(xiboLibDir, file.saveAs as string);
 
     // Check if file already exists
