@@ -50,6 +50,105 @@ function readCmsField(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value : undefined;
 }
 
+// Every settings file is also written to a copy with this suffix, used if the file itself is damaged.
+const BACKUP_SUFFIX = '.bak';
+
+/**
+ * Reads one of the player's JSON settings files.
+ *
+ * Returns null only when neither the file nor its backup exists, which is a fresh install.
+ * A file that exists but can't be read is retried, since it may only be locked for a moment
+ * (antivirus at boot, for example), and then its backup is used. If neither can be read the
+ * error is thrown, so the caller never saves over a file that may still be fine.
+ */
+async function readSettings(path: string): Promise<any | null> {
+  let error: unknown = null;
+
+  for (const file of [path, path + BACKUP_SUFFIX]) {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const data = JSON.parse(await fs.readFile(file, 'utf8'));
+
+        if (file !== path) {
+          console.error(`[Config] ${path} could not be read, using its backup`, {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+
+        return data;
+      } catch (err: any) {
+        if (err?.code === 'ENOENT') {
+          break;
+        }
+
+        error ??= err;
+
+        // Retrying cannot fix a damaged file.
+        if (err instanceof SyntaxError) {
+          break;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
+  }
+
+  if (error) {
+    throw error;
+  }
+
+  return null;
+}
+
+/**
+ * Writes one of the player's JSON settings files, and then its backup.
+ *
+ * Each is written to a temporary file, flushed to disk and renamed into place, so a power
+ * cut leaves at least one complete copy.
+ */
+async function writeSettings(path: string, content: string): Promise<void> {
+  for (const file of [path, path + BACKUP_SUFFIX]) {
+    const tmp = file + '.tmp';
+    const handle = await fs.open(tmp, 'w');
+
+    try {
+      await handle.writeFile(content);
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+
+    await fs.rename(tmp, file);
+  }
+}
+
+/**
+ * Reads a settings file at startup.
+ *
+ * Returns null when the player should start with new settings and save them: a fresh install,
+ * or a file damaged beyond repair (kept beside it for diagnosis). Returns undefined when the
+ * file can't be read at all; the player then runs on defaults without saving over it.
+ */
+async function loadSettings(path: string): Promise<any | null | undefined> {
+  try {
+    return await readSettings(path);
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      const aside = `${path}.corrupt-${Date.now()}`;
+      console.error(`[Config] ${path} and its backup are damaged, starting with new settings. The damaged file is kept as ${aside}`, {
+        error: error.message,
+      });
+      await fs.rename(path, aside).catch(() => {});
+      return null;
+    }
+
+    console.error(`[Config] ${path} could not be read, running without it`, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
+}
+
 export class Config {
   // Environment
   readonly platform: string;
@@ -125,9 +224,9 @@ export class Config {
       alertType: 'both',
     });
 
-    try {
-      let data = await fs.readFile(this.savePath);
-      data = JSON.parse(data);
+    const data = await loadSettings(this.savePath);
+
+    if (data) {
       this.hardwareKey = data.hardwareKey ?? (await machineId()).substring(0, 40);
       this.cmsUrl = readCmsField(data.cmsUrl);
       this.cmsKey = readCmsField(data.cmsKey);
@@ -135,30 +234,35 @@ export class Config {
       this.macAddress = data.macAddress || this.getMacAddress();
       this.pendingCmsTransfer = data.pendingCmsTransfer ?? null;
       this.proxy = data.proxy ?? null;
-    } catch {
-      // Probably the file doesn't exist.
+    } else {
       this.hardwareKey = (await machineId()).substring(0, 40);
       this.xmrChannel = randomUUID();
       this.macAddress = this.getMacAddress();
-      await this.save();
+
+      // Only for a fresh install or a damaged file. An unreadable one is left alone.
+      if (data === null) {
+        await this.save();
+      }
     }
 
     console.log(`Loading ${this.cmsSavePath}`);
 
-    try {
-      let data = await fs.readFile(this.cmsSavePath);
-      data = JSON.parse(data);
-      this.displayName = data.displayName;
-      this.xmdsVersion = data.xmdsVersion;
-      this.settings = data.settings || {};
+    const cmsData = await loadSettings(this.cmsSavePath);
+
+    if (cmsData) {
+      this.displayName = cmsData.displayName;
+      this.xmdsVersion = cmsData.xmdsVersion;
+      this.settings = cmsData.settings || {};
 
       // Restore the last known approval status so offline boots can still attempt collection.
       // Default 2 means not registered, which correctly blocks collection on a fresh install.
-      this.state.displayStatus = data.displayStatus ?? 2;
-    } catch {
-      // Probably the file doesn't exist.
+      this.state.displayStatus = cmsData.displayStatus ?? 2;
+    } else {
       this.displayName = this.getDefaultDisplayName();
-      await this.saveCms();
+
+      if (cmsData === null) {
+        await this.saveCms();
+      }
     }
   };
 
@@ -171,9 +275,8 @@ export class Config {
 
   private async _doSave() {
     console.log(`Saving ${this.savePath}`);
-    const tmp = this.savePath + '.tmp';
-    await fs.writeFile(
-      tmp,
+    await writeSettings(
+      this.savePath,
       JSON.stringify({
         hardwareKey: this.hardwareKey,
         xmrChannel: this.xmrChannel,
@@ -185,7 +288,6 @@ export class Config {
         proxy: this.proxy,
       }, null, 2),
     );
-    await fs.rename(tmp, this.savePath);
   };
 
   async saveCms() {
@@ -197,9 +299,8 @@ export class Config {
 
   private async _doSaveCms() {
     console.log(`Saving ${this.cmsSavePath}`);
-    const tmp = this.cmsSavePath + '.tmp';
-    await fs.writeFile(
-      tmp,
+    await writeSettings(
+      this.cmsSavePath,
       JSON.stringify({
         displayName: this.displayName,
         xmdsVersion: this.xmdsVersion,
@@ -207,7 +308,6 @@ export class Config {
         displayStatus: this.state.displayStatus,
       }, null, 2),
     );
-    await fs.rename(tmp, this.cmsSavePath);
   };
 
   isConfigured() {

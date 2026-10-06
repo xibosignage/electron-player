@@ -24,7 +24,7 @@ const fs = require('fs/promises');
 const { readFileSync } = require('fs');
 import { createHash } from 'crypto';
 import { installExtension, JQUERY_DEBUGGER } from 'electron-devtools-installer';
-import { app, shell, WebContentsView, BrowserWindow, ipcMain, session, screen } from 'electron';
+import { app, WebContentsView, BrowserWindow, ipcMain, session, screen } from 'electron';
 import { join } from 'path';
 import { optimizer, is, electronApp } from '@electron-toolkit/utils';
 import { Xmr } from '@xibosignage/xibo-communication-framework';
@@ -177,6 +177,32 @@ const faultChannel: FaultChannel = {
 
 // Replace global console in main
 (globalThis as any).console = consoleMain;
+
+// Without a listener, an uncaught error shows Electron's error dialog on top of the signage until
+// someone closes it, and a rejected promise is only printed to stdout. Log both instead, so they
+// reach the CMS, and keep playing.
+process.on('uncaughtException', (error) => {
+  console.error('[MAIN] Uncaught exception', {
+    message: error?.message,
+    stack: error?.stack,
+  });
+  // A failure here would end up back in this handler, so it is only logged.
+  try {
+    faults.emitter.emit('message', {
+      code: FaultCodes.FaultGeneralError,
+      reason: 'Uncaught exception: ' + (error?.message ?? String(error)),
+    });
+  } catch (faultError) {
+    console.error('[MAIN] Could not raise a fault for the uncaught exception', { faultError });
+  }
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[MAIN] Unhandled promise rejection', {
+    message: reason instanceof Error ? reason.message : String(reason),
+    stack: reason instanceof Error ? reason.stack : undefined,
+  });
+});
 
 // Receive logs from renderer
 ipcMain.handle('renderer-log', (_event, level: string, args: any) => {
@@ -754,8 +780,11 @@ const createWindow = async () => {
   // Restore the restart-on-crash behaviour the legacy player got from its watchdog process.
   installCrashRecovery(mainWindow);
 
+  // Pages can't open new windows. A new window would sit hidden behind this one, and passing the
+  // URL to the OS would let any widget launch a local program. Links that stay in the page still
+  // work. The Windows and Linux players block popups the same way.
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url);
+    console.debug('[MAIN] Blocked a page from opening a new window', { url: details.url });
     return { action: 'deny' };
   });
 
