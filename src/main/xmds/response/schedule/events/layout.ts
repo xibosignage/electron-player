@@ -1,6 +1,7 @@
 import { isFileDownloaded, getLayoutFile, getMissingLayoutWidgetFiles } from "../../../../common/fileManager";
 import { criteria, CriteriaResponseType, CriteriaType } from "../criteria";
 import { ConsoleDB } from "../../../../../shared/console/ConsoleDB";
+import { loopDuration } from "../../../../common/shareOfVoice";
 
 const consoleDB = new ConsoleDB();
 
@@ -181,7 +182,7 @@ export class Layout implements LayoutInterface {
     }
 
     addCommittedInterruptDuration(): number {
-        return this.interruptCommittedDuration += this.duration;
+        return this.interruptCommittedDuration += loopDuration(this.duration);
     }
 
     clone(): Layout {

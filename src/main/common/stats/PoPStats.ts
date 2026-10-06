@@ -29,8 +29,10 @@ export class PoPStats {
         this.options = _options;
         this.db = new StatsDB();
 
-        // Clear the stats DB on each start
-        this.clearDB();
+        // Finished stats not yet sent survive a restart and go to the CMS on the next submit.
+        // A stat still open (no end yet) was cut short by the restart and can never be
+        // closed, so it is dropped.
+        this.db.deleteOpen();
 
         this.on('message', data => {
             const eventData = data;

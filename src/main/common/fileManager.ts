@@ -1,6 +1,9 @@
 import axios from "axios";
 import fs from 'fs';
 import { join } from 'path';
+import { createHash, randomUUID } from 'crypto';
+import { Transform } from 'stream';
+import { pipeline } from 'stream/promises';
 import { app } from "electron";
 import * as cheerio from 'cheerio';
 import { DateTime } from 'luxon';
@@ -47,6 +50,35 @@ export function setIsPurging(value: boolean) {
     isPurging = value;
 }
 
+/**
+ * Streams a download to tempPath, hashing it on the way.
+ *
+ * @return The number of bytes written and their MD5.
+ */
+async function downloadToFile(url: string, tempPath: string): Promise<{ size: number; md5: string }> {
+    const response = await axios.get(url, {
+        responseType: 'stream',
+        timeout: 15000, // 15s without data
+    });
+
+    const hash = createHash('md5');
+    let size = 0;
+
+    await pipeline(
+        response.data,
+        new Transform({
+            transform(chunk: Buffer, _encoding, callback) {
+                hash.update(chunk);
+                size += chunk.length;
+                callback(null, chunk);
+            },
+        }),
+        fs.createWriteStream(tempPath),
+    );
+
+    return { size, md5: hash.digest('hex') };
+}
+
 export async function downloadAndSaveFile(
     file: FileManagerFileType,
     options: {
@@ -56,30 +88,37 @@ export async function downloadAndSaveFile(
     transaction: 'insert' | 'update' = 'insert'
 ) {
     let status = options.status ?? 'success';
-    let size = 0;
-    
+
+    // Download beside the real file and move it into place only once it is complete and
+    // checked, so a failed download never touches the copy that may be playing. The name is
+    // unique so two downloads of the same file cannot write into each other.
+    const tempPath = `${options.localPath}.${randomUUID()}.part`;
+
     try {
         console.log(`[FileManager] Downloading: ${file.path}`);
-        const response = await axios.get(file.path as string, {
-            responseType: 'arraybuffer',
-            timeout: 15000, // 15s timeout
-        });
+        const downloaded = await downloadToFile(file.path as string, tempPath);
 
-        let fileData = response.data;
+        // Anything other than the file the CMS listed (a cut-off transfer, or a proxy's error
+        // page sent with a 200) is a failure, and the next collection tries again.
+        if (file.md5 && downloaded.md5 !== file.md5) {
+            throw new Error(`MD5 mismatch, expected ${file.md5} but got ${downloaded.md5} (${downloaded.size} bytes)`);
+        }
 
         // Rewrite local server URLs in CSS files
         if (file.fileType === 'fontCss') {
-            fileData = Buffer.from(rewriteFontUrls(response.data.toString('utf-8'), (fileName) => {
+            const fileData = rewriteFontUrls(await fs.promises.readFile(tempPath, 'utf-8'), (fileName) => {
                 return localFileUrlFromFileName(fileName);
-            }));
+            });
 
             console.debug('[FileManager::downloadFile] Rewrote font CSS URLs:', {
-                fileData: fileData.toString('utf-8'),
+                fileData,
             });
+
+            await fs.promises.writeFile(tempPath, fileData);
         }
 
-        fs.writeFileSync(options.localPath, fileData);
-        size = fs.statSync(options.localPath).size;
+        await fs.promises.rename(tempPath, options.localPath);
+        const size = (await fs.promises.stat(options.localPath)).size;
 
         // An HTML Package is not playable as a downloaded archive — it has to be
         // extracted before the renderer can point an iframe at it. Treat a
@@ -115,14 +154,17 @@ export async function downloadAndSaveFile(
         console.error(`[FileManager] Error downloading ${file.saveAs}:`, err instanceof Error ? err.message : String(err));
         status = 'failed';
 
-        // Remove partially downloaded file if exists
-        if (fs.existsSync(options.localPath)) {
-            try {
-                fs.unlinkSync(options.localPath);
-                console.log(`[FileManager] Removed incomplete file: ${file.saveAs}`);
-            } catch (unlinkErr) {
-                console.warn(`[FileManager] Failed to remove incomplete file: ${file.saveAs}`, unlinkErr);
-            }
+        try {
+            await fs.promises.rm(tempPath, { force: true });
+        } catch (unlinkErr) {
+            console.warn(`[FileManager] Failed to remove incomplete file: ${file.saveAs}`, unlinkErr);
+        }
+
+        // A failed update leaves the previous version on disk and recorded as downloaded,
+        // so it keeps playing. Its stored MD5 still differs from the CMS, so the next
+        // collection tries the update again.
+        if (transaction === 'update') {
+            return file;
         }
 
         store.db.prepare(`
@@ -143,7 +185,27 @@ export async function downloadAndSaveFile(
     return file;
 }
 
-export async function downloadFile(file: FileManagerFileType) {
+// Downloads in progress, by file name.
+const downloadsInProgress = new Map<string, Promise<FileManagerFileType>>();
+
+// Downloads a file unless it is already downloading, in which case it waits for that download
+// instead of starting a second copy of the same file.
+export function downloadFile(file: FileManagerFileType): Promise<FileManagerFileType> {
+    const name = file.saveAs as string;
+    const inProgress = downloadsInProgress.get(name);
+
+    if (inProgress) {
+        console.debug(`[FileManager] Already downloading ${name}, waiting for it`);
+        return inProgress;
+    }
+
+    const download = downloadFileIfNeeded(file).finally(() => downloadsInProgress.delete(name));
+    downloadsInProgress.set(name, download);
+
+    return download;
+}
+
+async function downloadFileIfNeeded(file: FileManagerFileType) {
     const localPath = join(xiboLibDir, file.saveAs as string);
 
     // Check if file already exists

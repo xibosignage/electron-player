@@ -96,6 +96,12 @@ export class StatsDB {
     return stmt.run({ ...stat, id });
   }
 
+  // Deletes stats that were started but never ended.
+  deleteOpen() {
+    const result = this.db.prepare(`DELETE FROM stats WHERE duration = 0 OR duration IS NULL`).run();
+    this._count = Math.max(0, this._count - result.changes);
+  }
+
   deleteAll() {
     this.db.prepare(`DELETE FROM stats`).run();
     this._count = 0;

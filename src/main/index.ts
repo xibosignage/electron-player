@@ -64,6 +64,7 @@ import {
   markFileFailed,
 } from './common/fileManager';
 import { runWithConcurrency } from './common/concurrency';
+import RequiredFiles from './xmds/response/requiredFiles';
 import Schedule from './xmds/response/schedule/schedule';
 import ScheduleManager from './common/scheduleManager';
 import { migrateLegacyPlayer } from './migration/legacyPlayer';
@@ -999,6 +1000,8 @@ async function dataWidgetUpdate(
 }
 
 let screenshotIntervalId: NodeJS.Timeout | null = null;
+// The interval the running screenshot timer was started with, in minutes.
+let screenshotIntervalMinutes = 0;
 const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: BrowserWindow) {
   // Bind to some events
   xmds.on('collecting', () => {
@@ -1100,30 +1103,33 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
       screenshotIntervalId,
     });
 
-    if (screenshotInterval === 0 && screenshotIntervalId !== null) {
-      console.debug('[Xmds::on("registered")] > Clearing existing screenshot interval before applying new one', {
-        screenshotIntervalId,
-      });
-      clearInterval(screenshotIntervalId);
-    }
-
-    const handleIntervalScreenshot = () => {
-      const screenshotIntervalInMinutes = (screenshotInterval * 60);
-      screenshotIntervalId = setInterval(async () => {
-        console.debug('[Xmds::on("registered")] > Regular screenshot request interval triggered, capturing desktop and taking screenshot', {
-          screenshotIntervalInMinutes: screenshotInterval,
+    // Registration happens on every collection, so only touch the timer when the CMS
+    // changes the interval. Starting one each time would leave every earlier timer running.
+    if (screenshotInterval !== screenshotIntervalMinutes) {
+      if (screenshotIntervalId !== null) {
+        console.debug('[Xmds::on("registered")] > Clearing the existing screenshot interval', {
+          screenshotIntervalId,
         });
+        clearInterval(screenshotIntervalId);
+        screenshotIntervalId = null;
+      }
 
-        await makeScreenshot();
-      }, screenshotIntervalInMinutes * 1000)
-    };
+      screenshotIntervalMinutes = screenshotInterval;
 
-    if (screenshotInterval > 0) {
-      handleIntervalScreenshot();
+      if (screenshotInterval > 0) {
+        screenshotIntervalId = setInterval(async () => {
+          console.debug('[Xmds::on("registered")] > Regular screenshot request interval triggered, capturing desktop and taking screenshot', {
+            screenshotIntervalInMinutes: screenshotInterval,
+          });
+
+          await makeScreenshot();
+        }, screenshotInterval * 60 * 1000);
+      }
     }
   });
 
-  xmds.on('requiredFiles', async (data, verifyLocalFiles) => {
+  // Saves the list, downloads what is missing and purges what the CMS no longer wants.
+  const processRequiredFiles = async (data: RequiredFiles, verifyLocalFiles: boolean) => {
     console.debug('[Xmds::on("requiredFiles")] > Required Files', {
       registerDisplay: data,
       shouldParse: false,
@@ -1243,6 +1249,45 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
     config.state.missingFiles = missingFiles.map(file => requiredFileName(file));
 
     await manager?.checkGlobalDependencies();
+  };
+
+  // One pass over the required files at a time. The collection that emits this does not wait
+  // for the downloads, so the next one can arrive while they are still running, and would
+  // start the same downloads again. A list that arrives then waits for the running pass to
+  // end. Only the newest waiting list is kept, since it is what the CMS wants now.
+  let requiredFilesRunning = false;
+  let waitingRequiredFiles: { data: RequiredFiles; verifyLocalFiles: boolean } | null = null;
+
+  xmds.on('requiredFiles', async (data, verifyLocalFiles) => {
+    if (requiredFilesRunning) {
+      console.debug('[Xmds::on("requiredFiles")] > Downloads still running, will process the new list after them');
+      waitingRequiredFiles = {
+        data,
+        // A list fetched because the CMS changed has to check the disk, even if a later one would not.
+        verifyLocalFiles: verifyLocalFiles || (waitingRequiredFiles?.verifyLocalFiles ?? false),
+      };
+      return;
+    }
+
+    requiredFilesRunning = true;
+    let next: typeof waitingRequiredFiles = { data, verifyLocalFiles };
+
+    try {
+      while (next) {
+        try {
+          await processRequiredFiles(next.data, next.verifyLocalFiles);
+        } catch (error) {
+          console.error('[Xmds::on("requiredFiles")] > Processing the required files failed', {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+
+        next = waitingRequiredFiles;
+        waitingRequiredFiles = null;
+      }
+    } finally {
+      requiredFilesRunning = false;
+    }
   });
 
   xmds.on('schedule', async (data) => {
@@ -1319,7 +1364,7 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
 
         console.debug('[Xmds::submitStats] Stats submitted to CMS');
         // If response succeeded, then delete pushed logs 
-        if (success) { 
+        if (success === true) { 
           console.log('[Xmds::submitStats] Deleting pushed stats, count = ' + stats.length);
 
           popStats.clearSubmitted(stats);
@@ -1371,9 +1416,23 @@ const initSspEventHandlers = async function () {
   }
 }
 
+// Set once the player has started, see mainFunctions.run().
+let playerStarted = false;
+
 const mainFunctions = {
   run: async ({ context }: MainCallbackType) => {
     const win = mainWindow;
+
+    // The renderer calls this every time it loads, and it reloads after a refresh command or
+    // a change of CMS. Starting again would register every event handler and timer a second
+    // time, so a later call only collects, which picks up a CMS that has just changed.
+    if (playerStarted) {
+      console.debug('[MAIN] mainFunctions.run() > Already started, collecting now', { context });
+      xmds.collectNow();
+      return;
+    }
+
+    playerStarted = true;
     // We are configured so continue starting the rest of the application.
     console.log('Configured.');
 
