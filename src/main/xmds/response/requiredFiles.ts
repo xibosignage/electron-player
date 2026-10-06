@@ -30,6 +30,9 @@ export type PurgeItemType = {
 /**
  * Register Required Files.
  */
+// The data update timer running for each data widget, by widget id, and its interval in minutes.
+const widgetUpdateTimers = new Map<string, { id: NodeJS.Timeout; minutes: number }>();
+
 export default class RequiredFiles {
     private readonly response: string;
     generated: string | undefined;
@@ -37,7 +40,6 @@ export default class RequiredFiles {
     filterTo: string | undefined;
     purge?: PurgeItemType[];
     files: RequiredFile[] = [];
-    widgetUpdateIntervalIds = new Map<string, NodeJS.Timeout>();
 
     constructor(response: string) {
         this.response = response;
@@ -131,43 +133,50 @@ export default class RequiredFiles {
         };
     }
 
+    /**
+     * Keeps one data update timer running for each data widget in this list.
+     *
+     * Every fetch of the file list creates a new RequiredFiles, so the timers live in a map
+     * shared by all of them. A widget keeps its timer while its update interval is unchanged,
+     * gets a new one when the interval changes, and loses it when it leaves the list.
+     */
     updateDataWidgets(updateWidgetDataFn: (file: RequiredFile) => Promise<void>) {
-        const widgetFiles = this.files.filter(file => file.type === 'widget');
+        const widgetFiles = this.files.filter(file => file.type === 'widget' && file.updateInterval && file.id);
+        const listed = new Set(widgetFiles.map(file => file.id));
 
         console.debug(`[RequiredFiles] Updating data widgets. Found ${widgetFiles.length} widget files.`, {
-            intervalIds: Array.from(this.widgetUpdateIntervalIds.entries()),
+            running: Array.from(widgetUpdateTimers.keys()),
         });
 
-        if (widgetFiles.length === 0) {
-            console.debug('[RequiredFiles] No widget files found in required files. Clearing all widget update intervals.');
-            this.widgetUpdateIntervalIds.forEach((intervalId, fileId) => {
-                clearInterval(intervalId);
-                console.debug(`[RequiredFiles] Cleared update interval for widget ${fileId}.`);
-            });
-            this.widgetUpdateIntervalIds.clear();
-            return;
-        }
-
-        if (this.widgetUpdateIntervalIds.size > 0) {
-            this.widgetUpdateIntervalIds.forEach((intervalId, fileId) => {
-                if (!widgetFiles.some(file => file.id === fileId)) {
-                    console.debug(`[RequiredFiles] Clearing update interval for widget ${fileId} as it is no longer in the required files.`);
-                    clearInterval(intervalId);
-                    this.widgetUpdateIntervalIds.delete(fileId);
-                }
-            });
-        }
+        // Stop the timers of widgets that are no longer listed.
+        widgetUpdateTimers.forEach((timer, fileId) => {
+            if (!listed.has(fileId)) {
+                console.debug(`[RequiredFiles] Clearing update interval for widget ${fileId} as it is no longer in the required files.`);
+                clearInterval(timer.id);
+                widgetUpdateTimers.delete(fileId);
+            }
+        });
 
         widgetFiles.forEach((file) => {
-            if (file.updateInterval && file.id) {
-                const intervalId = setInterval(() => {
-                    console.debug(`[RequiredFiles] Updating widget data file: ${file.id}`);
-                    if (updateWidgetDataFn) {
-                        updateWidgetDataFn(file);
-                    }
-                }, (file.updateInterval * 60 * 1000)); // Convert minutes to milliseconds
-                this.widgetUpdateIntervalIds.set(file.id, intervalId);
+            const minutes = Number(file.updateInterval);
+            const existing = widgetUpdateTimers.get(file.id);
+
+            if (existing && existing.minutes === minutes) {
+                return;
             }
+
+            if (existing) {
+                clearInterval(existing.id);
+            }
+
+            const id = setInterval(() => {
+                console.debug(`[RequiredFiles] Updating widget data file: ${file.id}`);
+                if (updateWidgetDataFn) {
+                    updateWidgetDataFn(file);
+                }
+            }, (minutes * 60 * 1000)); // Convert minutes to milliseconds
+
+            widgetUpdateTimers.set(file.id, { id, minutes });
         });
     }
 }
