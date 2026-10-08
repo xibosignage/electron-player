@@ -80,16 +80,9 @@ module.exports = {
   },
   rebuildConfig: {},
   makers: [
-    // The machine-wide installer, and the only one that can replace the legacy
-    // .NET player. See installer/windows/ and WINDOWS-PLAYER-PACKAGING.md.
+    // The machine-wide Windows installer, which also replaces the legacy .NET
+    // player in place. See installer/windows/.
     new MakerMsi({}, ['win32']),
-    // Squirrel installs for a single user and cannot be deployed by Group Policy
-    // or by any tool running as the computer. It stays the supported method until
-    // the MSI ships, and is then removed. No further work belongs on it.
-    {
-      name: '@electron-forge/maker-squirrel',
-      config: {},
-    },
     {
       name: '@electron-forge/maker-zip',
       platforms: ['darwin'],

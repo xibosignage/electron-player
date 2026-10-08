@@ -18,8 +18,6 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
-if (require('electron-squirrel-startup')) app.quit();
-
 const fs = require('fs/promises');
 const { readFileSync } = require('fs');
 import { createHash } from 'crypto';

@@ -1,27 +1,15 @@
 # Xibo Player Application for ElectronJS
 
-A cross-platform desktop digital signage player builth with Electron and Vite, designed for running Xibo layouts using the **Xibo Layout Renderer (XLR)**.
+A cross-platform desktop digital signage player built with Electron and Vite, designed for running Xibo layouts using the **Xibo Layout Renderer (XLR)**.
 
-The application cleanly separates business logic and layout rendering, and supports package for **Windows** and **Linux** (DEB and Snap).
+The application cleanly separates business logic and layout rendering, and is packaged for **Windows** (MSI) and **Linux** (DEB and Snap).
 
-### Features
-- **Main-process-driven architecture**
-    - Centralized business logic
-    - Configuration management
-    - XMDS communication
-    - Scheduling and playback orchestration
-- **Renderer powered by XLR**
-    - Uses the shared **Xibo Layout Renderer (XLR)** library
-    - Focused purely on layout rendering and playback
-    - No business logic leakage into the renderer
-- **Modern tooling**
-    - Electron + Vite for fast development and optimized builds
-    - TypeScript-first codebase
-- **Cross-platform packaging**
-    - Windows installer
-    - Linux
-        - `.deb`
-        - `.snap`
+### Documentation
+
+- [DEVELOPER.md](DEVELOPER.md) - development setup, architecture and common tasks
+- [installer/windows/README.md](installer/windows/README.md) - building the Windows MSI
+- [docs/UPGRADING-FROM-1.8.md](docs/UPGRADING-FROM-1.8.md) - migrating devices from the legacy Xibo Linux 1.8 player
+- [docs/UPGRADING-FROM-WINDOWS.md](docs/UPGRADING-FROM-WINDOWS.md) - migrating devices from the legacy Xibo Windows player
 
 ---
 
@@ -57,9 +45,9 @@ Responsibilities:
 ### Development
 
 #### Prerequisites
-- Node.js (LTS recommended)
+- Node.js 22 or newer
 - npm
-- Linux or WIndows development environment
+- Linux or Windows development environment
 
 #### Install Dependencies
 
@@ -81,57 +69,71 @@ This starts:
 
 ### Building and Packaging
 
-#### Build Application
+Installers are built on the platform they target: the MSI on Windows, the DEB and Snap on Linux.
+
+| Command | Output |
+|---|---|
+| `npm run build` | Compiled bundles in `dist/` |
+| `npm run package` | Unpacked app in `out/xibo-player-<platform>-x64/`, no installer |
+| `npm run make` | Installers for the current platform: the MSI on Windows, the DEB on Linux |
+| `npm run make:msi` | Windows MSI only, in `out/make/msi/x64/` |
+| `npm run make:snap` | Snap package, in `out/make/snap/x64/` |
+
+#### Windows (MSI)
 
 ```shell
-npm run build
+npm run make:msi
 ```
 
-#### Package for Windows
+Needs the .NET SDK and the WiX 6 toolset with its UI extension. See [installer/windows/README.md](installer/windows/README.md) for setup and for what must not change in the installer. Local builds are unsigned; release builds are signed by the release workflow.
 
-```shell
-npm run package
-```
-
-Generates:
-
-- Windows installer / executable
-
-#### Package for Linux
-
-##### DEB Package
+#### Linux (DEB)
 
 ```shell
 npm run make
 ```
 
-##### Snap Package
+The `.deb` is written to `out/make/deb/x64/`.
+
+#### Linux (Snap)
 
 ```shell
+npm run make
 npm run make:snap
 ```
+
+`make:snap` packs the app that `make` (or `package`) leaves in `out/xibo-player-linux-x64/`, so run that first. It needs `snapcraft`, and copies the version from `package.json` into `snap/snapcraft.yaml` before packing.
 
 ---
 
 ### Configuration
-There are two configuration files created used for Player and CMS.
+The player keeps two configuration files, both created on first run:
 
-For the player it will be in,
+- `config.json` - the player's identity and connection: hardware key, CMS address and key, proxy
+- `cms_config.json` - display name and the settings pushed by the CMS. It is overwritten on every collection, so do not edit it by hand
 
-**Windows** - `%APPDATA%/config.json` and `%APPDATA%/cms_config.json`
+| Install | Location |
+|---|---|
+| Windows | `%APPDATA%\xibo-player\` |
+| Linux (DEB) | `$HOME/.config/xibo-player/` |
+| Linux (Snap) | `$HOME/snap/xibo-player/current/.config/xibo-player/` |
 
-**Linux** - `$HOME/.config/xibo-player/config.json` and `$HOME/.config/xibo-player/cms_config.json`
-
-These configuration files are auto-generated on the first run. You can then edit/update the player config manually.
-
+The CMS address and key are normally entered on the Configuration page. They can also be set in `config.json` while the player is stopped. Leave the other fields as they are: `hardwareKey` is how the CMS recognises this display, and changing it registers the player as a new display.
 
 ```json
-// config.json
 {
-    "cmsUrl": "",
-    "cmsKey": ""
+  "hardwareKey": "…",
+  "xmrChannel": "…",
+  "cmsUrl": "https://cms.example.com",
+  "cmsKey": "yourserverkey",
+  "macAddress": "…",
+  "platform": "linux",
+  "pendingCmsTransfer": null,
+  "proxy": null
 }
 ```
+
+To route traffic through an HTTP proxy, set `proxy` to `{ "url": "http://proxy.example.com:8080", "username": "", "password": "" }`. The username and password are optional.
 
 ---
 
@@ -165,166 +167,3 @@ Replacing the same file each time is recommended, rather than adding a new one, 
 - Screenshots are excluded from the Local Player API file server and cannot be downloaded over the network
 
 When a screenshot is requested, if the folder is empty or the newest image has not been updated for some time, a fault is raised against the display in the CMS.
-
----
-
-### Local Player API
-
-The player runs a local HTTP server on port **9696** (configurable in Display Settings). Sources on the same device can reach it at `http://localhost:9696`. WAN connections can optionally be configured to allow access from other devices on the network; if not enabled, external requests are denied.
-
-The API follows the endpoint contract defined in [xibo-interactive-control](https://github.com/xibosignage/xibo-interactive-control).
-
-#### `GET /info`
-
-Returns basic, non-sensitive player information.
-
-**Response: `200 OK`**
-```json
-{
-  "version": "4.0.0",
-  "displayName": "Lobby Display",
-  "hardwareKey": "xxxx",
-  "screenWidth": 1920,
-  "screenHeight": 1080,
-  "longitude": 0,
-  "latitude": 0,
-  "timeZone": "",
-  "currentLayoutId": 42,
-  "displayStatus": 1
-}
-```
-
----
-
-#### `POST /trigger`
-
-Passes a trigger code to the layout renderer. Optionally targets a specific widget by ID; omit `id` to apply the trigger globally.
-
-**Request body**
-```json
-{ "trigger": "my-trigger", "id": 123 }
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `trigger` | Yes | Trigger code to pass to the layout renderer |
-| `id` | No | Target widget ID. If omitted, the trigger applies globally |
-
-**Responses**
-- `200 OK` — `{ "success": true }`
-- `400 Bad Request` — `{ "success": false, "error": "trigger is required" }`
-
----
-
-#### `POST /duration/expire`
-
-Expires the specified widget immediately, advancing the region to the next media item.
-
-**Request body**
-```json
-{ "id": 1 }
-```
-
-**Response: `200 OK`** — `{ "success": true }`
-
----
-
-#### `POST /duration/extend`
-
-Adds seconds to the widget's remaining duration.
-
-**Request body**
-```json
-{ "id": 1, "duration": 30 }
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `id` | Yes | Target widget ID |
-| `duration` | Yes | Seconds to add to the remaining duration |
-
-**Response: `200 OK`** — `{ "success": true }`
-
----
-
-#### `POST /duration/set`
-
-Sets the widget's duration to the given value in seconds.
-
-**Request body**
-```json
-{ "id": 1, "duration": 60 }
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `id` | Yes | Target widget ID |
-| `duration` | Yes | New duration in seconds |
-
-**Response: `200 OK`** — `{ "success": true }`
-
----
-
-#### `GET /realtime`
-
-Returns data from the player's real-time data store for the given key.
-
-**Query parameter**: `?dataKey=myKey`
-
-**Responses**
-- `200 OK` — JSON contents for the key, or empty body if no data exists for that key
-- `400 Bad Request` — if `dataKey` is not provided
-
----
-
-#### `POST /setCriteria`
-
-Updates the schedule criteria used for dynamic layout selection. Sending the same metric again replaces the previous value. Expired entries are discarded and no longer affect schedule evaluation.
-
-**Request body**
-```json
-{
-  "criteriaUpdates": [
-    { "metric": "people", "value": "5", "ttl": 300 },
-    { "metric": "temperature", "value": "28 °C", "ttl": 300 },
-    { "metric": "emergency_alert_category", "value": "Geo", "ttl": 60 }
-  ]
-}
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `metric` | Yes | Name of the data point |
-| `value` | Yes | Current value |
-| `ttl` | No | Seconds before the value expires. Defaults to `300` |
-
-**Responses**
-- `200 OK` — `{ "success": true, "updated": 3 }`
-- `400 Bad Request` — `{ "success": false, "error": "metric and value are required" }`
-
----
-
-#### `POST /fault`
-
-Raises a player fault. Only accessible from localhost.
-
-If `key` contains `_`, the part after the underscore is parsed as the widget ID and the fault is raised with widget context. Otherwise the fault is raised without widget context.
-
-**Request body**
-```json
-{
-  "code": 5001,
-  "key": "widget_123",
-  "reason": "Widget failed to load",
-  "ttl": 60
-}
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `code` | Yes | Fault code (integer) |
-| `key` | Yes | Fault key. If it contains `_`, the part after the underscore is the widget ID |
-| `reason` | Yes | Human-readable description |
-| `ttl` | Yes | Seconds before the fault expires |
-
-**Response: `200 OK`** — `{ "success": true }`

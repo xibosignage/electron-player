@@ -201,10 +201,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Windows ships two installers while the move to the MSI is in progress: the
-  # machine-wide MSI, which is the one that can replace the legacy .NET player and
-  # be deployed by Group Policy, and the existing per-user Squirrel .exe, which
-  # stays the supported method until the MSI has been proven in the field.
+  # Windows ships a single machine-wide MSI, which can be deployed by Group Policy
+  # and replaces the legacy .NET player in place.
   #
   # The job is deliberately split into package / sign / make / sign rather than a
   # single `npm run make`. Windows verifies the signature on the file being run,
@@ -304,7 +302,7 @@ jobs:
           signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ vars.AZURE_SIGNING_PROFILE }}
           files-folder: ${{ github.workspace }}\out\make
-          files-folder-filter: exe,msi
+          files-folder-filter: msi
           files-folder-recurse: true
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
@@ -317,7 +315,7 @@ jobs:
       - name: 'Verify Installer Signatures'
         run: |
           $installers = Get-ChildItem -Path "./out/make" -File -Recurse |
-            Where-Object { $_.Extension -match "^\.(exe|msi)$" }
+            Where-Object { $_.Extension -eq ".msi" }
 
           $unsigned = @()
           foreach ($installer in $installers) {
@@ -336,10 +334,10 @@ jobs:
         if: env.PUBLISH == 'true'
         run: |
           $installers = Get-ChildItem -Path "./out/make" -File -Recurse |
-            Where-Object { $_.Extension -match "^\.(exe|msi)$" }
+            Where-Object { $_.Extension -eq ".msi" }
 
           if ($installers.Count -eq 0) {
-            Write-Error "No installer file (.exe or .msi) found in ./out/make/"
+            Write-Error "No MSI installer found in ./out/make/"
             exit 1
           }
 
