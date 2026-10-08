@@ -62,6 +62,9 @@ export function setMacroContext(context: MacroContext) {
  * Macros and Display tags in a command string are resolved as the command is dispatched,
  * rather than when it is parsed, so a resolved value is never stale.
  */
+// The longest delay setTimeout supports (about 24.8 days).
+const MAX_TIMEOUT_MS = 2 ** 31 - 1;
+
 export class CommandManager {
   private commands: {
     [commandCode: string]: CommandProps
@@ -80,13 +83,13 @@ export class CommandManager {
    * @param response
    */
   public parseCommands(collection: CommandsCollection) {
+    // Replace the previous commands first, so ones the CMS has removed cannot be run.
+    this.commands = {};
 
     if (!Object.keys(collection).length) {
       console.debug('[CommandManager] No commands found');
       return;
     }
-
-    this.commands = {};
 
     for (const [commandCode, commandData] of Object.entries(collection)) {
       const { commandString, createAlertOn, validationString } = commandData;
@@ -251,14 +254,14 @@ export class CommandManager {
    * @param commands
    */
   public scheduleCommands(commands: Command[]) {
+    // Clear the previously scheduled commands first, so ones the CMS has deleted do not run.
+    this.scheduledTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+    this.scheduledTimeouts = [];
+
     if (commands.length === 0) {
       console.debug('[CommandManager] No scheduled commands found');
       return;
     }
-
-    // Clear any previously scheduled commands
-    this.scheduledTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
-    this.scheduledTimeouts = [];
 
     const now = Date.now();
 
@@ -269,6 +272,13 @@ export class CommandManager {
       // Ignore commands scheduled in the past
       if (delay <= 0) {
         console.debug('[CommandManager] Skipping expired scheduled command', command.code);
+        continue;
+      }
+
+      // setTimeout runs a longer delay straight away. A schedule fetched nearer the time
+      // schedules it then.
+      if (delay > MAX_TIMEOUT_MS) {
+        console.debug('[CommandManager] Skipping scheduled command too far ahead to schedule yet', command.code);
         continue;
       }
 

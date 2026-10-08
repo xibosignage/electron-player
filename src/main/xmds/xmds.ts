@@ -37,6 +37,11 @@ import { commandManager } from '../../shared/command/commandManager';
 import { StateData } from '../common/state';
 import { GetWeather } from './response/getWeather';
 
+// How long an XMDS request may go without receiving any data before it is abandoned. This is
+// an idle timeout, not a limit on the whole request, so a large response that keeps arriving
+// is never cut off. Without it a connection the CMS never answers holds a collection forever.
+const XMDS_TIMEOUT_MS = 120 * 1000;
+
 // The result of a CMS fetch.
 // rateLimited means the CMS asked us to wait, which is not the same as a failure.
 export type XmdsFetch<T> =
@@ -61,15 +66,25 @@ export class Xmds {
   collectIntervalTime: number = 300;
   interval: NodeJS.Timeout | undefined;
   logsInterval: NodeJS.Timeout | undefined;
-  hasSubmittedLogs: boolean | null = null;
+  // True while a batch of logs is being submitted.
+  private logsSubmitting = false;
   getWeatherData: boolean = false;
 
   private static rateLimitTracker: Map<string, number> = new Map();
   private static pendingRetries: Set<string> = new Set();
 
-  // CRC32
+  // The checksums the CMS reported at the last registration.
+  cmsCheckRf: string | null = null;
+  cmsCheckSchedule: string | null = null;
+
+  // The checksums of the file list and schedule last fetched successfully. Setting one to
+  // null makes the next collection fetch it again.
   checkRf: string | null = null;
   checkSchedule: string | null = null;
+
+  // The collection in progress, and whether another was asked for while it ran.
+  private collection: Promise<void> | null = null;
+  private collectAgain = false;
 
   private schemaVersionError: string | null = null;
 
@@ -87,7 +102,7 @@ export class Xmds {
     if (!this.config.xmdsVersion || this.config.xmdsVersion <= 0) {
       this.schemaVersionError = null;
 
-      this.config.xmdsVersion = await axios.get(this.config.cmsUrl + '/xmds.php?what')
+      this.config.xmdsVersion = await axios.get(this.config.cmsUrl + '/xmds.php?what', { timeout: XMDS_TIMEOUT_MS })
         .then(function (response) {
           // handle success
           return parseInt(response?.data || -1);
@@ -119,7 +134,7 @@ export class Xmds {
 
     await this.startInterval();
 
-    await this.collect(this.checkRf, this.checkSchedule);
+    await this.collect();
   }
 
   async startInterval() {
@@ -129,10 +144,9 @@ export class Xmds {
       clearInterval(this.interval);
     }
 
-    // checkRf/checkSchedule are the values we obtained the last time this ran.
     this.interval = setInterval(async () => {
       // Regular collection.
-      await this.collect(this.checkRf, this.checkSchedule);
+      await this.collect();
     }, this.collectIntervalTime * 1000);
   }
 
@@ -147,10 +161,45 @@ export class Xmds {
   }
 
   async collectNow() {
-    await this.collect(this.checkRf, this.checkSchedule);
+    await this.collect();
   }
 
-  async collect(checkRf: string | null, checkSchedule: string | null) {
+  /**
+   * Runs a collection, unless one is already running.
+   *
+   * The interval, XMR and other callers can all ask at once. Running collections on top of
+   * each other would submit the same stats and logs twice, so a request that arrives during
+   * a collection runs one more collection after it instead. The promise resolves once the
+   * collections that were asked for have finished.
+   */
+  collect(): Promise<void> {
+    if (this.collection) {
+      this.collectAgain = true;
+      return this.collection;
+    }
+
+    this.collection = (async () => {
+      try {
+        do {
+          this.collectAgain = false;
+
+          try {
+            await this.collectOnce();
+          } catch (error) {
+            console.error('[Xmds::collect] Collection failed', {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        } while (this.collectAgain);
+      } finally {
+        this.collection = null;
+      }
+    })();
+
+    return this.collection;
+  }
+
+  private async collectOnce() {
     this.emitter.emit('collecting');
     try {
       await this.registerDisplay();
@@ -170,8 +219,8 @@ export class Xmds {
 
       this.emitter.emit('submitLogs');
 
-      await this.requiredFiles(checkRf ?? '');
-      await this.schedule(checkSchedule ?? '');
+      await this.requiredFiles();
+      await this.schedule();
 
       console.debug('[Xmds::collect] Checking if stats are enabled', { statsEnabled: this.config.settings.statsEnabled });
       // Check if stats are enabled
@@ -297,6 +346,7 @@ export class Xmds {
       this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=registerDisplay',
       soapXml,
       {
+        timeout: XMDS_TIMEOUT_MS,
         headers: {
           'Content-Type': 'text/xml; charset=utf-8',
         },
@@ -306,12 +356,13 @@ export class Xmds {
       }
     ).then(async ({ data, status, headers }) => {
       if (status === 200) {
-        // Parse out the checkRf/checkSchedule values and store them.
+        // Store the checksums the CMS reports. requiredFiles() and schedule() compare them
+        // with the ones last fetched successfully.
         const registerDisplay = new RegisterDisplay(data);
         await registerDisplay.parse();
         if (!forceScheduleUpdate) {
-          this.checkSchedule = registerDisplay.checkSchedule || null;
-          this.checkRf = registerDisplay.checkRf || null;
+          this.cmsCheckSchedule = registerDisplay.checkSchedule || null;
+          this.cmsCheckRf = registerDisplay.checkRf || null;
         }
 
         // Parse out the list of commands and store them in the command manager.
@@ -354,11 +405,13 @@ export class Xmds {
     });
   }
 
-  async requiredFiles(crc32: string) {
-      // Only check the disk on the first collection after startup, or when the CMS
-      // reports a change. Checking every file every time is slow, and a file only
-      // goes missing if someone deletes it.
-      const verifyLocalFiles = crc32 == null || crc32 != this.checkRf;
+  async requiredFiles() {
+      // Fetch when the CMS reports a list we have not fetched yet: the first collection after
+      // startup, a change on the CMS, or a fetch that failed. Only then is the disk checked
+      // too. Checking every file every time is slow, and a file only goes missing if someone
+      // deletes it.
+      const crc32 = this.cmsCheckRf;
+      const verifyLocalFiles = crc32 == null || crc32 !== this.checkRf;
 
       // The CMS checksum only changes when the CMS changes, so it stays the same when a
       // download fails here. Missing files are checked separately, or they would never
@@ -382,7 +435,7 @@ export class Xmds {
         '</soap:Envelope>';
       await axios.post(
         this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=requiredFiles',
-        soapXml)
+        soapXml, { timeout: XMDS_TIMEOUT_MS })
         .then(async (response) => {
           const requiredFiles = new RequiredFiles(response.data);
           await requiredFiles.parse();
@@ -390,6 +443,9 @@ export class Xmds {
           console.debug('XMDS RequiredFiles fetched', {
             method: 'XMDS::requiredFiles',
           });
+
+          // Only now does this list count as fetched.
+          this.checkRf = crc32;
 
           this.emitter.emit('requiredFiles', requiredFiles, verifyLocalFiles);
         })
@@ -399,7 +455,7 @@ export class Xmds {
             this.setRateLimit(
                 method,
                 error.response.headers?.['retry-after'],
-                () => this.requiredFiles(crc32)
+                () => this.requiredFiles()
             );
           }
 
@@ -429,7 +485,7 @@ export class Xmds {
 
     return await axios.post(
       this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=mediaInventory',
-      soapXml
+      soapXml, { timeout: XMDS_TIMEOUT_MS }
     )
     .catch((error: AxiosError) => {
       if (error.response?.status === 429) {
@@ -454,7 +510,7 @@ export class Xmds {
     return mediaInventory.files;
   }
 
-  async schedule(crc32: string) {
+  async schedule() {
     const method = 'schedule';
 
     // Skip request if method was recently rate limited (429)
@@ -463,7 +519,10 @@ export class Xmds {
       return;
     }
 
-    if (crc32 == null || crc32 != this.checkSchedule) {
+    // Fetch when the CMS reports a schedule we have not fetched yet, as in requiredFiles().
+    const crc32 = this.cmsCheckSchedule;
+
+    if (crc32 == null || crc32 !== this.checkSchedule) {
       // Make a new request.
       const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
         '  <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
@@ -475,7 +534,7 @@ export class Xmds {
         '</soap:Envelope>';
       return await axios.post(
         this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=schedule',
-        soapXml,)
+        soapXml, { timeout: XMDS_TIMEOUT_MS })
         .then(async (response) => {
           const playerSchedule = new Schedule(response.data);
           await playerSchedule.parse();
@@ -483,6 +542,9 @@ export class Xmds {
           console.debug('XMDS Schedule fetched', {
             method: 'XMDS::schedule',
           });
+
+          // Only now does this schedule count as fetched.
+          this.checkSchedule = crc32;
 
           this.emitter.emit('schedule', playerSchedule);
         })
@@ -492,7 +554,7 @@ export class Xmds {
             this.setRateLimit(
                 method,
                 error.response.headers?.['retry-after'],
-                () => this.schedule(crc32)
+                () => this.schedule()
             );
           }
 
@@ -529,7 +591,7 @@ export class Xmds {
 
     return await axios.post(
       this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=',
-      soapXml
+      soapXml, { timeout: XMDS_TIMEOUT_MS }
     )
     .catch((error: AxiosError) => {
       if (error.response?.status === 429) {
@@ -545,7 +607,26 @@ export class Xmds {
     });
   }
 
+  /**
+   * Submits the next batch of logs, unless a batch is already being submitted.
+   */
   async handleSubmitLogs(db: ConsoleDB) {
+    if (this.logsSubmitting) {
+      console.debug('[Xmds::handleSubmitLogs] A batch is already being submitted, skipping');
+      return;
+    }
+
+    // Cleared however the batch ends, so a failed or rejected one never blocks the next.
+    this.logsSubmitting = true;
+
+    try {
+      await this.submitLogBatch(db);
+    } finally {
+      this.logsSubmitting = false;
+    }
+  }
+
+  private async submitLogBatch(db: ConsoleDB) {
     const method = 'handleSubmitLogs';
 
     // Skip request if method was recently rate limited (429)
@@ -564,13 +645,10 @@ export class Xmds {
       logLevel,
     });
 
-    this.hasSubmittedLogs = false;
-
     if (logs.length === 0) {
       console.debug('[Xmds::handleSubmitLogs] > No logs to submit, clearing interval');
 
       if (this.logsInterval !== undefined) {
-        this.hasSubmittedLogs = null;
         clearInterval(this.logsInterval);
         this.logsInterval = undefined;
       }
@@ -580,7 +658,6 @@ export class Xmds {
 
     // clear logsInterval when logs count < LogsThreshold
     if (logs.length < LogsThreshold && this.logsInterval !== undefined) {
-      this.hasSubmittedLogs = null;
       clearInterval(this.logsInterval);
       this.logsInterval = undefined;
     }
@@ -601,7 +678,7 @@ export class Xmds {
 
     await axios.post(
       this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=submitLog',
-      soapXml
+      soapXml, { timeout: XMDS_TIMEOUT_MS }
     )
       .then(async response => {
         const parser = new xml2js.Parser();
@@ -619,8 +696,6 @@ export class Xmds {
           db.deleteLogs(logs);
 
           console.log('Deleted pushed logs');
-
-          this.hasSubmittedLogs = true;
         }
       })
       .catch((error: AxiosError) => {
@@ -632,10 +707,6 @@ export class Xmds {
               () => this.handleSubmitLogs(db)
           );
         }
-
-        // Allow the next interval tick to retry rather than staying
-        // permanently locked out by hasSubmittedLogs === false.
-        this.hasSubmittedLogs = null;
 
         return handleError(error, 'Unable to submit logs');
       });
@@ -659,9 +730,7 @@ export class Xmds {
 
       // then submit backlog of logs in batch of LogsThreshold
       this.logsInterval = setInterval(async () => {
-        if (this.hasSubmittedLogs || this.hasSubmittedLogs === null) {
-          await this.handleSubmitLogs(db);
-        }
+        await this.handleSubmitLogs(db);
       }, batchInterval * 1000);
     } else {
       if (this.logsInterval !== undefined) {
@@ -696,7 +765,7 @@ export class Xmds {
 
     return await axios.post(
       this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=submitStat',
-      soapXml,)
+      soapXml, { timeout: XMDS_TIMEOUT_MS })
       .then(async response => {
         const parser = new xml2js.Parser();
         const rootDoc = await parser.parseStringPromise(response.data);
@@ -737,14 +806,14 @@ export class Xmds {
       '   <tns:NotifyStatus>\n' +
       '     <serverKey xsi:type="xsd:string"><![CDATA[' + this.config.cmsKey + ']]></serverKey>\n' +
       '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
-      '     <status xsi:type-="xsd:string">' + this.config.state.toJson(keys) + '</status>\n' +
+      '     <status xsi:type-="xsd:string">' + escapeStringForXml(this.config.state.toJson(keys)) + '</status>\n' +
       '   </tns:NotifyStatus>\n' +
       ' </soap:Body>\n' +
       '</soap:Envelope>';
 
       return await axios.post(
         this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=notifyStatus',
-        soapXml
+        soapXml, { timeout: XMDS_TIMEOUT_MS }
       )
       .catch((error: AxiosError) => {
         if (error.response?.status === 429) {
@@ -783,7 +852,7 @@ export class Xmds {
       '</soap:Envelope>';
 
     try {
-      const response = await axios.post(this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion, soapXml);
+      const response = await axios.post(this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion, soapXml, { timeout: XMDS_TIMEOUT_MS });
 
       // Parse response into the GetWeather object
       const weatherCriteria = new GetWeather(response.data);
@@ -831,7 +900,7 @@ export class Xmds {
 
     return await axios.post(
       this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=reportFaults',
-      soapXml
+      soapXml, { timeout: XMDS_TIMEOUT_MS }
     )
     .catch((error: AxiosError) => {
       if (error.response?.status === 429) {
@@ -871,7 +940,7 @@ export class Xmds {
 
       return await axios.post(
         this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=getResource',
-        soapXml
+        soapXml, { timeout: XMDS_TIMEOUT_MS }
       )
         .then(async (response) => {
           const parser = new xml2js.Parser();
@@ -932,7 +1001,7 @@ export class Xmds {
 
       return await axios.post(
         this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=getData',
-        soapXml
+        soapXml, { timeout: XMDS_TIMEOUT_MS }
       )
         .then(async (response) => {
           const parser = new xml2js.Parser();
