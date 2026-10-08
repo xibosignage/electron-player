@@ -36,6 +36,9 @@ import { getPlayerDataDir, isSnap } from './paths';
 const MAX_RESTARTS = 5;
 const RESTART_WINDOW_MS = 10 * 60 * 1000;
 
+/** How long an unresponsive renderer has to recover before the player is restarted. */
+const UNRESPONSIVE_GRACE_MS = 30 * 1000;
+
 const RESTART_LOG_FILE = 'watchdog-restarts.json';
 
 const AUTOSTART_ENTRY = `[Desktop Entry]
@@ -124,8 +127,28 @@ export function installCrashRecovery(win: BrowserWindow): void {
     relaunchPlayer(`Renderer process gone (reason: ${details.reason}, exitCode: ${details.exitCode})`);
   });
 
+  // A renderer can stall for a while (a large layout loading, for example) and recover on its
+  // own, so only restart if it is still unresponsive after a grace period.
+  let unresponsiveTimer: ReturnType<typeof setTimeout> | null = null;
+
   win.on('unresponsive', () => {
-    relaunchPlayer('Renderer became unresponsive');
+    if (unresponsiveTimer !== null) {
+      return;
+    }
+
+    console.warn(`[Watchdog] Renderer became unresponsive, restarting in ${UNRESPONSIVE_GRACE_MS / 1000} seconds unless it recovers`);
+    unresponsiveTimer = setTimeout(() => {
+      unresponsiveTimer = null;
+      relaunchPlayer(`Renderer stayed unresponsive for ${UNRESPONSIVE_GRACE_MS / 1000} seconds`);
+    }, UNRESPONSIVE_GRACE_MS);
+  });
+
+  win.on('responsive', () => {
+    if (unresponsiveTimer !== null) {
+      clearTimeout(unresponsiveTimer);
+      unresponsiveTimer = null;
+      console.warn('[Watchdog] Renderer recovered, not restarting');
+    }
   });
 
   if (childProcessHandlerAttached) return;

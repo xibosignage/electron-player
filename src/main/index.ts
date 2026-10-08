@@ -22,7 +22,7 @@ const fs = require('fs/promises');
 const { readFileSync } = require('fs');
 import { createHash } from 'crypto';
 import { installExtension, JQUERY_DEBUGGER } from 'electron-devtools-installer';
-import { app, WebContentsView, BrowserWindow, ipcMain, session, screen } from 'electron';
+import { app, WebContentsView, BrowserWindow, ipcMain, session, screen, powerSaveBlocker } from 'electron';
 import { join } from 'path';
 import { optimizer, is, electronApp } from '@electron-toolkit/utils';
 import { Xmr } from '@xibosignage/xibo-communication-framework';
@@ -90,6 +90,21 @@ import Ssp from './common/ssp';
 import SspLayout from './xmds/response/schedule/events/sspLayout';
 import { isValidCmsTarget, performCmsTransfer } from './cms/transferCms';
 import { configureMouse, setMouseEnabled } from './common/mouse';
+
+// Only one player may run at a time. A second copy (for example when both the Startup shortcut
+// and the autostart entry start one at login) would fight this one over port 9696, the
+// databases and XMR, so it exits and this one is brought to the front instead.
+if (!app.requestSingleInstanceLock()) {
+  console.log('[MAIN] The player is already running, exiting');
+  app.exit(0);
+}
+
+app.on('second-instance', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+});
 
 /**
  * Extract the layout `code` attribute from an XLF file without fully parsing it.
@@ -571,6 +586,9 @@ const configureIpc = (win) => {
 
   // Re-send the current loop so a reloaded renderer resumes playback instead of sitting on the splash
   ipcMain.on('renderer-ready', () => {
+    // The renderer is playing, so it doesn't need reloading.
+    clearRendererStartCheck();
+
     // Nothing to restore until the first boot has built a schedule
     if (!manager) {
       return;
@@ -729,6 +747,39 @@ const applyWindowGeometry = (win: BrowserWindow) => {
 let hasSavedGeometry = false;
 
 let mainWindow: BrowserWindow;
+
+// How long a configured renderer has to start playing after it loads.
+const RENDERER_START_TIMEOUT_MS = 60 * 1000;
+let rendererStartTimer: NodeJS.Timeout | null = null;
+
+/**
+ * Reloads the renderer if it doesn't start playing within RENDERER_START_TIMEOUT_MS, for
+ * example when XLR fails or hangs while starting. renderer-ready cancels it. Nothing is set
+ * up while the player isn't configured, since the configuration screen never sends it.
+ */
+function watchRendererStart(win: BrowserWindow) {
+  clearRendererStartCheck();
+
+  if (!config.isConfigured()) {
+    return;
+  }
+
+  rendererStartTimer = setTimeout(() => {
+    rendererStartTimer = null;
+    console.error(`[MAIN] The renderer did not start playing within ${RENDERER_START_TIMEOUT_MS / 1000} seconds, reloading it`);
+
+    if (!win.isDestroyed()) {
+      win.webContents.reload();
+    }
+  }, RENDERER_START_TIMEOUT_MS);
+}
+
+function clearRendererStartCheck() {
+  if (rendererStartTimer !== null) {
+    clearTimeout(rendererStartTimer);
+    rendererStartTimer = null;
+  }
+}
 const createWindow = async () => {
   // Load the saved display profile first so the window is created at its size. A hidden window
   // created fullscreen may never get the leave-full-screen event on Linux, so resizing it
@@ -777,6 +828,9 @@ const createWindow = async () => {
 
   // Restore the restart-on-crash behaviour the legacy player got from its watchdog process.
   installCrashRecovery(mainWindow);
+
+  // A renderer that loads but never starts playing isn't a crash, so it is watched separately.
+  mainWindow.webContents.on('did-finish-load', () => watchRendererStart(mainWindow));
 
   // Pages can't open new windows. A new window would sit hidden behind this one, and passing the
   // URL to the OS would let any widget launch a local program. Links that stay in the page still
@@ -1843,6 +1897,10 @@ const init = async (win: BrowserWindow) => {
 };
 
 app.whenReady().then(() => {
+  // Keep the display on. A signage screen gets no input, so the OS would otherwise blank it
+  // or start the screensaver.
+  powerSaveBlocker.start('prevent-display-sleep');
+
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron')
 
