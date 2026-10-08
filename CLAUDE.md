@@ -21,7 +21,7 @@ There is no dedicated lint or test script. ESLint is configured in `.eslintrc.js
 
 ## Development Setup
 
-This repo depends on `@xibosignage/xibo-layout-renderer` (XLR). In development, `electron.vite.config.js` aliases XLR to `../xibo-layout-renderer/src/index.ts`, so both repos must be cloned in the **same parent directory**. In production builds the alias is removed and the installed npm package is used.
+This repo depends on `@xibosignage/xibo-layout-renderer` (XLR) and `@xibosignage/xibo-communication-framework`. In development, `electron.vite.config.js` aliases both to local clones at `../xibo-layout-renderer` and `../xibo-communication-framework`, which resolve to each package's built `dist/` output. All three repos must be cloned in the **same parent directory**, and each library must be built (`npm run build`) before the player picks up changes to it. In production builds the aliases are removed and the installed npm packages are used.
 
 Runtime config files are stored outside the repo:
 - Windows: `%APPDATA%\xibo-player\` (`config.json`, `cms_config.json`)

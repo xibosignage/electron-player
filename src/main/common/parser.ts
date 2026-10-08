@@ -274,15 +274,30 @@ export function registerClass(name: string, ctor: new () => any) {
   classRegistry.set(name, ctor);
 }
 
-export function submitLogsXmlString(log: LogEntry) {
-  const logMessage = log.message;
+/**
+ * Escapes a value for one of the XML documents XMDS takes as a string, such as the logs or
+ * the stats. That document is itself escaped into the SOAP request, so the value is escaped
+ * twice: once for the document, and once for the request around it. Without this, a single
+ * "&" or "<" makes the whole request invalid and the CMS rejects every entry in it. Log
+ * messages are the exception, see submitLogsXmlString().
+ *
+ * @param value The value to include.
+ * @return {string} The value, escaped twice.
+ */
+export function embeddedXmlValue(value: unknown): string {
+  return escapeStringForXml(escapeStringForXml(String(value ?? '')));
+}
 
+export function submitLogsXmlString(log: LogEntry) {
+  // The message is not escaped here: the logger (ExtendedConsole) stores it already wrapped in
+  // CDATA and HTML-encoded, which is the one level of escaping this request needs. The other
+  // fields are stored as they are, so they are escaped twice.
   let xmlString = '&lt;log date=&quot;' + getLogDate() + '&quot; ' +
-    'category=&quot;' + log.category + '&quot;&gt;' +
-    '&lt;message&gt;' + logMessage + '&lt;/message&gt;';
+    'category=&quot;' + embeddedXmlValue(log.category) + '&quot;&gt;' +
+    '&lt;message&gt;' + log.message + '&lt;/message&gt;';
 
     if (log.method !== undefined && String(log.method).length > 0) {
-      xmlString += '&lt;method&gt;' + log.method + '&lt;/method&gt;';
+      xmlString += '&lt;method&gt;' + embeddedXmlValue(log.method) + '&lt;/method&gt;';
     }
 
     if (log.scheduleId && log.scheduleId !== null) {
@@ -299,11 +314,11 @@ export function submitLogsXmlString(log: LogEntry) {
 
     // Fill in log alert fields
     if (log.eventType && log.eventType !== null) {
-      xmlString += '&lt;eventType&gt;' + log.eventType + '&lt;/eventType&gt;';
+      xmlString += '&lt;eventType&gt;' + embeddedXmlValue(log.eventType) + '&lt;/eventType&gt;';
     }
 
     if (log.alertType && log.alertType !== null) {
-      xmlString += '&lt;alertType&gt;' + log.alertType + '&lt;/alertType&gt;';
+      xmlString += '&lt;alertType&gt;' + embeddedXmlValue(log.alertType) + '&lt;/alertType&gt;';
     }
 
     if (log.refId && log.refId !== null) {
@@ -327,7 +342,7 @@ export function submitStatXmlString(statObj: StatEntry, recordGeoLocation = fals
     'duration=&quot;' + statObj.duration + '&quot; ';
 
   if (statObj.tag !== null && String(statObj.tag).length > 0) {
-    statXml += 'tag=&quot;' + statObj.tag + '&quot; ';
+    statXml += 'tag=&quot;' + embeddedXmlValue(statObj.tag) + '&quot; ';
   }
 
   if (statObj.type !== 'event') {
@@ -360,7 +375,7 @@ export function submitStatXmlString(statObj: StatEntry, recordGeoLocation = fals
       statXml += '&gt;' +
         '&lt;engagements&gt;' +
         engagementTags.map(tag =>
-          '&lt;engagement tag=&quot;' + tag + '&quot; duration=&quot;0&quot; count=&quot;1&quot;&gt;&lt;/engagement&gt;'
+          '&lt;engagement tag=&quot;' + embeddedXmlValue(tag) + '&quot; duration=&quot;0&quot; count=&quot;1&quot;&gt;&lt;/engagement&gt;'
         ).join('') +
         '&lt;/engagements&gt;' +
         '&lt;/stat&gt;';

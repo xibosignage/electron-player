@@ -5,8 +5,10 @@ deployed the way customers already deploy software — Group Policy, SCCM and In
 running as the computer — and so it can replace the legacy .NET player in place
 rather than sitting beside it in Add/Remove Programs.
 
-Background and the decisions behind it are in `WINDOWS-PLAYER-PACKAGING.md`;
-signing is in `WINDOWS-PLAYER-CODE-SIGNING.md`.
+Signing happens in the `build-windows` job of
+[the release workflow](../../.github/workflows/release.yml). Migrating a device's
+identity from the legacy player is covered in
+[docs/UPGRADING-FROM-WINDOWS.md](../../docs/UPGRADING-FROM-WINDOWS.md).
 
 | File | Purpose |
 |---|---|
@@ -35,8 +37,9 @@ Then, on Windows:
 npm run make:msi
 ```
 
-The result lands in `out/make/msi/x64/`. `npm run make` builds it alongside the
-Squirrel `.exe`, which is still shipped until the MSI has been proven in the field.
+The result lands in `out/make/msi/x64/`. On Windows, `npm run make` builds the
+same MSI. It is the only Windows installer; the per-user Squirrel `.exe` that
+earlier releases shipped is no longer built.
 
 ## Three things worth knowing before changing anything here
 
@@ -74,12 +77,14 @@ replacing them needs a 493x58 and a 493x312 image and the `WixUIBannerBmp` and
 
 ## Not done yet
 
-- **Removing a per-user Squirrel install.** A screen that received the interim
-  `.exe` installer keeps it after the MSI is installed, so the player would be
-  installed twice. A machine-wide MSI runs as SYSTEM and cannot reach a user's
-  `%LOCALAPPDATA%`, so this belongs in the player's own first-run migration rather
-  than in a custom action here.
+- **Removing a per-user Squirrel install.** A screen that received the `.exe`
+  installer from an earlier release keeps it after the MSI is installed, so the
+  player would be installed twice. A machine-wide MSI runs as SYSTEM and cannot
+  reach a user's `%LOCALAPPDATA%`, so this belongs in the player's own first-run
+  migration rather than in a custom action here.
 - **Branded installer dialogs.** See above; the layout is WiX's stock one.
 - **The upgrade test.** Nothing here has been run against a fielded legacy install.
-  Section 7 of `WINDOWS-PLAYER-PACKAGING.md` describes the test that proves the
-  replacement, the version numbering and the display-identity migration together.
+  Pre-flight check 1 in
+  [docs/UPGRADING-FROM-WINDOWS.md](../../docs/UPGRADING-FROM-WINDOWS.md) is the test
+  that proves the replacement, the version numbering and the display-identity
+  migration together.

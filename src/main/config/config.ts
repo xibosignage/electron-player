@@ -393,8 +393,8 @@ export class Config {
 
   getXmdsPlayerType(): string {
     // Reuses the CMS's existing 'windows'/'linux' display-profile types rather than
-    // registering new 'electron-*' ones — see docs/CLIENT-TYPE.md for why: the CMS has no
-    // 'electron-win'/'electron-linux' profile type today, and sending one would fall back
+    // registering new 'electron-*' ones. The CMS has no 'electron-win'/'electron-linux'
+    // profile type today, and sending one would fall back
     // to an empty "unknown" profile and drop the commercial-licence exemption. 'windows'
     // makes the CMS PascalCase every RegisterDisplay setting name, which
     // RegisterDisplay::resolveSettingKey() (src/main/xmds/response/registerDisplay.ts)
