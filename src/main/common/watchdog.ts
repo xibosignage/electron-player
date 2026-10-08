@@ -70,6 +70,9 @@ function recordRestart(timestamps: number[]): void {
   }
 }
 
+// A relaunch waiting for the restart limit to clear, if any.
+let delayedRelaunch: ReturnType<typeof setTimeout> | null = null;
+
 /**
  * Restart the whole player process, mirroring what the legacy watchdog did.
  *
@@ -81,11 +84,23 @@ function relaunchPlayer(reason: string): void {
   const recent = readRecentRestarts();
 
   if (recent.length >= MAX_RESTARTS) {
+    // Stopping for good would leave the screen blank until someone restarts the player, so
+    // wait until the oldest restart leaves the window and try again then.
+    if (delayedRelaunch !== null) {
+      return;
+    }
+
+    const delay = Math.max(Math.min(...recent) + RESTART_WINDOW_MS - Date.now(), 0) + 1000;
+
     console.error(
       `[Watchdog] ${reason}, but ${recent.length} restarts already occurred in the last ` +
-      `${RESTART_WINDOW_MS / 60000} minutes. Not restarting again — the player is left running ` +
-      `so the fault can be diagnosed.`,
+      `${RESTART_WINDOW_MS / 60000} minutes. Restarting again in ${Math.round(delay / 1000)} seconds.`,
     );
+
+    delayedRelaunch = setTimeout(() => {
+      delayedRelaunch = null;
+      relaunchPlayer(reason);
+    }, delay);
     return;
   }
 

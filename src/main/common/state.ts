@@ -19,6 +19,7 @@
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
 import { DateTime } from "luxon";
+import he from "he";
 
 export interface StateData {
   availableSpace: number;
@@ -210,47 +211,58 @@ export class State {
     return [this.registrationCode, this.registrationMessage].filter(Boolean).join(' - ');
   }
 
+  /**
+   * The status window's content. Every value is escaped, since names, file names, criteria and
+   * messages come from the CMS, data connectors and widgets, and the renderer inserts this as
+   * HTML.
+   */
   toHtml() {
+    const esc = (value: unknown) => he.escape(String(value ?? ''));
+
+    // Log and fault messages are stored already encoded by the logger, so they are decoded
+    // first. Escaping them as they are would show the encoding on screen.
+    const escMessage = (value: unknown) => esc(he.decode(String(value ?? '')));
+
     return '<h1 class="title">General Information</h1>'
       + '<p>Date: ' + DateTime.now().toISO() + '</p>'
-      + '<p>Version: ' + this.version + '</p>'
-      + '<p>Version Code: ' + this.appVersionCode + '</p>'
-      + '<p>Content Management System: ' + (this.cmsUrl || 'Not configured') + '</p>'
-      + '<p>Display Status: ' + this.registrationStatusText() + '</p>'
+      + '<p>Version: ' + esc(this.version) + '</p>'
+      + '<p>Version Code: ' + esc(this.appVersionCode) + '</p>'
+      + '<p>Content Management System: ' + esc(this.cmsUrl || 'Not configured') + '</p>'
+      + '<p>Display Status: ' + esc(this.registrationStatusText()) + '</p>'
       + '<p>XMR: ' + (this.xmrConnected === null ? 'Not started' : this.xmrConnected ? 'Connected' : 'Not connected') + '</p>'
       // The default is a year back, meaning no message has been received yet
       + '<p>XMR Last Message: ' + (this.lastXmrMessage < DateTime.now().minus({ days: 364 })
         ? 'None received'
         : this.lastXmrMessage.toISO()) + '</p>'
-      + '<p>LAN IP: ' + this.lanIpAddress + '</p>'
-      + '<p>Latitude: ' + this.latitude + '</p>'
-      + '<p>Longitude: ' + this.longitude + '</p>'
+      + '<p>LAN IP: ' + esc(this.lanIpAddress) + '</p>'
+      + '<p>Latitude: ' + esc(this.latitude) + '</p>'
+      + '<p>Longitude: ' + esc(this.longitude) + '</p>'
       + '<p>Storage: ' + (this.totalSpace < 0
         ? 'N/A'
         : (this.totalSpace / 1024 / 1024 / 1024).toFixed(1) + ' GB total, '
           + (this.availableSpace / 1024 / 1024 / 1024).toFixed(1) + ' GB free ('
           + Math.round((this.totalSpace - this.availableSpace) / this.totalSpace * 100) + '% used)')
       + '</p>'
-      + '<p>Display Name: ' + this.deviceName + '</p>'
-      + '<p>Current Layout: ' + this.currentLayoutId + '</p>'
-      + '<p>Screen Size: ' + this.width + ' x ' + this.height + '</p>'
+      + '<p>Display Name: ' + esc(this.deviceName) + '</p>'
+      + '<p>Current Layout: ' + esc(this.currentLayoutId) + '</p>'
+      + '<p>Screen Size: ' + esc(this.width) + ' x ' + esc(this.height) + '</p>'
       + '<p>Memory Limit: ' + Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + ' MB</p>'
       + '<p>Memory Allocation: ' + Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB</p>'
       + '<p>Number of Stats ready to send: ' + this.pendingStatsCount + '</p>'
       + '<p>Number of Logs ready to send: ' + this.pendingLogsCount + '</p>'
       + '<p>Required Files: ' + this.downloadedFilesCount + ' / ' + this.requiredFilesCount + '</p>'
-      + (this.missingFiles.length === 0 ? '' : '<p>Missing Required Files: ' + this.missingFiles.join(', ') + '</p>')
+      + (this.missingFiles.length === 0 ? '' : '<p>Missing Required Files: ' + esc(this.missingFiles.join(', ')) + '</p>')
       + '<p>Global Dependencies: ' + this.globalDependenciesReadyCount + ' / ' + this.globalDependenciesCount + '</p>'
       + (this.missingGlobalDependencies.length === 0
         ? ''
-        : '<p>Missing Global Dependencies: ' + this.missingGlobalDependencies.join(', ') + '</p>')
+        : '<p>Missing Global Dependencies: ' + esc(this.missingGlobalDependencies.join(', ')) + '</p>')
       + (this.usingCachedSchedule ? '<p>Schedule: Using cached schedule (last known from CMS)</p>' : '')
       + '<br />'
       + '<h1 class="title">Schedule Status</h1>'
-      + '<p>All Layouts (* = not scheduled): ' + this.allLayoutIds + '</p>'
-      + '<p>Scheduled Layouts: ' + this.scheduleLoop + '</p>'
-      + '<p>Valid Layouts: ' + (this.validLayoutIds.length === 0 ? 'None' : this.validLayoutIds.join(', ')) + '</p>'
-      + '<p>Invalid Layouts: ' + (this.invalidLayoutIds.length === 0 ? 'None' : this.invalidLayoutIds.join(', ')) + '</p>'
+      + '<p>All Layouts (* = not scheduled): ' + esc(this.allLayoutIds) + '</p>'
+      + '<p>Scheduled Layouts: ' + esc(this.scheduleLoop) + '</p>'
+      + '<p>Valid Layouts: ' + esc(this.validLayoutIds.length === 0 ? 'None' : this.validLayoutIds.join(', ')) + '</p>'
+      + '<p>Invalid Layouts: ' + esc(this.invalidLayoutIds.length === 0 ? 'None' : this.invalidLayoutIds.join(', ')) + '</p>'
       // Set when a collection finishes, so a time in the past means one is still running
       // (the first one after install can take a while, as it downloads every file)
       + '<p>Next Schedule Update: ' + this.nextScheduleUpdate.toISO()
@@ -258,16 +270,16 @@ export class State {
       + '<p>Active Criteria: </p>'
       + (Object.keys(this.activeCriteria).length === 0
         ? '<p>None</p>'
-        : '<pre>' + JSON.stringify(this.activeCriteria, null, 2) + '</pre>')
-      + '<p>SSP: ' + this.ssp + '</p>'
+        : '<pre>' + esc(JSON.stringify(this.activeCriteria, null, 2)) + '</pre>')
+      + '<p>SSP: ' + esc(this.ssp) + '</p>'
       + '<br />'
       + '<h1 class="title">Faults</h1>'
       + (this.activeFaults.length === 0
         ? '<p>None</p>'
         : this.activeFaults.map(f =>
-          '<p>' + f.code + ': ' + f.reason
-          + (f.layoutId ? ' (Layout: ' + f.layoutId + ')' : '')
-          + (f.scheduleId ? ' (Schedule: ' + f.scheduleId + ')' : '')
+          '<p>' + esc(f.code) + ': ' + escMessage(f.reason)
+          + (f.layoutId ? ' (Layout: ' + esc(f.layoutId) + ')' : '')
+          + (f.scheduleId ? ' (Schedule: ' + esc(f.scheduleId) + ')' : '')
           + '</p>'
         ).join(''))
       + '<br />'
@@ -275,7 +287,7 @@ export class State {
       + (this.recentLogs.length === 0
         ? '<p>None</p>'
         : this.recentLogs.map(l =>
-          '<p>[' + new Date(l.timestamp).toISOString() + '] ' + l.level + ': ' + l.message + '</p>'
+          '<p>[' + new Date(l.timestamp).toISOString() + '] ' + esc(l.level) + ': ' + escMessage(l.message) + '</p>'
         ).join(''));
   }
 }
