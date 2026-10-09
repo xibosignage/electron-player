@@ -375,8 +375,8 @@ Main process stats listener
 
 ```json
 {
-  "version": "4.0.12",
-  "versionCode": 4012
+  "version": "4.0.13",
+  "versionCode": 4013
 }
 ```
 
@@ -384,14 +384,14 @@ Main process stats listener
 
 | Constant | Type | Value example |
 |----------|------|---------------|
-| `__APP_VERSION__` | `string` | `"4.0.12"` |
-| `__APP_VERSION_CODE__` | `number` | `4012` |
+| `__APP_VERSION__` | `string` | `"4.0.13"` |
+| `__APP_VERSION_CODE__` | `number` | `4013` |
 
 These constants replace any runtime variable lookups — no `.env` files are needed for versioning.
 
 `snap/snapcraft.yaml` is also kept in sync: `scripts/set-snap-version.cjs` runs automatically as part of `make:snap` and writes the `version` field from `package.json` into the YAML before `snapcraft pack` is invoked.
 
-To bump the version, edit only `package.json`, keeping `versionCode` as the version digits run together (`4.0.12` → `4012`).
+To bump the version, edit only `package.json`, keeping `versionCode` as the version digits run together (`4.0.13` → `4013`).
 
 ### Runtime config files (userData directory)
 
