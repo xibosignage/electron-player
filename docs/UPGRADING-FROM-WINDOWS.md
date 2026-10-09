@@ -131,7 +131,7 @@ The MSI installs per machine and can be deployed silently, by hand or by Group P
 Intune or any tool running as the computer:
 
 ```
-msiexec /i xibo-player-4.0.12-x64.msi /qn
+msiexec /i xibo-player-4.0.13-x64.msi /qn
 ```
 
 Two caveats:
