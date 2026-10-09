@@ -285,9 +285,22 @@ export async function createFileServer(
   });
 
   if (!isListening) {
-    server.listen(port, () => {
-      isListening = true;
-      console.log(`Xibo File Server listening on port ${port}`);
-    });
+    listen(server, port);
   }
+}
+
+// Layouts and media are served from here, so nothing plays without it. If the port is in use,
+// keep trying until it's free instead of failing once.
+function listen(server: ReturnType<typeof express>, port: number) {
+  server.listen(port, () => {
+    isListening = true;
+    console.log(`Xibo File Server listening on port ${port}`);
+  }).on('error', (error: NodeJS.ErrnoException) => {
+    console.error(`[FileServer] Could not listen on port ${port}, trying again in 10 seconds`, {
+      code: error.code,
+      message: error.message,
+    });
+
+    setTimeout(() => listen(server, port), 10000);
+  });
 }

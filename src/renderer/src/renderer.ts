@@ -334,6 +334,12 @@ export const startApp = async () => {
 
     // XLR can receive layouts now, so ask main for the loop this renderer missed while loading
     window.playerAPI.notifyRendererReady();
+  }).catch((error: unknown) => {
+    // Main reloads the renderer when it doesn't hear it's ready, so this only has to be logged.
+    console.error('[Renderer] XLR failed to start', {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
   });
 
   // Set global xlr for browser access

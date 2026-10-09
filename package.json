@@ -49,7 +49,7 @@
   "dependencies": {
     "@electron-toolkit/utils": "^3.0.0",
     "@xibosignage/xibo-communication-framework": "^0.0.10",
-    "@xibosignage/xibo-layout-renderer": "^1.0.35",
+    "@xibosignage/xibo-layout-renderer": "^1.0.36",
     "@xmldom/xmldom": "^0.9.10",
     "axios": "^1.8.4",
     "better-sqlite3": "^13.0.3",
