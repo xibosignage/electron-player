@@ -368,8 +368,13 @@ export class Config {
     );
     this.displayTags = registerDisplay.getTags();
     // Port of the embedded web server. Applied at the next start of the player, see
-    // common/embeddedServerPort.ts. Empty/invalid values fall back to the default.
-    this.settings['embeddedServerPort'] = registerDisplay.getSetting('embeddedServerPort', null);
+    // common/embeddedServerPort.ts. Only replaced when the CMS sends a value: a display that
+    // is not authorised gets a RegisterDisplay without settings, and dropping the saved port
+    // then would move the player back to 9696, onto another player's port.
+    const embeddedServerPort = registerDisplay.getSetting('embeddedServerPort', null);
+    if (embeddedServerPort !== null) {
+      this.settings['embeddedServerPort'] = embeddedServerPort;
+    }
     this.settings['isRecordGeoLocationOnProofOfPlay'] = registerDisplay.getSetting('isRecordGeoLocationOnProofOfPlay', false) === '1';
     this.state.displayStatus = registerDisplay.status || 0;
     this.state.registrationCode = registerDisplay.code ?? '';

@@ -39,8 +39,8 @@ import { Xmds, validateAndRegister } from './xmds/xmds';
 import { State } from './common/state';
 import { createFileServer } from './express';
 import {
-  getEmbeddedServerOrigin,
   getEmbeddedServerPort,
+  isEmbeddedServerUrl,
   isPortPinnedByEnv,
   resolveEmbeddedServerPort,
   setEmbeddedServerPort,
@@ -1140,11 +1140,12 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
 
     // The embedded web server binds its port once at startup, and the renderer loads every
     // layout from it, so a port change from the CMS needs a restart. The setting is saved by
-    // setConfig() above, so the relaunched player comes back on the new port.
+    // setConfig() above, so the relaunched player comes back on the new port. The rest of the
+    // handler still runs: when the watchdog's restart limit has been reached, relaunchPlayer()
+    // only schedules a delayed relaunch, and the player keeps running until then.
     const wantedPort = resolveEmbeddedServerPort(config.settings);
     if (wantedPort !== getEmbeddedServerPort()) {
       relaunchPlayer(`Embedded web server port changed from ${getEmbeddedServerPort()} to ${wantedPort}`);
-      return;
     }
 
     // Apply a changed offset/size from the display profile without waiting for a restart,
@@ -1941,7 +1942,7 @@ app.whenReady().then(() => {
     // Set these headers on the player's own documents only, leaving third party responses
     // (a site shown in a Webpage widget) with the headers their own server sent.
     const isPlayerContent = details.url.startsWith('file://')
-      || details.url.startsWith(getEmbeddedServerOrigin())
+      || isEmbeddedServerUrl(details.url)
       || (is.dev && Boolean(rendererUrl) && details.url.startsWith(rendererUrl as string));
 
     if (!isPlayerContent) {

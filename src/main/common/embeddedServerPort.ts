@@ -89,3 +89,16 @@ export function getEmbeddedServerPort(): number {
 export function getEmbeddedServerOrigin(port: number = getEmbeddedServerPort()): string {
   return `http://localhost:${port}`;
 }
+
+/**
+ * True when the URL is served by the embedded web server. Compares the whole origin, so port
+ * 969 does not also match http://localhost:9696/... Both sides go through URL, which drops a
+ * default port (80), so that case compares equal too.
+ */
+export function isEmbeddedServerUrl(url: string): boolean {
+  try {
+    return new URL(url).origin === new URL(getEmbeddedServerOrigin()).origin;
+  } catch {
+    return false;
+  }
+}
