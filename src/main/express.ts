@@ -32,9 +32,9 @@ import { realtimeDataStore } from './dataConnector/realtimeDataStore';
 import { resolve, sep } from 'path';
 
 import { SCREENSHOT_DIR_NAME } from '../shared/utils/screenshotDirectory';
+import { getEmbeddedServerPort } from './common/embeddedServerPort';
 
 const cors = (corsImport as any).default ?? corsImport;
-const port = 9696;
 let isListening = false;
 
 /**
@@ -285,7 +285,7 @@ export async function createFileServer(
   });
 
   if (!isListening) {
-    listen(server, port);
+    listen(server, getEmbeddedServerPort());
   }
 }
 

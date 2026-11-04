@@ -48,7 +48,7 @@ Runtime config files are stored outside the repo:
 **Schedule → Playback:**
 1. Main's `scheduleManager` parses schedule XML and sends `update-loop` IPC with layout array
 2. Renderer calls `xlr.updateLoop(layouts)`
-3. XLR fetches layout XLF files from `http://localhost:9696/files/<layoutId>.xlf` (Express server at port 9696)
+3. XLR fetches layout XLF files from `http://localhost:9696/files/<layoutId>.xlf` (Express server on the embedded web server port, 9696 by default)
 4. XLR parses XML and plays regions/widgets
 
 **Proof-of-Play Stats:**
@@ -72,7 +72,7 @@ All CMS communication is SOAP-based via `src/main/xmds/xmds.ts`. The polling cyc
 
 ### File Serving
 
-Media assets are downloaded to `~/Documents/xibo_library/` and served at `http://localhost:9696/files/` via `src/main/express.ts`. The renderer process cannot access the filesystem directly — this HTTP bridge is required.
+Media assets are downloaded to `~/Documents/xibo_library/` and served at `http://localhost:<port>/files/` (9696 by default, see `src/main/common/embeddedServerPort.ts`) via `src/main/express.ts`. The renderer process cannot access the filesystem directly — this HTTP bridge is required.
 
 ### Versioning
 

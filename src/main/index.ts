@@ -39,6 +39,13 @@ import { Xmds, validateAndRegister } from './xmds/xmds';
 import { State } from './common/state';
 import { createFileServer } from './express';
 import {
+  getEmbeddedServerPort,
+  isEmbeddedServerUrl,
+  isPortPinnedByEnv,
+  resolveEmbeddedServerPort,
+  setEmbeddedServerPort,
+} from './common/embeddedServerPort';
+import {
   downloadFile,
   downloadResourceFile,
   getDownloadedFiles,
@@ -67,7 +74,7 @@ import Schedule from './xmds/response/schedule/schedule';
 import ScheduleManager from './common/scheduleManager';
 import { migrateLegacyPlayer } from './migration/legacyPlayer';
 import { applyProxyConfig } from './common/proxy';
-import { ensureAutostartEntry, installCrashRecovery } from './common/watchdog';
+import { ensureAutostartEntry, installCrashRecovery, relaunchPlayer } from './common/watchdog';
 import { InputLayoutType, LocalFile, RequiredFile } from './common/types';
 import { ConsoleDB } from '../shared/console/ConsoleDB';
 import { createExtendedConsole, registerConfigAdapter } from '../shared/console/ExtendedConsole';
@@ -91,9 +98,11 @@ import SspLayout from './xmds/response/schedule/events/sspLayout';
 import { isValidCmsTarget, performCmsTransfer } from './cms/transferCms';
 import { configureMouse, setMouseEnabled } from './common/mouse';
 
-// Only one player may run at a time. A second copy (for example when both the Startup shortcut
-// and the autostart entry start one at login) would fight this one over port 9696, the
-// databases and XMR, so it exits and this one is brought to the front instead.
+// Only one player may run at a time per user data directory. A second copy (for example when
+// both the Startup shortcut and the autostart entry start one at login) would fight this one
+// over the embedded web server port, the databases and XMR, so it exits and this one is
+// brought to the front instead. Separate installs (e.g. snap parallel instances) have their
+// own data directories and can run side by side once each uses its own embeddedServerPort.
 if (!app.requestSingleInstanceLock()) {
   console.log('[MAIN] The player is already running, exiting');
   app.exit(0);
@@ -329,6 +338,12 @@ const loadConfig = async () => {
     await migrateLegacyPlayer(config);
 
     await config.load();
+
+    // The embedded web server port comes from the saved CMS settings (or an env override),
+    // so it is fixed here, before anyone (main or the renderer's 'load-config') reads it.
+    setEmbeddedServerPort(resolveEmbeddedServerPort(config.settings));
+    console.log(`[MAIN] Embedded web server port: ${getEmbeddedServerPort()}`
+      + (isPortPinnedByEnv() ? ' (pinned by XIBO_EMBEDDED_SERVER_PORT)' : ''));
 
     // Must happen before the first XMDS collection: devices migrated from a legacy player
     // may only be able to reach their CMS through an upstream proxy. Lives here (rather
@@ -1123,6 +1138,16 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
     await config.setConfig(data);
     setMouseEnabled(win, config.settings.enableMouse === true);
 
+    // The embedded web server binds its port once at startup, and the renderer loads every
+    // layout from it, so a port change from the CMS needs a restart. The setting is saved by
+    // setConfig() above, so the relaunched player comes back on the new port. The rest of the
+    // handler still runs: when the watchdog's restart limit has been reached, relaunchPlayer()
+    // only schedules a delayed relaunch, and the player keeps running until then.
+    const wantedPort = resolveEmbeddedServerPort(config.settings);
+    if (wantedPort !== getEmbeddedServerPort()) {
+      relaunchPlayer(`Embedded web server port changed from ${getEmbeddedServerPort()} to ${wantedPort}`);
+    }
+
     // Apply a changed offset/size from the display profile without waiting for a restart,
     // unless this is the first session after registering, which stays fullscreen.
     if (hasSavedGeometry && JSON.stringify(getWindowGeometry()) !== prevGeometry) {
@@ -1853,12 +1878,12 @@ const init = async (win: BrowserWindow) => {
   // TODO: Configure a new folder for local files.
   configureFileManager();
 
-  // Player API and static file serving
-  configureExpress();
-
   // Also applies the proxy config, if any was migrated — see loadConfig() for why that
   // lives there rather than here.
   appConfig = await loadConfig();
+
+  // Player API and static file serving. Started after loadConfig(), which fixes the port.
+  configureExpress();
 
   state.version = config.version ?? '';
   state.cmsUrl = config.cmsUrl ?? '';
@@ -1917,7 +1942,7 @@ app.whenReady().then(() => {
     // Set these headers on the player's own documents only, leaving third party responses
     // (a site shown in a Webpage widget) with the headers their own server sent.
     const isPlayerContent = details.url.startsWith('file://')
-      || details.url.startsWith('http://localhost:9696')
+      || isEmbeddedServerUrl(details.url)
       || (is.dev && Boolean(rendererUrl) && details.url.startsWith(rendererUrl as string));
 
     if (!isPlayerContent) {

@@ -40,6 +40,8 @@ export interface ConfigData {
   isConfigured: boolean;
   displayTags?: Record<string, string>;
   state: StateData;
+  /** Port of the embedded web server this player process serves on. */
+  embeddedServerPort?: number;
 }
 
 export type MainCallbackType = {
