@@ -979,6 +979,73 @@ export class Xmds {
     }
   }
   
+  /**
+   * Fetches part of a file the CMS sends over XMDS rather than HTTP (download="xmds"), which it
+   * does for every file when its file download mode (SENDFILE_MODE) is Off, and for dependencies
+   * that are not in its library.
+   *
+   * Dependencies come from GetDependency. Everything else comes from GetFile, including the
+   * dependencies of a CMS without GetDependency, which lists them as media with a negative id.
+   * A layout is always sent whole, whatever part is asked for.
+   *
+   * Throws when the part cannot be fetched, so the caller fails the download.
+   */
+  async getFile(file: RequiredFile, offset: number, length: number): Promise<Buffer> {
+    const isDependency = file.type === 'dependency';
+    const method = isDependency ? 'getDependency' : 'getFile';
+
+    if (this.isRateLimited(method)) {
+      throw new Error(`${method} is rate limited by the CMS`);
+    }
+
+    const params = isDependency
+      ? '     <fileType xsi:type="xsd:string">' + escapeStringForXml(file.fileType ?? '') + '</fileType>\n' +
+        '     <id xsi:type="xsd:string">' + escapeStringForXml(String(file.id)) + '</id>\n'
+      : '     <fileId xsi:type="xsd:int">' + file.id + '</fileId>\n' +
+        '     <fileType xsi:type="xsd:string">' + file.type + '</fileType>\n';
+
+    const operation = isDependency ? 'GetDependency' : 'GetFile';
+    // Named as in the WSDL, which spells this part chuckSize for GetFile.
+    const sizePart = isDependency ? 'chunkSize' : 'chuckSize';
+
+    const soapXml = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:xmds" xmlns:types="urn:xmds/encodedTypes" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n' +
+      ' <soap:Body soap:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n' +
+      '   <tns:' + operation + '>\n' +
+      '     <serverKey xsi:type="xsd:string"><![CDATA[' + this.config.cmsKey + ']]></serverKey>\n' +
+      '     <hardwareKey xsi:type="xsd:string">' + this.config.hardwareKey + '</hardwareKey>\n' +
+      params +
+      '     <chunkOffset xsi:type="xsd:double">' + offset + '</chunkOffset>\n' +
+      '     <' + sizePart + ' xsi:type="xsd:double">' + length + '</' + sizePart + '>\n' +
+      '   </tns:' + operation + '>\n' +
+      ' </soap:Body>\n' +
+      '</soap:Envelope>';
+
+    try {
+      const response = await axios.post(
+        this.config.cmsUrl + '/xmds.php?v=' + this.config.xmdsVersion + '&method=' + method,
+        soapXml, { timeout: XMDS_TIMEOUT_MS }
+      );
+
+      const parser = new xml2js.Parser();
+      const rootDoc = await parser.parseStringPromise(response.data);
+      // xml2js gives a plain string for an element without attributes, and puts the text in _
+      // when the element carries its xsi:type.
+      const node = rootDoc["SOAP-ENV:Envelope"]["SOAP-ENV:Body"][0]["ns1:" + operation + "Response"][0].file[0];
+      const encoded = typeof node === 'string' ? node : node?._;
+
+      return Buffer.from(encoded ?? '', 'base64');
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 429) {
+        // Start the cooldown but do not retry here, the next collection downloads the file again.
+        this.setRateLimit(method, error.response?.headers?.['retry-after']);
+      }
+
+      handleError(error, `Unable to download ${file.type} ${file.id} over XMDS`);
+
+      throw error;
+    }
+  }
+
   async getData(widgetId: RequiredFile['id']): Promise<XmdsFetch<string>> {
     const method = 'getData';
 
