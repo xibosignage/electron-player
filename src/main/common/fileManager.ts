@@ -79,11 +79,60 @@ async function downloadToFile(url: string, tempPath: string): Promise<{ size: nu
     return { size, md5: hash.digest('hex') };
 }
 
+// How much of a file to ask the CMS for in each XMDS request.
+const XMDS_CHUNK_SIZE = 1024 * 1024;
+
+// Fetches length bytes of a file from offset, for files the CMS sends over XMDS (download="xmds").
+export type ChunkFetcher = (file: RequiredFile, offset: number, length: number) => Promise<Buffer>;
+
+/**
+ * Downloads a file the CMS sends over XMDS to tempPath, one part at a time, hashing it on the way.
+ *
+ * @return The number of bytes written and their MD5.
+ */
+async function downloadChunksToFile(
+    file: RequiredFile,
+    fetchChunk: ChunkFetcher,
+    tempPath: string,
+): Promise<{ size: number; md5: string }> {
+    const total = Number(file.size) || 0;
+    const hash = createHash('md5');
+    let size = 0;
+
+    const handle = await fs.promises.open(tempPath, 'w');
+
+    try {
+        // A layout is sent whole whatever part is asked for, so it is asked for once: asking again
+        // would append a second copy if it was rebuilt to a different size since it was listed.
+        // Without a listed size there is no telling how many parts to ask for, so that is asked
+        // for once too. Either way the MD5 check catches a file that did not arrive whole.
+        const singleRequest = file.type === 'layout' || total === 0;
+
+        do {
+            const length = singleRequest ? Math.max(total, XMDS_CHUNK_SIZE) : Math.min(XMDS_CHUNK_SIZE, total - size);
+            const chunk = await fetchChunk(file, size, length);
+
+            if (chunk.length === 0) {
+                throw new Error(`The CMS sent no data at offset ${size} of ${total}`);
+            }
+
+            await handle.write(chunk);
+            hash.update(chunk);
+            size += chunk.length;
+        } while (!singleRequest && size < total);
+    } finally {
+        await handle.close();
+    }
+
+    return { size, md5: hash.digest('hex') };
+}
+
 export async function downloadAndSaveFile(
     file: FileManagerFileType,
     options: {
         localPath: string;
         status: FileManagerFileType['status'];
+        fetchChunk?: ChunkFetcher;
     },
     transaction: 'insert' | 'update' = 'insert'
 ) {
@@ -95,8 +144,10 @@ export async function downloadAndSaveFile(
     const tempPath = `${options.localPath}.${randomUUID()}.part`;
 
     try {
-        console.log(`[FileManager] Downloading: ${file.path}`);
-        const downloaded = await downloadToFile(file.path as string, tempPath);
+        console.log(`[FileManager] Downloading: ${options.fetchChunk ? `${file.saveAs} over XMDS` : file.path}`);
+        const downloaded = options.fetchChunk
+            ? await downloadChunksToFile(file, options.fetchChunk, tempPath)
+            : await downloadToFile(file.path as string, tempPath);
 
         // Anything other than the file the CMS listed (a cut-off transfer, or a proxy's error
         // page sent with a 200) is a failure, and the next collection tries again.
@@ -190,7 +241,9 @@ const downloadsInProgress = new Map<string, Promise<FileManagerFileType>>();
 
 // Downloads a file unless it is already downloading, in which case it waits for that download
 // instead of starting a second copy of the same file.
-export function downloadFile(file: FileManagerFileType): Promise<FileManagerFileType> {
+//
+// Pass fetchChunk for a file the CMS sends over XMDS, otherwise it is downloaded from file.path.
+export function downloadFile(file: FileManagerFileType, fetchChunk?: ChunkFetcher): Promise<FileManagerFileType> {
     const name = file.saveAs as string;
     const inProgress = downloadsInProgress.get(name);
 
@@ -199,13 +252,13 @@ export function downloadFile(file: FileManagerFileType): Promise<FileManagerFile
         return inProgress;
     }
 
-    const download = downloadFileIfNeeded(file).finally(() => downloadsInProgress.delete(name));
+    const download = downloadFileIfNeeded(file, fetchChunk).finally(() => downloadsInProgress.delete(name));
     downloadsInProgress.set(name, download);
 
     return download;
 }
 
-async function downloadFileIfNeeded(file: FileManagerFileType) {
+async function downloadFileIfNeeded(file: FileManagerFileType, fetchChunk?: ChunkFetcher) {
     const localPath = join(xiboLibDir, file.saveAs as string);
 
     // Check if file already exists
@@ -220,6 +273,7 @@ async function downloadFileIfNeeded(file: FileManagerFileType) {
                 return await downloadAndSaveFile(file, {
                     localPath,
                     status: 'updated',
+                    fetchChunk,
                 }, 'update');
             }
 
@@ -256,6 +310,7 @@ async function downloadFileIfNeeded(file: FileManagerFileType) {
     return await downloadAndSaveFile(file, {
         localPath,
         status: 'success',
+        fetchChunk,
     }, 'insert');
 }
 
