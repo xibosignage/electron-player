@@ -1256,6 +1256,13 @@ const initXmdsEventHandlers = async function (config: Config, xmr: Xmr, win: Bro
         if (file.download == 'http') {
           console.log('[Xmds::on("requiredFiles")] > Downloading: ' + file.saveAs)
           return await downloadFile((file as unknown) as FileManagerFileType);
+        } else if (file.download == 'xmds' && file.saveAs) {
+          // The CMS sends these through GetFile/GetDependency rather than a link.
+          console.log('[Xmds::on("requiredFiles")] > Downloading over XMDS: ' + file.saveAs)
+          return await downloadFile(
+            (file as unknown) as FileManagerFileType,
+            (requested, offset, length) => xmds.getFile(requested, offset, length),
+          );
         } else if (file.type === 'resource') {
           // Resources carry no md5, so the CMS's updated timestamp is what decides
           // whether ours is stale.

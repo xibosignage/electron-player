@@ -79,6 +79,17 @@ export default class RequiredFiles {
                     delete _file.mediaid;
                 }
 
+                // A file sent over XMDS has no saveAs. A media file carries its stored name in
+                // path instead, and a layout only its id, so give them the names they would have
+                // had over HTTP.
+                if (_file.download === 'xmds' && !_file.saveAs) {
+                    if (_file.type === 'media') {
+                        _file.saveAs = _file.path;
+                    } else if (_file.type === 'layout') {
+                        _file.saveAs = `${_file.id}.xlf`;
+                    }
+                }
+
                 return [...a, _file];
             }, []);
         }
