@@ -232,8 +232,8 @@ The main process is the **backend** of the application. Its responsibilities:
 - `PoPStats.ts` batches and submits stats to the CMS via XMDS
 
 #### `express.ts` — local file server
-- Runs an Express HTTP server on port `9696`
-- Serves media files from the library directory to the renderer via `http://localhost:9696/files/`
+- Runs an Express HTTP server on the embedded web server port (`9696` by default, see [Changing the file server port](#changing-the-file-server-port))
+- Serves media files from the library directory to the renderer via `http://localhost:<port>/files/`
 - The renderer cannot access the local filesystem directly, so this bridge is necessary
 
 #### `xmds/xmds.ts` — CMS communication
@@ -407,7 +407,7 @@ Media assets are downloaded to:
 ~/Documents/xibo_library/
 ```
 
-The Express server at `http://localhost:9696/files/` serves everything in this directory.
+The Express server at `http://localhost:<port>/files/` (`9696` by default) serves everything in this directory.
 
 ### TypeScript paths
 
@@ -479,7 +479,23 @@ The dev server will pick up the rebuilt output automatically (the alias resolves
 
 ### Changing the file server port
 
-The Express server port is hardcoded to `9696`. To change it, update the `port` constant in `src/main/express.ts` and the `APP_HOST` constant in `src/renderer/src/renderer.ts`, which is passed to XLR as `appHost`.
+The Express server port is resolved once at startup, in `src/main/common/embeddedServerPort.ts`, from the first of:
+
+1. The `XIBO_EMBEDDED_SERVER_PORT` environment variable. It is a local override and wins over the CMS.
+2. The **Embedded Web Server Port** (`embeddedServerPort`) from the display profile or the display's settings override, as saved from the last `RegisterDisplay`.
+3. `9696`.
+
+Invalid values (not an integer from 1 to 65535) are ignored and the next source is used. The saved port is only replaced when `RegisterDisplay` carries a value, so a display that is not authorised (which gets no settings from the CMS) keeps the port it had.
+
+The main process passes the resolved port to the renderer as `ConfigData.embeddedServerPort`, which builds `APP_HOST` from it for XLR (`appHost`, `htmlPackageUrl`) and the data connector manager.
+
+The port is only bound at startup, so when `RegisterDisplay` brings a different port from the CMS the player relaunches itself through the watchdog's `relaunchPlayer()` and comes back on the new port. With `XIBO_EMBEDDED_SERVER_PORT` set, the CMS setting is ignored and never causes a relaunch.
+
+A configurable port lets more than one player run on the same machine, for example one per screen as snap parallel instances (`xibo-player`, `xibo-player_2`), each with its own port:
+
+```bash
+XIBO_EMBEDDED_SERVER_PORT=9697 xibo-player_2
+```
 
 ### Running a release build locally
 

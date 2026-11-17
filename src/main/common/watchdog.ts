@@ -83,7 +83,7 @@ let delayedRelaunch: ReturnType<typeof setTimeout> | null = null;
  * relaunch is more predictable than reloading the renderer in place (and avoids
  * re-registering the IPC handlers that `init()` sets up once per process).
  */
-function relaunchPlayer(reason: string): void {
+export function relaunchPlayer(reason: string): void {
   const recent = readRecentRestarts();
 
   if (recent.length >= MAX_RESTARTS) {

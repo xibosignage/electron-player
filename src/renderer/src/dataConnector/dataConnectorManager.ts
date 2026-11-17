@@ -85,10 +85,15 @@ export class DataConnectorManager {
      *   from (the same value passed to XLR as `appHost`, e.g.
      *   `http://localhost:9696/files/`).
      */
-    constructor(private readonly appHost: string) {
+    constructor(private appHost: string) {
         window.addEventListener('message', (ev: MessageEvent) => {
             void this.onMessage(ev);
         });
+    }
+
+    /** Updates the base URL once the embedded web server port is known. */
+    setAppHost(appHost: string) {
+        this.appHost = appHost;
     }
 
     /**

@@ -34,8 +34,16 @@ import { DataConnectorManager } from './dataConnector/dataConnectorManager';
 
 // Base URL the local file server serves cached files from. Shared by XLR (for
 // layouts/resources) and the data connector manager (for connector scripts) so
-// the two can never drift apart.
-const APP_HOST = 'http://localhost:9696/files/';
+// the two can never drift apart. The port comes from main (embeddedServerPort), see
+// setAppHost(); 9696 is only the default until the config has loaded.
+let APP_HOST = 'http://localhost:9696/files/';
+
+const setAppHost = (port?: number) => {
+  if (port && Number.isInteger(port)) {
+    APP_HOST = `http://localhost:${port}/files/`;
+  }
+  dataConnectorManager.setAppHost(APP_HOST);
+};
 
 let xlr: IXlr;
 let currentSspAd: SspAdData | null = null;
@@ -298,6 +306,7 @@ const initXlrEventHandlers = function () {
 
 export const startApp = async () => {
   const config = await window.apiHandler.getConfig();
+  setAppHost(config.embeddedServerPort);
 
   const xlrOptions: Partial<OptionsType> = {
     appHost: APP_HOST,
@@ -717,6 +726,7 @@ const init = async () => {
   const config = await window.apiHandler.loadConfig();
   console.debug('[RENDERER] init > config', config);
   window.config = config;
+  setAppHost(config.embeddedServerPort);
 
   setMouseEnabled(config.settings?.enableMouse === true);
 
