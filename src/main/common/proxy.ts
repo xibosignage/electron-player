@@ -19,6 +19,8 @@
  * along with Xibo.  If not, see <http://www.gnu.org/licenses/>.
  */
 import { app, session } from 'electron';
+import axios from 'axios';
+import { ProxyAgent } from 'proxy-agent';
 
 import { ProxyConfig } from '../config/config';
 
@@ -38,8 +40,7 @@ let loginHandlerAttached = false;
  *
  * Two separate stacks need configuring:
  *  - Chromium (the renderer, and anything fetched by a layout) via session.setProxy().
- *  - Node (XMDS/SOAP and file downloads all go through axios in the main process), which
- *    reads the standard HTTP_PROXY/HTTPS_PROXY environment variables.
+ *  - Node (XMDS/SOAP and file downloads all go through axios in the main process).
  */
 export async function applyProxyConfig(proxy: ProxyConfig | null): Promise<void> {
   if (!proxy?.url) {
@@ -47,7 +48,8 @@ export async function applyProxyConfig(proxy: ProxyConfig | null): Promise<void>
   }
 
   try {
-    // Node side. axios uses these automatically when no explicit `proxy` option is set.
+    // Node side. The standard environment variables are kept so that any other Node code
+    // honouring them behaves consistently.
     const withCredentials = buildProxyUrlWithCredentials(proxy);
     process.env.HTTP_PROXY = withCredentials;
     process.env.HTTPS_PROXY = withCredentials;
@@ -55,6 +57,16 @@ export async function applyProxyConfig(proxy: ProxyConfig | null): Promise<void>
     process.env.https_proxy = withCredentials;
     process.env.NO_PROXY = BYPASS_HOSTS;
     process.env.no_proxy = BYPASS_HOSTS;
+
+    // axios's own environment-based proxy support does not open a CONNECT tunnel for https://
+    // targets (https://github.com/axios/axios/issues/3384): it sends the request to the proxy as
+    // a plain absolute-URI request, which most proxies (e.g. Squid) reject with a 502. Disable it
+    // and use an agent that tunnels correctly. ProxyAgent resolves the proxy from the variables
+    // above for each request, so NO_PROXY is still honoured.
+    const agent = new ProxyAgent();
+    axios.defaults.proxy = false;
+    axios.defaults.httpAgent = agent;
+    axios.defaults.httpsAgent = agent;
 
     // Chromium side. Credentials are supplied via the 'login' event rather than the URL.
     await session.defaultSession.setProxy({
